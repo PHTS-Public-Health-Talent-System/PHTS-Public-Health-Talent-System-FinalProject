@@ -1,4 +1,4 @@
-# PHTS Project
+# PHTS-Public-Health-Talent-System (Currently under development.)
 
 PHTS (Position Allowance for Special Duties) is a full‑stack system for managing eligibility requests, approvals, and monthly payroll calculation for P.T.S. allowances at Uttaradit Hospital.
 

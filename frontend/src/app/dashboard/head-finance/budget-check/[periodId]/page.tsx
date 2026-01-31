@@ -6,17 +6,17 @@ import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useApproveByHR, useDownloadPeriodReport, usePeriodDetail, usePeriodPayouts, usePeriodSummaryByProfession, useRejectPeriod } from "@/features/payroll/hooks";
+import { useApproveByHeadFinance, useDownloadPeriodReport, usePeriodDetail, usePeriodPayouts, usePeriodSummaryByProfession, useRejectPeriod } from "@/features/payroll/hooks";
 import { getPeriodStatusLabel, toPeriodLabel } from "@/features/payroll/period-utils";
 import type { PayPeriod, PeriodPayoutRow, PeriodSummaryRow } from "@/features/payroll/api";
 
-export default function HrPayrollDetailPage() {
+export default function FinanceHeadPayrollDetailPage() {
   const params = useParams();
   const periodId = Number(params.periodId);
   const detail = usePeriodDetail(periodId);
   const payouts = usePeriodPayouts(periodId);
   const summary = usePeriodSummaryByProfession(periodId);
-  const approve = useApproveByHR();
+  const approve = useApproveByHeadFinance();
   const reject = useRejectPeriod();
   const downloadReport = useDownloadPeriodReport();
   const [rejectReason, setRejectReason] = useState("");
@@ -32,7 +32,7 @@ export default function HrPayrollDetailPage() {
           <div className="text-sm text-muted-foreground">{period ? getPeriodStatusLabel(period.status) : ""}</div>
         </div>
         <Button asChild variant="outline">
-          <Link href="/dashboard/hr-head/payroll-check">ย้อนกลับ</Link>
+          <Link href="/dashboard/head-finance/budget-check">ย้อนกลับ</Link>
         </Button>
       </div>
 

@@ -6,19 +6,21 @@ import { useParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { useApproveByHeadFinance, useDownloadPeriodReport, usePeriodDetail, usePeriodPayouts, usePeriodSummaryByProfession, useRejectPeriod } from "@/features/payroll/hooks";
+import { useApproveByHR, useDownloadPeriodReport, usePeriodDetail, usePeriodPayouts, usePeriodSummaryByProfession, useRejectPeriod } from "@/features/payroll/hooks";
+import { useEntityAuditTrail } from "@/features/audit/hooks";
 import { getPeriodStatusLabel, toPeriodLabel } from "@/features/payroll/period-utils";
 import type { PayPeriod, PeriodPayoutRow, PeriodSummaryRow } from "@/features/payroll/api";
 
-export default function FinanceHeadPayrollDetailPage() {
+export default function HrPayrollDetailPage() {
   const params = useParams();
   const periodId = Number(params.periodId);
   const detail = usePeriodDetail(periodId);
   const payouts = usePeriodPayouts(periodId);
   const summary = usePeriodSummaryByProfession(periodId);
-  const approve = useApproveByHeadFinance();
+  const approve = useApproveByHR();
   const reject = useRejectPeriod();
   const downloadReport = useDownloadPeriodReport();
+  const auditTrail = useEntityAuditTrail("period", periodId);
   const [rejectReason, setRejectReason] = useState("");
 
   const period = detail.data?.period as PayPeriod | undefined;
@@ -32,7 +34,7 @@ export default function FinanceHeadPayrollDetailPage() {
           <div className="text-sm text-muted-foreground">{period ? getPeriodStatusLabel(period.status) : ""}</div>
         </div>
         <Button asChild variant="outline">
-          <Link href="/dashboard/finance-head/budget-check">ย้อนกลับ</Link>
+          <Link href="/dashboard/head-hr/payroll-check">ย้อนกลับ</Link>
         </Button>
       </div>
 
@@ -146,6 +148,51 @@ export default function FinanceHeadPayrollDetailPage() {
               )}
             </TableBody>
           </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Audit Trail</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {auditTrail.isLoading ? (
+            <div className="text-sm text-muted-foreground">กำลังโหลด...</div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>เวลา</TableHead>
+                  <TableHead>เหตุการณ์</TableHead>
+                  <TableHead>ผู้ทำรายการ</TableHead>
+                  <TableHead>บทบาท</TableHead>
+                  <TableHead>รายละเอียด</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(auditTrail.data ?? []).map((event: any) => (
+                  <TableRow key={event.audit_id}>
+                    <TableCell>
+                      {event.created_at ? new Date(event.created_at).toLocaleString() : "-"}
+                    </TableCell>
+                    <TableCell>{event.event_type ?? "-"}</TableCell>
+                    <TableCell>{event.actor_name ?? event.actor_id ?? "-"}</TableCell>
+                    <TableCell>{event.actor_role ?? "-"}</TableCell>
+                    <TableCell className="max-w-[320px] truncate">
+                      {event.action_detail ? JSON.stringify(event.action_detail) : "-"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {(auditTrail.data ?? []).length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                      ยังไม่มีข้อมูล
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

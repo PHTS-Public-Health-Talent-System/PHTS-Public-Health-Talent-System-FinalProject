@@ -80,8 +80,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         else if (role === 'HEAD_WARD') router.push('/dashboard/head-ward')
         else if (role === 'PTS_OFFICER') router.push('/dashboard/pts-officer')
         else if (role === 'DIRECTOR') router.push('/dashboard/director')
-        else if (role === 'HR_HEAD') router.push('/dashboard/hr-head')
-        else if (role === 'FINANCE_HEAD') router.push('/dashboard/finance-head')
+        else if (role === 'HEAD_HR') router.push('/dashboard/head-hr')
+        else if (role === 'HEAD_FINANCE') router.push('/dashboard/head-finance')
         else if (role === 'FINANCE_OFFICER') router.push('/dashboard/finance-officer')
         else if (role === 'ADMIN') router.push('/dashboard/admin')
         else router.push('/dashboard') // Default

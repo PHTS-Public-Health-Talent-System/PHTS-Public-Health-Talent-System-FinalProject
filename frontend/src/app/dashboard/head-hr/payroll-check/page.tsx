@@ -8,14 +8,14 @@ import { usePeriods } from "@/features/payroll/hooks";
 import { getPeriodStatusLabel, toPeriodLabel } from "@/features/payroll/period-utils";
 import type { PayPeriod } from "@/features/payroll/api";
 
-export default function FinanceHeadBudgetCheckPage() {
+export default function HrPayrollCheckPage() {
   const { data, isLoading } = usePeriods();
-  const rows = (data ?? []).filter((p: PayPeriod) => p.status === "WAITING_HEAD_FINANCE");
+  const rows = (data ?? []).filter((p: PayPeriod) => p.status === "WAITING_HR");
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>งวดรออนุมัติ (หัวหน้าการเงิน)</CardTitle>
+        <CardTitle>งวดรออนุมัติ (HR)</CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -40,7 +40,7 @@ export default function FinanceHeadBudgetCheckPage() {
                   <TableCell className="text-right">{Number(period.total_amount ?? 0).toLocaleString()}</TableCell>
                   <TableCell className="text-right">
                     <Button asChild size="sm" variant="outline">
-                      <Link href={`/dashboard/finance-head/budget-check/${period.period_id}`}>ตรวจสอบ</Link>
+                      <Link href={`/dashboard/head-hr/payroll-check/${period.period_id}`}>ตรวจสอบ</Link>
                     </Button>
                   </TableCell>
                 </TableRow>

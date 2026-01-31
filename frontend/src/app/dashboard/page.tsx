@@ -33,11 +33,11 @@ export default function DashboardPage() {
         case "DIRECTOR":
           router.push("/dashboard/director")
           break
-        case "HR_HEAD":
-          router.push("/dashboard/hr-head")
+        case "HEAD_HR":
+          router.push("/dashboard/head-hr")
           break
-        case "FINANCE_HEAD":
-          router.push("/dashboard/finance-head")
+        case "HEAD_FINANCE":
+          router.push("/dashboard/head-finance")
           break
         case "FINANCE_OFFICER":
           router.push("/dashboard/finance-officer")

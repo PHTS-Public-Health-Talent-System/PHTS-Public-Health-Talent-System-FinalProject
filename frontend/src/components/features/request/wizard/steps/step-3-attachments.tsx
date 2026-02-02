@@ -1,5 +1,5 @@
 "use client"
-import { CloudUpload, FileText, X, AlertCircle } from "lucide-react"
+import { CloudUpload, FileText, X, AlertCircle, Lightbulb } from "lucide-react"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -121,8 +121,9 @@ export function Step3Attachments({ data, onUpload, onRemove }: Step3Props) {
 
       <Alert className="bg-blue-50 border-blue-100 text-blue-800">
         <AlertCircle className="h-4 w-4 text-blue-800" />
-        <AlertDescription>
-           💡 <strong>คำแนะนำ:</strong> กรุณาใช้ไฟล์ภาพหรือ PDF ที่ชัดเจน เพื่อความแม่นยำในการตรวจสอบข้อมูล
+        <AlertDescription className="flex items-center gap-2">
+           <Lightbulb className="h-4 w-4 text-amber-500" />
+           <span><strong>คำแนะนำ:</strong> กรุณาใช้ไฟล์ภาพหรือ PDF ที่ชัดเจน เพื่อความแม่นยำในการตรวจสอบข้อมูล</span>
         </AlertDescription>
       </Alert>
 

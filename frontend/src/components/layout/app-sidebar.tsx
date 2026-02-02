@@ -1,59 +1,69 @@
-"use client"
+"use client";
 
-import * as React from "react"
+import * as React from "react";
 import {
   LayoutDashboard,
   FileText,
+  History,
+  CheckSquare,
   Settings,
-  Users,
   LogOut,
-  PieChart,
-  CreditCard,
-  Building2,
-  UserCheck,
   Bell,
+  PieChart,
+  Users,
+  CreditCard,
+  UserCheck,
   ShieldAlert,
   Database,
   ShieldCheck,
   SlidersHorizontal
-} from "lucide-react"
+} from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuButton,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarGroupContent,
   SidebarRail,
-  SidebarSeparator,
-} from "@/components/ui/sidebar"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { useAuth } from "@/components/providers/auth-provider"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
+} from "@/components/ui/sidebar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/providers/auth-provider";
 
-const headHrMenu = [
+interface MenuItem {
+  title: string;
+  url: string;
+  icon: React.ElementType;
+  badge?: number;
+}
+
+const headHrMenu: MenuItem[] = [
   { title: "หน้าหลัก", url: "/dashboard/head-hr", icon: LayoutDashboard },
   { title: "คำขอรออนุมัติ", url: "/dashboard/head-hr/requests", icon: FileText },
-  { title: "ประวัติคำขอ", url: "/dashboard/head-hr/request-history", icon: FileText },
+  { title: "ประวัติคำขอ", url: "/dashboard/head-hr/request-history", icon: History },
   { title: "ตรวจสอบเงินเดือน", url: "/dashboard/head-hr/payroll-check", icon: CreditCard },
   { title: "การแจ้งเตือน", url: "/dashboard/head-hr/notifications", icon: Bell },
-  { title: "ค้นหา/ตรวจย้อนหลัง", url: "/dashboard/head-hr/history", icon: FileText },
-  { title: "ดาวน์โหลดรายงาน", url: "/dashboard/head-hr/reports", icon: FileText },
+  { title: "ค้นหา/ตรวจย้อนหลัง", url: "/dashboard/head-hr/history", icon: History },
+  { title: "ดาวน์โหลดรายงาน", url: "/dashboard/head-hr/reports", icon: PieChart },
 ]
 
-const headFinanceMenu = [
+const headFinanceMenu: MenuItem[] = [
   { title: "หน้าหลัก", url: "/dashboard/head-finance", icon: LayoutDashboard },
   { title: "คำขอรออนุมัติ", url: "/dashboard/head-finance/requests", icon: FileText },
-  { title: "ประวัติคำขอ", url: "/dashboard/head-finance/request-history", icon: FileText },
+  { title: "ประวัติคำขอ", url: "/dashboard/head-finance/request-history", icon: History },
   { title: "ตรวจสอบงบประมาณ", url: "/dashboard/head-finance/budget-check", icon: PieChart },
-  { title: "ค้นหา/ตรวจย้อนหลัง", url: "/dashboard/head-finance/history", icon: FileText },
-  { title: "ดาวน์โหลดรายงาน", url: "/dashboard/head-finance/reports", icon: FileText },
+  { title: "ค้นหา/ตรวจย้อนหลัง", url: "/dashboard/head-finance/history", icon: History },
+  { title: "ดาวน์โหลดรายงาน", url: "/dashboard/head-finance/reports", icon: PieChart },
 ]
 
-// Determine menu items based on Role
-const roleMenus = {
+const roleMenus: Record<string, MenuItem[]> = {
   USER: [
     { title: "หน้าหลัก", url: "/dashboard/user", icon: LayoutDashboard },
     { title: "ยื่นคำขอ", url: "/dashboard/user/requests", icon: FileText },
@@ -63,13 +73,13 @@ const roleMenus = {
   HEAD_WARD: [
     { title: "หน้าหลัก", url: "/dashboard/head-ward", icon: LayoutDashboard },
     { title: "จัดการคำขอ", url: "/dashboard/head-ward/requests", icon: UserCheck },
-    { title: "ประวัติการอนุมัติ", url: "/dashboard/head-ward/history", icon: FileText },
+    { title: "ประวัติการอนุมัติ", url: "/dashboard/head-ward/history", icon: History },
     { title: "การแจ้งเตือน", url: "/dashboard/head-ward/notifications", icon: Bell },
   ],
   HEAD_DEPT: [
     { title: "หน้าหลัก", url: "/dashboard/head-dept", icon: LayoutDashboard },
     { title: "จัดการคำขอ", url: "/dashboard/head-dept/requests", icon: UserCheck },
-    { title: "ประวัติการอนุมัติ", url: "/dashboard/head-dept/history", icon: FileText },
+    { title: "ประวัติการอนุมัติ", url: "/dashboard/head-dept/history", icon: History },
     { title: "การแจ้งเตือน", url: "/dashboard/head-dept/notifications", icon: Bell },
   ],
   PTS_OFFICER: [
@@ -78,7 +88,7 @@ const roleMenus = {
     { title: "ประวัติการอนุมัติ", url: "/dashboard/pts-officer/history", icon: UserCheck },
     { title: "การแจ้งเตือน", url: "/dashboard/pts-officer/notifications", icon: Bell },
     { title: "จัดการเงินเดือน", url: "/dashboard/pts-officer/payroll", icon: CreditCard },
-    { title: "ค้นหา/ตรวจย้อนหลัง", url: "/dashboard/pts-officer/payroll-history", icon: FileText },
+    { title: "ค้นหา/ตรวจย้อนหลัง", url: "/dashboard/pts-officer/payroll-history", icon: History },
     { title: "Data Quality", url: "/dashboard/pts-officer/data-quality", icon: ShieldCheck },
     { title: "License Alerts", url: "/dashboard/pts-officer/license-alerts", icon: ShieldAlert },
     { title: "Snapshots", url: "/dashboard/pts-officer/snapshots", icon: Database },
@@ -87,9 +97,9 @@ const roleMenus = {
   DIRECTOR: [
     { title: "หน้าหลัก", url: "/dashboard/director", icon: LayoutDashboard },
     { title: "คำขอรออนุมัติ", url: "/dashboard/director/requests", icon: FileText },
-    { title: "ประวัติคำขอ", url: "/dashboard/director/request-history", icon: FileText },
-    { title: "อนุมัติการเบิกจ่าย", url: "/dashboard/director/approvals", icon:  FileText},
-    { title: "ค้นหา/ตรวจย้อนหลัง", url: "/dashboard/director/history", icon: FileText },
+    { title: "ประวัติคำขอ", url: "/dashboard/director/request-history", icon: History },
+    { title: "อนุมัติการเบิกจ่าย", url: "/dashboard/director/approvals", icon:  CheckSquare},
+    { title: "ค้นหา/ตรวจย้อนหลัง", url: "/dashboard/director/history", icon: History },
     { title: "ดาวน์โหลดรายงาน", url: "/dashboard/director/reports", icon: PieChart },
   ],
   HEAD_HR: headHrMenu,
@@ -107,74 +117,135 @@ const roleMenus = {
 }
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
-  const { user, logout } = useAuth()
-  const pathname = usePathname()
+  const pathname = usePathname();
+  const { user, logout } = useAuth();
 
-  // Select menu based on user role (default to USER if not found)
-  const menus = user?.role && roleMenus[user.role]
+  const menuItems = user?.role && roleMenus[user.role]
     ? roleMenus[user.role]
-    : roleMenus.USER
+    : roleMenus.USER;
 
   return (
-    <Sidebar collapsible="icon" {...props}>
-      <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Building2 className="size-4" />
+    <Sidebar collapsible="icon" className="border-r-slate-200" {...props}>
+      {/* ส่วนหัว Sidebar: โลโก้ระบบ */}
+      <SidebarHeader className="h-16 flex items-center justify-center border-b border-slate-100 bg-white">
+        <div className="flex items-center gap-2 px-2 w-full">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
+            <ActivityIcon className="size-5" />
           </div>
-          <div className="grid flex-1 text-left text-sm leading-tight">
-            <span className="truncate font-semibold">PHTS System</span>
-            <span className="truncate text-xs">รพ.อุตรดิตถ์</span>
+          <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
+            <span className="font-bold text-lg text-slate-900">PHTS</span>
+            <span className="text-xs text-slate-500">ระบบบริหารกำลังคนฯ</span>
           </div>
         </div>
       </SidebarHeader>
 
-      <SidebarContent>
-        <SidebarMenu>
-          {menus.map((item) => (
-            <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton
-                asChild
-                tooltip={item.title}
-                isActive={pathname.startsWith(item.url)}
-                className="hover:bg-primary/10 hover:text-primary data-[active=true]:bg-primary data-[active=true]:text-white"
-              >
-                <Link href={item.url}>
-                  <item.icon />
-                  <span>{item.title}</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          ))}
-        </SidebarMenu>
+      {/* ส่วนเนื้อหาเมนู */}
+      <SidebarContent className="bg-white px-2 py-4">
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-slate-400 font-normal px-2 mb-2">
+            เมนูหลัก
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu className="space-y-1">
+              {menuItems.map((item) => {
+                const isActive = pathname === item.url || pathname.startsWith(item.url + "/");
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={isActive}
+                      tooltip={item.title}
+                      className={cn(
+                        "h-12 text-base font-medium rounded-xl transition-all duration-200",
+                        isActive
+                          ? "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800"
+                          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                      )}
+                    >
+                      <Link href={item.url}>
+                        <item.icon
+                          className={cn(
+                            "mr-3 h-5 w-5",
+                            isActive ? "text-indigo-600" : "text-slate-400"
+                          )}
+                        />
+                        <span>{item.title}</span>
+                        {item.badge && (
+                          <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-600">
+                            {item.badge}
+                          </span>
+                        )}
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        
+        {/* กลุ่มเมนูตั้งค่า/ช่วยเหลือ */}
+        <SidebarGroup className="mt-auto">
+           <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                 <SidebarMenuButton className="h-12 text-slate-600 hover:bg-slate-50 rounded-xl">
+                    <Settings className="mr-3 h-5 w-5 text-slate-400" />
+                    <span>ตั้งค่าระบบ</span>
+                 </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+           </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter>
-        <SidebarSeparator />
+      {/* ส่วนท้าย Sidebar: โปรไฟล์ผู้ใช้ */}
+      <SidebarFooter className="bg-white border-t border-slate-100 p-2">
         <SidebarMenu>
           <SidebarMenuItem>
-             <div className="flex items-center gap-3 p-2">
-                <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src="" />
-                  <AvatarFallback className="rounded-lg">
-                    {user?.username?.substring(0, 2).toUpperCase() || 'U'}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{user?.username}</span>
-                  <span className="truncate text-xs text-muted-foreground">{user?.role}</span>
-                </div>
-             </div>
-          </SidebarMenuItem>
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={logout} className="text-destructive hover:bg-destructive/10">
-              <LogOut />
-              <span>ออกจากระบบ</span>
+            <SidebarMenuButton
+              size="lg"
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground rounded-xl hover:bg-slate-50"
+            >
+              <Avatar className="h-8 w-8 rounded-lg bg-indigo-100 border border-indigo-200 text-indigo-700">
+                <AvatarFallback className="font-bold">
+                   {user?.username?.substring(0, 2).toUpperCase() || 'U'}
+                </AvatarFallback> 
+              </Avatar>
+              <div className="grid flex-1 text-left text-sm leading-tight ml-2">
+                <span className="truncate font-semibold text-slate-900 text-base">
+                  {user?.username}
+                </span>
+                <span className="truncate text-xs text-slate-500">
+                  {user?.role}
+                </span>
+              </div>
+              <LogOut onClick={logout} className="ml-auto size-4 text-slate-400 hover:text-red-500 cursor-pointer" />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>
-  )
+  );
+}
+
+// Icon component (Mock)
+function ActivityIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
+    </svg>
+  );
 }

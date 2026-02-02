@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Lexend, Source_Sans_3 } from "next/font/google";
+import { Lexend, Source_Sans_3, Sarabun } from "next/font/google";
 import "./globals.css";
 import { ReactQueryProvider } from "@/components/providers/query-provider";
 import { AuthProvider } from "@/components/providers/auth-provider";
@@ -18,6 +18,13 @@ const sourceSans = Source_Sans_3({
   weight: ["300", "400", "500", "600", "700"],
 });
 
+const sarabun = Sarabun({
+  subsets: ["thai", "latin"],
+  variable: "--font-sarabun",
+  display: "swap",
+  weight: ["300", "400", "500", "600", "700"],
+});
+
 export const metadata: Metadata = {
   title: "PHTS System - โรงพยาบาลอุตรดิตถ์",
   description: "ระบบบริหารจัดการเงิน พ.ต.ส.",
@@ -29,7 +36,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="th" className={`${lexend.variable} ${sourceSans.variable}`}>
+    <html lang="th" className={`${lexend.variable} ${sourceSans.variable} ${sarabun.variable}`}>
       <body className="antialiased font-sans">
         <ReactQueryProvider>
           <AuthProvider>

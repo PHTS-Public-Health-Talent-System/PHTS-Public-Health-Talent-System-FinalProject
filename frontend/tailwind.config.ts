@@ -1,38 +1,84 @@
 import type { Config } from "tailwindcss";
 import defaultTheme from "tailwindcss/defaultTheme";
+import tailwindcssAnimate from "tailwindcss-animate";
 
-const config: Config = {
+const config = {
+  darkMode: "class",
   content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
-    "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
+    './pages/**/*.{ts,tsx}',
+    './components/**/*.{ts,tsx}',
+    './app/**/*.{ts,tsx}',
+    './src/**/*.{ts,tsx}',
   ],
+  prefix: "",
   theme: {
-    extend: {
-      fontFamily: {
-        // ตั้งค่าให้ sans (default) ใช้ Source Sans 3 ก่อน แล้วตามด้วย Sarabun
-        sans: ["var(--font-sans)", "var(--font-sarabun)", ...defaultTheme.fontFamily.sans],
-        // Heading ใช้ Lexend
-        heading: ["var(--font-heading)", ...defaultTheme.fontFamily.sans],
-        // ถ้าต้องการเรียกใช้ภาษาไทยเฉพาะเจาะจง
-        thai: ["var(--font-sarabun)", ...defaultTheme.fontFamily.sans],
-      },
-      colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
-        // สีจาก frontend_old/theme/palette.ts
-        phts: {
-          primary: "#006C9C",      // deep teal/blue main
-          primaryDark: "#004B75",  // hover state
-          secondary: "#009688",    // secondary teal
-          background: "#F4F6F8",   // page background (light gray)
-          text: "#212B36",         // primary text (grey[800])
-          textSec: "#637381",      // secondary text (grey[600])
-          error: "#FF4842",        // error state
-        }
+    container: {
+      center: true,
+      padding: "2rem",
+      screens: {
+        "2xl": "1400px",
       },
     },
+    extend: {
+      fontFamily: {
+        // ใช้ Sarabun เป็นฟอนต์หลักเพื่อความอ่านง่ายสไตล์ราชการ
+        sans: ["var(--font-sarabun)", ...defaultTheme.fontFamily.sans],
+        // ใช้ Inter สำหรับตัวเลขให้ดูชัดเจน (เช่น เลขบัตร ปชช.)
+        numbers: ["var(--font-inter)", ...defaultTheme.fontFamily.sans],
+        // Legacy support aliases if needed, mapping to new system
+        heading: ["var(--font-sarabun)", ...defaultTheme.fontFamily.sans],
+        display: ["var(--font-sarabun)", ...defaultTheme.fontFamily.sans],
+      },
+      colors: {
+        border: "hsl(var(--border))",
+        input: "hsl(var(--input))",
+        ring: "hsl(var(--ring))",
+        background: "#f8fafc", // Slate-50: พื้นหลังถนอมสายตา
+        foreground: "hsl(var(--foreground))",
+
+        // Medical Blue Theme
+        primary: {
+          DEFAULT: "#0284c7", // Sky-600: สีหลัก สดใสแต่นุ่มนวล
+          foreground: "#ffffff",
+          hover: "#0369a1", // Sky-700
+        },
+        secondary: {
+          DEFAULT: "#f1f5f9", // Slate-100
+          foreground: "#0f172a", // Slate-900
+        },
+        destructive: {
+          DEFAULT: "#ef4444", // Red-500
+          foreground: "#ffffff",
+        },
+        muted: {
+          DEFAULT: "#f1f5f9",
+          foreground: "#64748b", // Slate-500
+        },
+        accent: {
+          DEFAULT: "#e0f2fe", // Sky-100
+          foreground: "#0284c7",
+        },
+        popover: {
+          DEFAULT: "#ffffff",
+          foreground: "#0f172a",
+        },
+        card: {
+          DEFAULT: "#ffffff",
+          foreground: "#0f172a",
+        },
+      },
+      borderRadius: {
+        lg: "0.75rem", // 12px
+        xl: "1rem",    // 16px (เน้นความมน)
+        md: "calc(var(--radius) - 2px)",
+        sm: "calc(var(--radius) - 4px)",
+      },
+      boxShadow: {
+        'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)', // เงาฟุ้งแบบ Minimal
+      }
+    },
   },
-  plugins: [],
-};
+  plugins: [tailwindcssAnimate],
+} satisfies Config;
+
 export default config;

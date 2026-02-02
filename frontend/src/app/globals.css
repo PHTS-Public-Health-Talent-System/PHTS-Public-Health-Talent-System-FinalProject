@@ -5,13 +5,14 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: 'Source Sans 3', sans-serif;
-  --font-heading: 'Lexend', sans-serif;
+  --font-sans: 'Sarabun', 'Source Sans 3', sans-serif;
+  --font-heading: 'Sarabun', 'Lexend', sans-serif;
+  --font-numbers: 'Inter', sans-serif;
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
-  --radius-xl: 12px;
+  --radius-xl: 1rem;
 
   --color-background: var(--color-background);
   --color-foreground: var(--color-foreground);
@@ -63,6 +64,7 @@
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+  --shadow-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
 }
 
 @utility container {
@@ -96,94 +98,106 @@
 }
 
 :root {
-  /* PHTS Modern Flat Design System */
+  /* PHTS Serene Professional Theme */
 
   /* Backgrounds */
-  --color-background: #ECFEFF; /* Cyan-50 */
-  --background: 180 30% 98%;   /* Converting #ECFEFF to HSL approx for fallback */
+  --color-background: #f8fafc; /* Slate-50 */
+  --background: 210 40% 98%;
 
-  --color-foreground: #164E63; /* Cyan-950 */
-  --foreground: 194 66% 24%;
+  --color-foreground: #0f172a; /* Slate-900 (Official Navy) */
+  --foreground: 222 47% 11%;
 
   /* Cards */
-  --color-card: #FFFFFF;
+  --color-card: #ffffff;
   --card: 0 0% 100%;
 
-  --color-card-foreground: #164E63;
-  --card-foreground: 194 66% 24%;
+  --color-card-foreground: #0f172a;
+  --card-foreground: 222 47% 11%;
 
-  --color-popover: #FFFFFF;
+  --color-popover: #ffffff;
   --popover: 0 0% 100%;
 
-  --color-popover-foreground: #164E63;
-  --popover-foreground: 194 66% 24%;
+  --color-popover-foreground: #0f172a;
+  --popover-foreground: 222 47% 11%;
 
-  /* Primary Action (Brand) - Calm Cyan */
-  --color-primary: #0891B2; /* Cyan-600 */
-  --primary: 191 91% 36%;
+  /* Primary Action (Medical Blue) */
+  --color-primary: #0284c7; /* Sky-600 */
+  --primary: 204 98% 39%;
 
-  --color-primary-foreground: #FFFFFF;
+  --color-primary-foreground: #ffffff;
   --primary-foreground: 0 0% 100%;
 
-  /* Secondary / Highlights - Cyan */
-  --color-secondary: #22D3EE; /* Cyan-400 */
-  --secondary: 186 93% 53%;
+  /* Secondary */
+  --color-secondary: #f1f5f9; /* Slate-100 */
+  --secondary: 210 40% 96.1%;
 
-  --color-secondary-foreground: #164E63;
-  --secondary-foreground: 194 66% 24%;
+  --color-secondary-foreground: #0f172a;
+  --secondary-foreground: 222 47% 11.2%;
 
-  /* CTA / Success - Health Green */
-  --color-cta: #059669; /* Emerald-600 */
-  --color-cta-foreground: #FFFFFF;
+  /* Status Colors */
+
+  /* Success (Green-100 bg / Green-800 text) */
+  --color-cta: #166534; /* Green-800 for text/solid */
+  --color-cta-foreground: #dcfce7; /* Green-100 for bg */
 
   /* Muted / Neutral */
-  --color-muted: #F1F5F9; /* Slate-100 */
-  --muted: 210 40% 96%;
+  --color-muted: #f1f5f9; /* Slate-100 */
+  --muted: 210 40% 96.1%;
 
-  --color-muted-foreground: #64748B; /* Slate-500 */
-  --muted-foreground: 215 16% 47%;
+  --color-muted-foreground: #64748b; /* Slate-500 */
+  --muted-foreground: 215.4 16.3% 46.9%;
 
-  --color-accent: #E0F2FE; /* Sky-100 */
-  --accent: 199 88% 94%;
+  --color-accent: #f1f5f9; /* Slate-100 */
+  --accent: 210 40% 96.1%;
 
-  --color-accent-foreground: #0C4A6E; /* Sky-900 */
-  --accent-foreground: 199 89% 24%;
+  --color-accent-foreground: #0f172a;
+  --accent-foreground: 222.2 47.4% 11.2%;
 
   /* Destructive */
-  --color-destructive: #EF4444;
-  --destructive: 0 84% 60%;
+  --color-destructive: #ef4444;
+  --destructive: 0 84.2% 60.2%;
 
-  --color-destructive-foreground: #FFFFFF;
-  --destructive-foreground: 0 0% 100%;
+  --color-destructive-foreground: #ffffff;
+  --destructive-foreground: 210 40% 98%;
 
   /* Inputs & Borders */
-  --color-border: #CBD5E1; /* Slate-300 */
-  --border: 212 27% 84%;
+  --color-border: #e2e8f0; /* Slate-200 */
+  --border: 214.3 31.8% 91.4%;
 
-  --color-input: #E2E8F0; /* Slate-200 */
-  --input: 210 40% 91%;
+  --color-input: #e2e8f0;
+  --input: 214.3 31.8% 91.4%;
 
-  --color-ring: #0891B2; /* Primary Cyan */
-  --ring: 191 91% 36%;
+  --color-ring: #0284c7; /* Sky-600 */
+  --ring: 204 98% 39%;
 
   --radius: 0.5rem; /* 8px */
 
+  /* Custom Status Variables for Tailwind v4 expansion if needed */
+  --color-status-success-bg: #dcfce7;
+  --color-status-success-text: #166534;
+  --color-status-warning-bg: #fef9c3;
+  --color-status-warning-text: #854d0e;
+  --color-status-error-bg: #fee2e2;
+  --color-status-error-text: #991b1b;
+  --color-status-neutral-bg: #f1f5f9;
+  --color-status-neutral-text: #475569;
+
   /* Charts */
-  --color-chart-1: #0891B2;
-  --color-chart-2: #059669;
-  --color-chart-3: #F59E0B;
-  --color-chart-4: #6366F1;
-  --color-chart-5: #EC4899;
+  --color-chart-1: #0284c7;
+  --color-chart-2: #166534;
+  --color-chart-3: #d97706;
+  --color-chart-4: #4f46e5;
+  --color-chart-5: #db2777;
 
   /* Sidebar */
-  --color-sidebar: #FFFFFF;
-  --color-sidebar-foreground: #164E63;
-  --color-sidebar-primary: #0891B2;
-  --color-sidebar-primary-foreground: #FFFFFF;
-  --color-sidebar-accent: #ECFEFF;
-  --color-sidebar-accent-foreground: #164E63;
-  --color-sidebar-border: #E2E8F0;
-  --color-sidebar-ring: #0891B2;
+  --color-sidebar: #ffffff;
+  --color-sidebar-foreground: #0f172a;
+  --color-sidebar-primary: #0284c7;
+  --color-sidebar-primary-foreground: #ffffff;
+  --color-sidebar-accent: #f1f5f9;
+  --color-sidebar-accent-foreground: #0f172a;
+  --color-sidebar-border: #e2e8f0;
+  --color-sidebar-ring: #0284c7;
 }
 
 @layer base {

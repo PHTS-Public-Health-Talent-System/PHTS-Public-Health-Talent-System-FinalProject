@@ -130,18 +130,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       {/* ส่วนหัว Sidebar: โลโก้ระบบ */}
       <SidebarHeader className="h-16 flex items-center justify-center border-b border-slate-100 bg-white">
         <div className="flex items-center gap-2 px-2 w-full">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white p-1 border border-slate-100 shadow-sm overflow-hidden text-white">
             <Image
               src="/logo-uttaradit-hospital.png"
-              alt="Uttaradit Hospital Logo"
-              width={40}
-              height={40}
-              style={{ objectFit: "contain" }}
+              alt="Hospital Logo"
+              width={32}
+              height={32}
+              className="object-contain"
             />
           </div>
           <div className="flex flex-col gap-0.5 leading-none group-data-[collapsible=icon]:hidden">
-            <span className="font-bold text-lg text-slate-900">PHTS</span>
-            <span className="text-xs text-slate-500">ระบบบริหารกำลังคนฯ</span>
+            <span className="font-bold text-lg text-slate-900 tracking-tight">PHTS</span>
+            <span className="text-[10px] text-slate-500 font-medium">ระบบบริหารจัดการเงิน พ.ต.ส.</span>
           </div>
         </div>
       </SidebarHeader>
@@ -165,7 +165,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                       className={cn(
                         "h-12 text-base font-medium rounded-xl transition-all duration-200",
                         isActive
-                          ? "bg-indigo-50 text-indigo-700 hover:bg-indigo-100 hover:text-indigo-800"
+                          ? "bg-sky-50 text-sky-700 hover:bg-sky-100 hover:text-sky-800"
                           : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
                       )}
                     >
@@ -173,12 +173,12 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                         <item.icon
                           className={cn(
                             "mr-3 h-5 w-5",
-                            isActive ? "text-indigo-600" : "text-slate-400"
+                            isActive ? "text-sky-600" : "text-slate-400"
                           )}
                         />
                         <span>{item.title}</span>
                         {item.badge && (
-                          <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-indigo-100 text-xs font-bold text-indigo-600">
+                          <span className="ml-auto flex h-5 w-5 items-center justify-center rounded-full bg-sky-100 text-xs font-bold text-sky-600">
                             {item.badge}
                           </span>
                         )}
@@ -190,7 +190,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        
+
         {/* กลุ่มเมนูตั้งค่า/ช่วยเหลือ */}
         <SidebarGroup className="mt-auto">
            <SidebarGroupContent>
@@ -214,10 +214,10 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               size="lg"
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground rounded-xl hover:bg-slate-50"
             >
-              <Avatar className="h-8 w-8 rounded-lg bg-indigo-100 border border-indigo-200 text-indigo-700">
+              <Avatar className="h-8 w-8 rounded-lg bg-sky-100 border border-sky-200 text-sky-700">
                 <AvatarFallback className="font-bold">
                    {user?.username?.substring(0, 2).toUpperCase() || 'U'}
-                </AvatarFallback> 
+                </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight ml-2">
                 <span className="truncate font-semibold text-slate-900 text-base">

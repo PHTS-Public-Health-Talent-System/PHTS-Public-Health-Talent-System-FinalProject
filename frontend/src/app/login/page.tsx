@@ -33,7 +33,8 @@ const loginSchema = z.object({
 type LoginFormValues = z.infer<typeof loginSchema>;
 
 export default function LoginPage() {
-  const { login } = useAuth(); // Added useAuth hook
+  const router = useRouter(); // Kept for safety, though login() handles redirect
+  const { login } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -54,7 +55,6 @@ export default function LoginPage() {
       });
 
       toast.success("เข้าสู่ระบบสำเร็จ");
-      // Redirect is handled by login() in auth-provider
     } catch (error: unknown) {
       console.error(error);
       const message = error instanceof Error ? error.message : "เลขบัตรประชาชนหรือรหัสผ่านไม่ถูกต้อง";
@@ -67,18 +67,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-slate-50 p-4">
-      {/* Background Decoration (Optional) */}
+    <div className="min-h-screen w-full flex items-center justify-center bg-background p-4 relative overflow-hidden">
+      {/* Background Decoration - Updated for new Palette */}
       <div className="fixed inset-0 -z-10 overflow-hidden">
-         <div className="absolute -top-[30%] -right-[10%] w-[700px] h-[700px] rounded-full bg-sky-100/50 blur-3xl" />
-         <div className="absolute -bottom-[20%] -left-[10%] w-[600px] h-[600px] rounded-full bg-blue-50/50 blur-3xl" />
+         <div className="absolute -top-[30%] -right-[10%] w-[700px] h-[700px] rounded-full bg-accent/40 blur-3xl opacity-60" />
+         <div className="absolute -bottom-[20%] -left-[10%] w-[600px] h-[600px] rounded-full bg-primary/10 blur-3xl opacity-50" />
       </div>
 
-      <div className="w-full max-w-[480px] bg-white rounded-2xl shadow-soft border border-slate-100 overflow-hidden">
+      <div className="w-full max-w-[480px] bg-card rounded-2xl shadow-soft border border-border/60 overflow-hidden relative z-10 animate-in fade-in zoom-in-95 duration-500">
         {/* Header Section */}
-        <div className="pt-10 pb-6 px-8 text-center bg-white">
+        <div className="pt-10 pb-6 px-8 text-center bg-card">
           <div className="w-24 h-24 mx-auto mb-6 relative">
-             {/* ใส่ Logo โรงพยาบาลตรงนี้ */}
              <Image
               src="/logo-uttaradit-hospital.png"
               alt="Logo"
@@ -88,10 +87,10 @@ export default function LoginPage() {
               priority
             />
           </div>
-          <h1 className="text-2xl font-bold text-slate-900 mb-2">
+          <h1 className="text-2xl font-bold font-heading text-foreground mb-2">
             ระบบบริหารจัดการเงิน พ.ต.ส.
           </h1>
-          <p className="text-slate-500 text-base">
+          <p className="text-muted-foreground text-base">
             Public Health Talent System
           </p>
         </div>
@@ -107,23 +106,23 @@ export default function LoginPage() {
                 name="citizenId"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-slate-700 text-base font-medium">
+                    <FormLabel className="text-foreground text-base font-medium">
                       เลขบัตรประจำตัวประชาชน
                     </FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <User className="absolute left-3.5 top-3.5 h-5 w-5 text-slate-400" />
+                        <User className="absolute left-3.5 top-3.5 h-5 w-5 text-muted-foreground" />
                         <Input
                           {...field}
                           placeholder="ระบุเลข 13 หลัก"
-                          className="pl-11 h-12 text-lg font-numbers tracking-wide border-slate-200 focus:border-primary focus:ring-primary/20 bg-slate-50/50"
+                          className="pl-11 h-12 text-lg font-numbers tracking-wide border-input focus:border-primary focus:ring-primary/20 bg-muted/30"
                           maxLength={13}
                           inputMode="numeric"
                           disabled={isLoading}
                         />
                       </div>
                     </FormControl>
-                    <FormMessage className="text-red-500 font-medium" />
+                    <FormMessage className="text-destructive font-medium" />
                   </FormItem>
                 )}
               />
@@ -134,23 +133,23 @@ export default function LoginPage() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-slate-700 text-base font-medium">
+                    <FormLabel className="text-foreground text-base font-medium">
                       รหัสผ่าน
                     </FormLabel>
                     <FormControl>
                       <div className="relative">
-                        <Lock className="absolute left-3.5 top-3.5 h-5 w-5 text-slate-400" />
+                        <Lock className="absolute left-3.5 top-3.5 h-5 w-5 text-muted-foreground" />
                         <Input
                           {...field}
                           type={showPassword ? "text" : "password"}
                           placeholder="ระบุรหัสผ่าน"
-                          className="pl-11 pr-11 h-12 text-lg border-slate-200 focus:border-primary focus:ring-primary/20 bg-slate-50/50"
+                          className="pl-11 pr-11 h-12 text-lg border-input focus:border-primary focus:ring-primary/20 bg-muted/30"
                           disabled={isLoading}
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-2 top-2 p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors"
+                          className="absolute right-2 top-2 p-1.5 text-muted-foreground hover:text-foreground rounded-full hover:bg-muted/50 transition-colors"
                         >
                           {showPassword ? (
                             <EyeOff className="h-5 w-5" />
@@ -160,7 +159,7 @@ export default function LoginPage() {
                         </button>
                       </div>
                     </FormControl>
-                    <FormMessage className="text-red-500 font-medium" />
+                    <FormMessage className="text-destructive font-medium" />
                   </FormItem>
                 )}
               />
@@ -168,7 +167,7 @@ export default function LoginPage() {
               {/* Submit Button */}
               <Button
                 type="submit"
-                className="w-full h-12 text-lg font-medium shadow-lg shadow-primary/25 hover:shadow-primary/40 transition-all mt-2"
+                className="w-full h-12 text-lg font-medium shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all mt-2"
                 disabled={isLoading}
               >
                 {isLoading ? (
@@ -189,7 +188,7 @@ export default function LoginPage() {
                 <a href="#" className="text-primary hover:text-primary/80 text-sm font-medium hover:underline">
                   ลืมรหัสผ่าน?
                 </a>
-                <div className="text-xs text-slate-400 px-4">
+                <div className="text-xs text-muted-foreground px-4">
                   หากพบปัญหาในการใช้งาน กรุณาติดต่อกลุ่มงานทรัพยากรบุคคล <br/>
                   โทร. 055-xxx-xxx ต่อ 1234
                 </div>
@@ -201,7 +200,7 @@ export default function LoginPage() {
       </div>
 
       {/* Version Tag */}
-      <div className="fixed bottom-4 right-4 text-xs text-slate-300">
+      <div className="fixed bottom-4 right-4 text-xs text-muted-foreground/60">
         v1.0.0 (Beta)
       </div>
     </div>

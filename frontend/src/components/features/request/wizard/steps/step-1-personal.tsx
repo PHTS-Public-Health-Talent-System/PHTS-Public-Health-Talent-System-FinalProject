@@ -6,6 +6,8 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Info } from "lucide-react"
 import { RequestFormData, PERSONNEL_TYPE_LABELS } from "@/types/request.types"
 
 interface Step1Props {
@@ -197,11 +199,12 @@ export function Step1PersonalInfo({ data, updateData, prefillOriginal }: Step1Pr
         </div>
       )}
 
-      <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 mt-4">
-        <p className="text-sm text-blue-800">
-          ℹ️ ข้อมูลส่วนใหญ่ถูกดึงจาก HRMS และสามารถแก้ไขได้หากมีความคลาดเคลื่อน
-        </p>
-      </div>
+      <Alert className="bg-blue-50 border-blue-100 text-blue-800 mt-4">
+        <Info className="h-4 w-4" />
+        <AlertDescription>
+          ข้อมูลส่วนใหญ่ถูกดึงจาก HRMS และสามารถแก้ไขได้หากมีความคลาดเคลื่อน
+        </AlertDescription>
+      </Alert>
     </div>
   )
 }

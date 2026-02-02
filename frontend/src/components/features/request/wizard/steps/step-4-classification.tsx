@@ -1,6 +1,6 @@
 "use client"
 
-import { CheckCircle2, RefreshCw } from "lucide-react"
+import { CheckCircle2, RefreshCw, Info } from "lucide-react"
 import { useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
@@ -170,8 +170,9 @@ export function Step4Classification({ data, updateData }: Step4Props) {
 
              {recommended?.hintText && (
                <Alert className="bg-white border-blue-200 py-2">
-                 <AlertDescription className="text-xs text-blue-600">
-                   ℹ️ AI Analysis: {recommended.hintText}
+                 <AlertDescription className="text-xs text-blue-600 flex items-center gap-1.5">
+                   <Info className="h-3.5 w-3.5" />
+                   <span>AI Analysis: {recommended.hintText}</span>
                  </AlertDescription>
                </Alert>
              )}

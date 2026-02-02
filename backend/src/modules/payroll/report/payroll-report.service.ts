@@ -1,14 +1,32 @@
 import PDFDocument from "pdfkit";
 import { PayrollRepository } from "../repositories/payroll.repository.js";
+import { getPayoutDataForReport } from "../../snapshot/services/snapshot.service.js";
 
 export async function buildPeriodReport(periodId: number): Promise<Buffer> {
   const period = await PayrollRepository.findPeriodById(periodId);
   if (!period) {
     throw new Error("Period not found");
   }
+  if (period.status !== "CLOSED" || !period.is_frozen) {
+    throw new Error("Report is available only for closed and frozen periods");
+  }
 
-  const payouts = await PayrollRepository.findPayoutsByPeriod(periodId);
-  const summary = await PayrollRepository.findProfessionSummaryByPeriod(periodId);
+  const payoutData = await getPayoutDataForReport(periodId);
+  const payouts = payoutData.data as any[];
+
+  const summaryMap = new Map<string, { headcount: number; total_payable: number }>();
+  for (const row of payouts) {
+    const key = row.position_name || "Unknown";
+    const bucket = summaryMap.get(key) || { headcount: 0, total_payable: 0 };
+    bucket.headcount += 1;
+    bucket.total_payable += Number(row.total_payable ?? 0);
+    summaryMap.set(key, bucket);
+  }
+  const summary = Array.from(summaryMap.entries()).map(([position_name, totals]) => ({
+    position_name,
+    headcount: totals.headcount,
+    total_payable: totals.total_payable,
+  }));
 
   return new Promise((resolve, reject) => {
     try {

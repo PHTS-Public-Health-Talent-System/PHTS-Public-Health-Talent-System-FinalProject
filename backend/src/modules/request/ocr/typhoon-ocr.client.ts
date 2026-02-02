@@ -14,8 +14,15 @@ export class OcrNonRetryableError extends Error {
   }
 }
 
-const OCR_SERVICE_URL = process.env.OCR_SERVICE_URL || "";
-const OCR_HTTP_TIMEOUT_MS = Number(process.env.OCR_HTTP_TIMEOUT_MS || "900000");
+const OCR_SERVICE_URL =
+  process.env.OCR_SERVICE_URL || process.env.OCR_BASE_URL || "";
+const OCR_ENDPOINT = process.env.OCR_ENDPOINT || "/ocr";
+const OCR_API_KEY = process.env.OCR_API_KEY || "";
+const OCR_API_KEY_HEADER = process.env.OCR_API_KEY_HEADER || "Authorization";
+const OCR_API_KEY_PREFIX = process.env.OCR_API_KEY_PREFIX || "Bearer";
+const OCR_HTTP_TIMEOUT_MS = Number(
+  process.env.OCR_HTTP_TIMEOUT_MS || process.env.OCR_TIMEOUT_MS || "900000",
+);
 
 function ensureServiceUrl(): string {
   const trimmed = OCR_SERVICE_URL.replace(/\/+$/, "");
@@ -63,7 +70,10 @@ export async function runTyphoonOcr(
     contentType,
   });
 
-  const url = new URL(`${baseUrl}/ocr`);
+  const endpoint = OCR_ENDPOINT.startsWith("/")
+    ? OCR_ENDPOINT
+    : `/${OCR_ENDPOINT}`;
+  const url = new URL(`${baseUrl}${endpoint}`);
   if (pageNum) {
     url.searchParams.set("page_num", String(pageNum));
   }
@@ -72,11 +82,19 @@ export async function runTyphoonOcr(
   const timeout = setTimeout(() => controller.abort(), OCR_HTTP_TIMEOUT_MS);
 
   try {
+    const headers: Record<string, string> = {
+      "Content-Type": `multipart/form-data; boundary=${boundary}`,
+    };
+    if (OCR_API_KEY) {
+      headers[OCR_API_KEY_HEADER] =
+        OCR_API_KEY_HEADER.toLowerCase() === "authorization"
+          ? `${OCR_API_KEY_PREFIX} ${OCR_API_KEY}`.trim()
+          : OCR_API_KEY;
+    }
+
     const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": `multipart/form-data; boundary=${boundary}`,
-      },
+      headers,
       body,
       signal: controller.signal,
     });
@@ -92,15 +110,28 @@ export async function runTyphoonOcr(
       throw new Error(message);
     }
 
-    const payload = (await response.json()) as {
-      text?: string;
-      confidence?: number | null;
-    };
+    const payload = (await response.json()) as any;
+    let text = "";
+    let confidence: number | null = null;
 
-    return {
-      text: String(payload.text || ""),
-      confidence: payload.confidence ?? null,
-    };
+    if (typeof payload?.text === "string") {
+      text = payload.text;
+      confidence = payload.confidence ?? null;
+    } else if (Array.isArray(payload?.results) && payload.results[0]) {
+      const first = payload.results[0];
+      const content = first?.message?.choices?.[0]?.message?.content;
+      if (typeof content === "string") {
+        try {
+          const parsed = JSON.parse(content);
+          text = String(parsed?.natural_text || "");
+        } catch {
+          text = content;
+        }
+      }
+      confidence = first?.confidence ?? null;
+    }
+
+    return { text, confidence };
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new Error("OCR request timed out");

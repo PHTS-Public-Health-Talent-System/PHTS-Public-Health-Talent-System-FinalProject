@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
-import { Loader2, LogIn } from "lucide-react"
+import { Loader2, Building2 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import {
@@ -16,7 +16,7 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { useAuth } from "@/components/providers/auth-provider"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
@@ -46,7 +46,6 @@ export default function LoginPage() {
       await login(values)
       // Login success will trigger redirect in AuthProvider
     } catch (err: unknown) {
-      console.error(err)
       const message =
         typeof err === "object" && err && "response" in err
           ? (err as { response?: { data?: { error?: string } } }).response?.data?.error
@@ -58,77 +57,83 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-md shadow-lg border-t-4 border-t-primary">
-        <CardHeader className="text-center space-y-1">
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
-            <LogIn className="h-6 w-6 text-primary" />
+    <div className="flex min-h-screen flex-col items-center justify-center bg-muted/20 p-4">
+      <div className="w-full max-w-sm space-y-4">
+        <div className="text-center space-y-2 mb-8">
+           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl bg-primary text-primary-foreground mb-4">
+            <Building2 className="size-6" />
           </div>
-          <CardTitle className="text-2xl font-bold text-primary">เข้าสู่ระบบ</CardTitle>
-          <CardDescription>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">
+            ยินดีต้อนรับเข้าสู่ระบบ
+          </h1>
+          <p className="text-sm text-muted-foreground">
             ระบบบริหารจัดการเงิน พ.ต.ส. (PHTS) <br/> โรงพยาบาลอุตรดิตถ์
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Form {...form}>
-            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          </p>
+        </div>
 
-              {/* Alert Error */}
-              {error && (
-                <Alert variant="destructive" className="py-2">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
+        <Card className="border-border/50 shadow-sm">
+          <CardContent className="pt-6">
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
 
-              <FormField
-                control={form.control}
-                name="citizen_id"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>เลขบัตรประชาชน</FormLabel>
-                    <FormControl>
-                      <Input placeholder="กรอกเลขบัตรประชาชน 13 หลัก" maxLength={13} {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+                {/* Alert Error */}
+                {error && (
+                  <Alert variant="destructive" className="py-2">
+                    <AlertDescription>{error}</AlertDescription>
+                  </Alert>
                 )}
-              />
 
-              <FormField
-                control={form.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>รหัสผ่าน</FormLabel>
-                    <FormControl>
-                      <Input type="password" placeholder="••••••••" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                <FormField
+                  control={form.control}
+                  name="citizen_id"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>เลขบัตรประชาชน</FormLabel>
+                      <FormControl>
+                        <Input placeholder="กรอกเลขบัตรประชาชน 13 หลัก" maxLength={13} {...field} className="h-11" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <Button
-                type="submit"
-                className="w-full font-semibold shadow-button-hover transition-all"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> กำลังเข้าสู่ระบบ...
-                  </>
-                ) : (
-                  "เข้าสู่ระบบ"
-                )}
-              </Button>
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>รหัสผ่าน</FormLabel>
+                      <FormControl>
+                        <Input type="password" placeholder="••••••••" {...field} className="h-11" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
-              <div className="text-center text-xs text-muted-foreground mt-4">
-                หากลืมรหัสผ่าน กรุณาติดต่อผู้ดูแลระบบ (Admin)
-              </div>
-            </form>
-          </Form>
-        </CardContent>
-      </Card>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  size="lg"
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> กำลังเข้าสู่ระบบ...
+                    </>
+                  ) : (
+                    "เข้าสู่ระบบ"
+                  )}
+                </Button>
+              </form>
+            </Form>
+          </CardContent>
+        </Card>
+
+        <p className="px-8 text-center text-xs text-muted-foreground">
+          หากลืมรหัสผ่าน กรุณาติดต่อผู้ดูแลระบบ (Admin)
+        </p>
+      </div>
     </div>
   )
 }

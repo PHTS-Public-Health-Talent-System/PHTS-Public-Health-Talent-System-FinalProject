@@ -629,27 +629,31 @@ async function sendWorkflowNotification(
 ): Promise<void> {
   const notifications: Record<
     string,
-    { role: string; title: string; message: string }
+    { role: string; title: string; message: string; link: string }
   > = {
     [PeriodStatus.WAITING_HR]: {
       role: "HEAD_HR",
       title: "ตรวจสอบงวดเดือน",
       message: `งวดเดือน ${month}/${year} รอการตรวจสอบจากท่าน`,
+      link: "/dashboard/head-hr/payroll-check",
     },
     [PeriodStatus.WAITING_HEAD_FINANCE]: {
       role: "HEAD_FINANCE",
       title: "ตรวจสอบงวดเดือน",
       message: `งวดเดือน ${month}/${year} ผ่านการตรวจสอบจาก HR แล้ว รอท่านอนุมัติ`,
+      link: "/dashboard/head-finance/budget-check",
     },
     [PeriodStatus.WAITING_DIRECTOR]: {
       role: "DIRECTOR",
       title: "อนุมัติปิดงวดเดือน",
       message: `สรุปยอดงวดเดือน ${month}/${year} รอการอนุมัติปิดงวด`,
+      link: "/dashboard/director/approvals",
     },
     [PeriodStatus.CLOSED]: {
       role: "FINANCE_OFFICER",
       title: "งวดเดือนปิดแล้ว",
       message: `งวดเดือน ${month}/${year} อนุมัติแล้ว สามารถดาวน์โหลดรายงานได้`,
+      link: "/dashboard/finance-officer",
     },
   };
 
@@ -659,7 +663,7 @@ async function sendWorkflowNotification(
       notif.role,
       notif.title,
       notif.message,
-      "#",
+      notif.link,
       conn,
     );
   }

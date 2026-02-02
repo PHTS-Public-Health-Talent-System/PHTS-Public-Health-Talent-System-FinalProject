@@ -3,8 +3,8 @@ export type Role =
   | 'HEAD_WARD'
   | 'HEAD_DEPT'
   | 'PTS_OFFICER'
-  | 'HR_HEAD'
-  | 'FINANCE_HEAD'
+  | 'HEAD_HR'
+  | 'HEAD_FINANCE'
   | 'FINANCE_OFFICER'
   | 'DIRECTOR'
   | 'ADMIN';

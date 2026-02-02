@@ -84,7 +84,7 @@ export default function RequestDetailPage({
           <div>
             <h2 className="text-xl font-bold flex items-center gap-2">
               {REQUEST_TYPE_LABELS[request.request_type] ?? request.request_type}
-              <StatusBadge status={request.status} />
+              <StatusBadge status={request.status} currentStep={request.current_step} />
             </h2>
             <p className="text-sm text-muted-foreground">
               {request.request_no ?? `#${request.request_id}`} &middot;{" "}

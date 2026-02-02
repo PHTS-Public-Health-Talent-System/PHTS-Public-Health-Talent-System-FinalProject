@@ -55,7 +55,7 @@ export async function login(
     }
 
     if (error instanceof AuthenticationError) {
-      res.status(401).json({
+      res.status(200).json({
         success: false,
         error: error.message,
       });

@@ -175,7 +175,7 @@ export function useRecommendedClassification(id: number | string | undefined) {
 
 export function useUpdateClassification() {
   return useMutation({
-    mutationFn: ({ id, payload }: { id: number | string; payload: { group_no: number; item_no: number; sub_item_no?: number | null } }) =>
+    mutationFn: ({ id, payload }: { id: number | string; payload: { group_no: number; item_no: string | null; sub_item_no?: string | null } }) =>
       updateClassification(id, payload),
   });
 }

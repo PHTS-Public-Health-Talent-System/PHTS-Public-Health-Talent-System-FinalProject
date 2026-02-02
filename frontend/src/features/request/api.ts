@@ -1,6 +1,7 @@
 import api from '@/shared/api/axios';
-import { ApiList, ApiPayload, ApiResponse } from '@/shared/api/types';
+import { ApiPayload, ApiResponse } from '@/shared/api/types';
 import { RequestWithDetails } from '@/types/request.types';
+import type { DisplayScope } from '@/features/request/approver-utils';
 
 export interface RecommendedClassification {
   group_no: number;
@@ -101,8 +102,8 @@ export async function getPrefill() {
   return res.data.data;
 }
 
-export async function getMyScopes() {
-  const res = await api.get<ApiResponse<ApiList>>('/requests/my-scopes');
+export async function getMyScopes(): Promise<DisplayScope[]> {
+  const res = await api.get<ApiResponse<DisplayScope[]>>('/requests/my-scopes');
   return res.data.data;
 }
 
@@ -113,8 +114,8 @@ export async function getPendingApprovals(scope?: string) {
   return res.data.data;
 }
 
-export async function getApprovalHistory() {
-  const res = await api.get<ApiResponse<ApiList>>('/requests/history');
+export async function getApprovalHistory(): Promise<RequestWithDetails[]> {
+  const res = await api.get<ApiResponse<RequestWithDetails[]>>('/requests/history');
   return res.data.data;
 }
 
@@ -147,7 +148,7 @@ export async function getRecommendedClassification(id: number | string) {
 
 export async function updateClassification(
   id: number | string,
-  payload: { group_no: number; item_no: number; sub_item_no?: number | null },
+  payload: { group_no: number; item_no: string | null; sub_item_no?: string | null },
 ) {
   const res = await api.post<ApiResponse<ApiPayload>>(`/requests/${id}/classification`, payload);
   return res.data.data;

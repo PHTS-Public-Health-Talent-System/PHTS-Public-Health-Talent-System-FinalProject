@@ -31,20 +31,44 @@ const normalizeWorkAttributes = (value: unknown): WorkAttributes => {
   }
 }
 
+const parseSubmissionData = (
+  submissionData?: Record<string, unknown> | string | null,
+): Record<string, unknown> => {
+  if (!submissionData) return {}
+  if (typeof submissionData === "string") {
+    try {
+      return JSON.parse(submissionData) as Record<string, unknown>
+    } catch {
+      return {}
+    }
+  }
+  return submissionData
+}
+
 export const mapRequestToFormData = (
   request: RequestWithDetails,
 ): Partial<RequestFormData> => {
   const licenseAttachment = request.attachments?.find(
     (att) => att.file_type === "LICENSE",
   )
+  const submission = parseSubmissionData(request.submission_data)
 
   return {
     id: String(request.request_id),
     requestType: requestTypeMap[request.request_type] ?? "NEW",
     employeeType: request.personnel_type,
     citizenId: request.citizen_id ?? "",
+    title: (submission.title as string) ?? "",
+    firstName: (submission.first_name as string) ?? "",
+    lastName: (submission.last_name as string) ?? "",
+    positionName: (submission.position_name as string) ?? "",
     positionNumber: request.current_position_number ?? "",
-    department: request.current_department ?? "",
+    department:
+      (submission.department as string) ?? request.current_department ?? "",
+    subDepartment: (submission.sub_department as string) ?? "",
+    employmentRegion:
+      (submission.employment_region as RequestFormData["employmentRegion"]) ??
+      "REGIONAL",
     missionGroup: request.main_duty ?? "",
     workAttributes: normalizeWorkAttributes(request.work_attributes),
     effectiveDate: normalizeDate(request.effective_date),

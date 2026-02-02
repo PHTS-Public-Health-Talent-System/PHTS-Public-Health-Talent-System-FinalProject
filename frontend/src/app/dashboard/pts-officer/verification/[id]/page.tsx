@@ -384,7 +384,7 @@ export default function PtsOfficerRequestDetailPage({
         <div>
           <h2 className="text-xl font-bold flex items-center gap-2">
             {request.request_no ?? `#${request.request_id}`}
-            <StatusBadge status={request.status} />
+            <StatusBadge status={request.status} currentStep={request.current_step} />
           </h2>
           <p className="text-sm text-muted-foreground">
             ผู้ยื่น: {requesterName} ({request.citizen_id})
@@ -611,7 +611,7 @@ export default function PtsOfficerRequestDetailPage({
                 </SelectTrigger>
                 <SelectContent>
                   {itemsForGroup.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
+                    <SelectItem key={`${item.value}-${item.amount ?? ""}`} value={item.value}>
                       {item.label} — {item.amount.toLocaleString()} บาท
                     </SelectItem>
                   ))}

@@ -173,7 +173,7 @@ export default function UserRequestsListClient({
                           {REQUEST_TYPE_LABELS[req.request_type] ?? req.request_type}
                         </TableCell>
                         <TableCell>
-                          <StatusBadge status={req.status} />
+                          <StatusBadge status={req.status} currentStep={req.current_step} />
                         </TableCell>
                         <TableCell className="text-right">
                           {req.requested_amount.toLocaleString()} บาท
@@ -219,7 +219,7 @@ export default function UserRequestsListClient({
                         <span className="font-medium text-sm">
                           {req.request_no ?? `#${req.request_id}`}
                         </span>
-                        <StatusBadge status={req.status} />
+                        <StatusBadge status={req.status} currentStep={req.current_step} />
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {REQUEST_TYPE_LABELS[req.request_type] ?? req.request_type}

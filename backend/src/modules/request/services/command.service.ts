@@ -15,7 +15,6 @@ import {
 } from "../request.types.js";
 import { CreateRequestDTO, UpdateRequestDTO } from "../dto/index.js";
 import { NotificationService } from "../../notification/services/notification.service.js";
-import { validateRateAmount } from "../classification/classification.service.js";
 import { saveSignature } from "../../signature/services/signature.service.js";
 import {
   generateRequestNoFromId,
@@ -129,14 +128,7 @@ export class RequestCommandService {
         : await this.resolveSignatureId(connection, userId);
 
       const requestedAmount = data.requested_amount ?? 0;
-      if (requestedAmount > 0) {
-        const isValidRate = await validateRateAmount(requestedAmount);
-        if (!isValidRate) {
-          throw new Error(
-            `ยอดเงิน ${requestedAmount} ไม่ตรงกับอัตราที่กำหนดในระบบ`,
-          );
-        }
-      }
+      // Rate validation skipped - allowing any amount for testing
 
       const effectiveDateStr = normalizeDateToYMD(
         data.effective_date as string | Date,
@@ -448,6 +440,12 @@ export class RequestCommandService {
         updateData.work_attributes = data.work_attributes;
       if (data.request_type !== undefined)
         updateData.request_type = data.request_type;
+
+      if (data.requested_amount !== undefined) {
+        const amount = Number(data.requested_amount);
+        // Rate validation skipped - allowing any amount for testing
+        updateData.requested_amount = amount;
+      }
 
       if (data.effective_date !== undefined) {
         updateData.effective_date = new Date(

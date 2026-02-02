@@ -95,33 +95,55 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
     }
 
     setCurrentStep((prev) => Math.min(prev + 1, steps.length))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handlePrev = () => setCurrentStep((prev) => Math.max(prev - 1, 1))
+  const handlePrev = () => {
+    setCurrentStep((prev) => Math.max(prev - 1, 1))
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const currentStepTitle = steps.find(s => s.id === currentStep)?.title
 
   return (
     <div className="space-y-6">
-      {/* Progress Stepper */}
-      <div className="relative flex justify-between px-4">
+      {/* Mobile Stepper: Simple Text & Progress Bar */}
+      <div className="md:hidden space-y-2">
+        <div className="flex items-center justify-between text-sm font-medium">
+             <span className="text-muted-foreground">ขั้นตอนที่ {currentStep} จาก {steps.length}</span>
+             <span className="text-primary">{currentStepTitle}</span>
+        </div>
+        <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+            <div
+                className="h-full bg-primary transition-all duration-300 ease-in-out"
+                style={{ width: `${(currentStep / steps.length) * 100}%` }}
+            />
+        </div>
+      </div>
+
+      {/* Desktop Stepper */}
+      <div className="hidden md:flex relative justify-between px-4 pb-4">
         {steps.map((step, index) => {
           const isCompleted = currentStep > step.id
           const isActive = currentStep === step.id
           return (
-            <div key={step.id} className="flex flex-col items-center relative z-10 w-full">
-              <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300
-                  ${isActive ? "border-primary bg-primary/10 text-primary font-bold shadow-lg scale-110" :
-                    isCompleted ? "bg-primary border-primary text-white" : "border-muted bg-white text-muted-foreground"
+            <div key={step.id} className="flex flex-col items-center relative z-10 w-full group">
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-300 bg-background
+                  ${isActive ? "border-primary text-primary font-bold shadow-md scale-110" :
+                    isCompleted ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/30 text-muted-foreground"
                   }`}
               >
                 {isCompleted ? <Check className="h-5 w-5" /> : step.id}
               </div>
-              <span className={`text-xs mt-2 font-medium ${isActive ? "text-primary" : "text-muted-foreground"}`}>
+              <span className={`text-xs mt-2 font-medium transition-colors ${isActive ? "text-primary" : "text-muted-foreground"}`}>
                 {step.title}
               </span>
               {index !== steps.length - 1 && (
-                <div className={`absolute top-5 left-1/2 w-full h-[2px] -z-10
-                  ${currentStep > step.id ? "bg-primary" : "bg-muted"}`}
-                />
+                <div className="absolute top-5 left-1/2 w-full h-[2px] -z-10 bg-muted">
+                   <div
+                        className={`h-full bg-primary transition-all duration-500 ease-in-out origin-left transform ${currentStep > step.id ? "scale-x-100" : "scale-x-0"}`}
+                   />
+                </div>
               )}
             </div>
           )
@@ -129,8 +151,8 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
       </div>
 
       {/* Step Content */}
-      <Card className="min-h-[500px] shadow-sm border-t-4 border-t-primary/20">
-        <CardContent className="pt-6">
+      <Card className="min-h-[500px] shadow-sm border-border">
+        <CardContent className="pt-6 px-4 md:px-8">
           {currentStep === 1 && (
             <Step1PersonalInfo
               data={formData}
@@ -171,29 +193,38 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
           )}
         </CardContent>
 
-        <CardFooter className="flex justify-between border-t pt-6 bg-muted/5">
+        <CardFooter className="flex justify-between border-t p-4 md:p-6 bg-muted/5 rounded-b-xl items-center gap-4">
+
+          {/* OCR Status - Mobile Optimized */}
           {currentStep === steps.length && ocrTargets.length > 0 && !isOcrReady && (
-            <div className="flex-1">
-              <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                {ocrFailed.length > 0
-                  ? "OCR ล้มเหลว กรุณาอัปโหลดเอกสารใหม่ แล้วรอผลให้เสร็จก่อนยื่นคำขอ"
-                  : isOcrPolling
-                    ? `กำลังวิเคราะห์เอกสาร (${ocrPending.length}/${ocrTargets.length}) กรุณารอสักครู่`
-                    : "กำลังตรวจสอบเอกสาร กรุณารอสักครู่"}
-                {ocrPending.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {ocrPending.map((att) => (
-                      <span key={att.attachment_id} className="rounded bg-white/80 px-2 py-0.5 text-[11px]">
-                        {attachmentLabels[att.file_type] ?? att.file_name} — {att.ocr_status ?? "PENDING"}
-                      </span>
-                    ))}
-                  </div>
-                )}
+            <div className="w-full md:w-auto md:flex-1 order-last md:order-none mt-4 md:mt-0">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                <div className="flex items-start gap-2">
+                    <Loader2 className="h-3 w-3 animate-spin mt-0.5 shrink-0" />
+                    <div>
+                        <p className="font-medium mb-1">
+                            {ocrFailed.length > 0
+                            ? "OCR ล้มเหลว กรุณาตรวจสอบเอกสาร"
+                            : isOcrPolling
+                                ? `กำลังวิเคราะห์เอกสาร (${ocrPending.length}/${ocrTargets.length})`
+                                : "กำลังตรวจสอบเอกสาร..."}
+                        </p>
+                         {ocrPending.length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                                {ocrPending.map((att) => (
+                                <span key={att.attachment_id} className="rounded bg-white/60 px-1.5 py-0.5 text-[10px] border border-amber-100">
+                                    {attachmentLabels[att.file_type] ?? att.file_name}
+                                </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
               </div>
             </div>
           )}
 
-          <Button variant="outline" onClick={handlePrev} disabled={currentStep === 1 || isSubmitting}>
+          <Button variant="outline" onClick={handlePrev} disabled={currentStep === 1 || isSubmitting} className="min-w-[100px]">
             ย้อนกลับ
           </Button>
 
@@ -205,18 +236,18 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
                     <Button
                       onClick={submitRequest}
                       disabled={isSubmitting || !isReadyToSubmit}
-                      className="min-w-[150px] shadow-button-hover bg-secondary hover:bg-secondary/90"
+                      className="min-w-[150px] shadow-none bg-emerald-600 hover:bg-emerald-700 text-white"
                     >
                       {isSubmitting ? (
-                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> กำลังส่งคำขอ...</>
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> กำลังส่ง...</>
                       ) : (
-                        <>ส่งใบคำขอเบิกเงิน</>
+                        <>ส่งใบคำขอ</>
                       )}
                     </Button>
                   </div>
                 </TooltipTrigger>
                 {!isReadyToSubmit && (
-                  <TooltipContent>
+                  <TooltipContent side="top">
                     {disabledReason}
                   </TooltipContent>
                 )}
@@ -230,7 +261,7 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
                     <Button
                       onClick={handleNext}
                       disabled={currentStep === 3 && !isStep3Valid}
-                      className="min-w-[120px] shadow-button-hover"
+                      className="min-w-[120px] shadow-none"
                     >
                       ถัดไป
                     </Button>

@@ -324,52 +324,6 @@ export class RequestController {
       res.json({ success: true, data: rates });
   });
 
-  getLegacyClassification = catchAsync(async (_req: Request, res: Response<ApiResponse>) => {
-      const rates = await getAllActiveMasterRates();
-      res.json({ success: true, data: rates });
-  });
-
-  getLegacyRecommendedRate = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
-       if (!req.user) throw new AuthenticationError("Unauthorized access");
-       const requestIdRaw =
-         (req.query.request_id as string | undefined) ||
-         (req.query.id as string | undefined) ||
-         (req.body?.request_id as string | undefined);
-       const requestId = parseInt(String(requestIdRaw || ""), 10);
-       if (isNaN(requestId)) throw new ValidationError("Invalid Request ID");
-
-       const ocrText = await ocrService.getOcrTextForRequest(requestId);
-       if (!ocrText) {
-         res.json({ success: true, data: null });
-         return;
-       }
-
-       const request = await requestQueryService.getRequestById(
-         requestId,
-         req.user.userId,
-         req.user.role,
-       );
-
-       const { findRecommendedRate } = await import("../classification/classification.service.js");
-       const result = await findRecommendedRate((request as any).citizen_id, ocrText);
-
-       if (result) {
-         const hintParts = [`กลุ่ม ${result.group_no}`, `ข้อ ${result.item_no}`];
-         if (result.sub_item_no) hintParts.push(`ข้อย่อย ${result.sub_item_no}`);
-
-         res.json({
-           success: true,
-           data: {
-             source: "OCR",
-             ...result,
-             hint_text: `มีแนวโน้มเข้าข่าย${hintParts.join(" ")}`,
-           },
-         });
-         return;
-       }
-
-       res.json({ success: true, data: result });
-  });
 
   getPrefill = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user?.citizenId) throw new AuthenticationError("Unauthorized");

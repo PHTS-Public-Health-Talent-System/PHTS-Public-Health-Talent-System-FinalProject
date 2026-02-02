@@ -1,7 +1,7 @@
 import { Redis } from "ioredis";
-import dotenv from "dotenv";
+import { loadEnv } from "./env.js";
 
-dotenv.config();
+loadEnv();
 
 interface RedisClient {
   get(key: string): Promise<string | null>;

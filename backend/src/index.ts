@@ -10,7 +10,7 @@ import express, { Application, Request, Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
-import dotenv from "dotenv";
+import { loadEnv } from "./config/env.js";
 import { testConnection, closePool } from "./config/database.js";
 import { initializePassport } from "./config/passport.js";
 import authRoutes from "./modules/auth/auth.routes.js";
@@ -26,7 +26,6 @@ import financeRoutes from "./modules/finance/finance.routes.js";
 import auditRoutes from "./modules/audit/audit.routes.js";
 import slaRoutes from "./modules/sla/sla.routes.js";
 import accessReviewRoutes from "./modules/access-review/access-review.routes.js";
-import delegationRoutes from "./modules/delegation/delegation.routes.js";
 import dataQualityRoutes from "./modules/data-quality/data-quality.routes.js";
 import snapshotRoutes from "./modules/snapshot/snapshot.routes.js";
 import licenseAlertsRoutes from "./modules/license-alerts/license-alerts.routes.js";
@@ -35,7 +34,7 @@ import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 import { apiRateLimiter } from "./middlewares/rateLimiter.js";
 
 // Load environment variables
-dotenv.config();
+loadEnv();
 
 // Initialize Express app
 const app: Application = express();
@@ -143,7 +142,6 @@ app.use("/api/finance", financeRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/sla", slaRoutes);
 app.use("/api/access-review", accessReviewRoutes);
-app.use("/api/delegations", delegationRoutes);
 app.use("/api/data-quality", dataQualityRoutes);
 app.use("/api/snapshots", snapshotRoutes);
 app.use("/api/license-alerts", licenseAlertsRoutes);

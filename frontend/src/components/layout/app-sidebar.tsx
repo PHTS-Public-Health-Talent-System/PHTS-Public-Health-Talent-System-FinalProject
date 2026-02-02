@@ -33,6 +33,25 @@ import { useAuth } from "@/components/providers/auth-provider"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 
+const headHrMenu = [
+  { title: "หน้าหลัก", url: "/dashboard/head-hr", icon: LayoutDashboard },
+  { title: "คำขอรออนุมัติ", url: "/dashboard/head-hr/requests", icon: FileText },
+  { title: "ประวัติคำขอ", url: "/dashboard/head-hr/request-history", icon: FileText },
+  { title: "ตรวจสอบเงินเดือน", url: "/dashboard/head-hr/payroll-check", icon: CreditCard },
+  { title: "การแจ้งเตือน", url: "/dashboard/head-hr/notifications", icon: Bell },
+  { title: "ค้นหา/ตรวจย้อนหลัง", url: "/dashboard/head-hr/history", icon: FileText },
+  { title: "ดาวน์โหลดรายงาน", url: "/dashboard/head-hr/reports", icon: FileText },
+]
+
+const headFinanceMenu = [
+  { title: "หน้าหลัก", url: "/dashboard/head-finance", icon: LayoutDashboard },
+  { title: "คำขอรออนุมัติ", url: "/dashboard/head-finance/requests", icon: FileText },
+  { title: "ประวัติคำขอ", url: "/dashboard/head-finance/request-history", icon: FileText },
+  { title: "ตรวจสอบงบประมาณ", url: "/dashboard/head-finance/budget-check", icon: PieChart },
+  { title: "ค้นหา/ตรวจย้อนหลัง", url: "/dashboard/head-finance/history", icon: FileText },
+  { title: "ดาวน์โหลดรายงาน", url: "/dashboard/head-finance/reports", icon: FileText },
+]
+
 // Determine menu items based on Role
 const roleMenus = {
   USER: [
@@ -67,17 +86,14 @@ const roleMenus = {
   ],
   DIRECTOR: [
     { title: "หน้าหลัก", url: "/dashboard/director", icon: LayoutDashboard },
+    { title: "คำขอรออนุมัติ", url: "/dashboard/director/requests", icon: FileText },
+    { title: "ประวัติคำขอ", url: "/dashboard/director/request-history", icon: FileText },
     { title: "อนุมัติการเบิกจ่าย", url: "/dashboard/director/approvals", icon:  FileText},
-    { title: "รายงานภาพรวม", url: "/dashboard/director/reports", icon: PieChart },
+    { title: "ค้นหา/ตรวจย้อนหลัง", url: "/dashboard/director/history", icon: FileText },
+    { title: "ดาวน์โหลดรายงาน", url: "/dashboard/director/reports", icon: PieChart },
   ],
-  HR_HEAD: [
-      { title: "หน้าหลัก", url: "/dashboard/hr-head", icon: LayoutDashboard },
-      { title: "ตรวจสอบเงินเดือน", url: "/dashboard/hr-head/payroll-check", icon: CreditCard },
-  ],
-  FINANCE_HEAD: [
-      { title: "หน้าหลัก", url: "/dashboard/finance-head", icon: LayoutDashboard },
-      { title: "ตรวจสอบงบประมาณ", url: "/dashboard/finance-head/budget-check", icon: PieChart },
-  ],
+  HEAD_HR: headHrMenu,
+  HEAD_FINANCE: headFinanceMenu,
   FINANCE_OFFICER: [
       { title: "หน้าหลัก", url: "/dashboard/finance-officer", icon: LayoutDashboard },
       { title: "รายการโอนเงิน", url: "/dashboard/finance-officer/payments", icon: CreditCard },

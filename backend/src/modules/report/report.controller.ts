@@ -29,6 +29,14 @@ export const downloadDetailReport = async (
     res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
     res.send(buffer);
   } catch (error) {
+    const message = (error as Error)?.message || "Failed to generate report";
+    if (
+      message.includes("Report requires frozen snapshot") ||
+      message.includes("Summary snapshot not found for frozen period")
+    ) {
+      res.status(409).json({ error: message });
+      return;
+    }
     console.error("Report Error:", error);
     res.status(500).json({ error: "Failed to generate report" });
   }
@@ -57,6 +65,14 @@ export const downloadSummaryReport = async (
     res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
     res.send(buffer);
   } catch (error) {
+    const message = (error as Error)?.message || "Failed to generate report";
+    if (
+      message.includes("Report requires frozen snapshot") ||
+      message.includes("Summary snapshot not found for frozen period")
+    ) {
+      res.status(409).json({ error: message });
+      return;
+    }
     console.error("Report Error:", error);
     res.status(500).json({ error: "Failed to generate report" });
   }

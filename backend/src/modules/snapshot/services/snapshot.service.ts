@@ -262,61 +262,33 @@ export async function getSnapshot(
  * Get payout data for report (from snapshot if frozen, otherwise live)
  */
 export async function getPayoutDataForReport(periodId: number): Promise<{
-  source: "snapshot" | "live";
+  source: "snapshot";
   data: any[];
   recordCount: number;
   totalAmount: number;
 }> {
-  // Check if period is frozen
-  const isFrozen = await isPeriodFrozen(periodId);
-
-  if (isFrozen) {
-    // Get from snapshot
-    const snapshot = await getSnapshot(periodId, SnapshotType.PAYOUT);
-
-    if (!snapshot) {
-      throw new Error("Snapshot not found for frozen period");
-    }
-
-    return {
-      source: "snapshot",
-      data: snapshot.snapshot_data,
-      recordCount: snapshot.record_count,
-      totalAmount: snapshot.total_amount,
-    };
+  const period = await getPeriodWithSnapshot(periodId);
+  if (!period) {
+    throw new Error("Period not found");
+  }
+  if (period.status !== "CLOSED") {
+    throw new Error("Report is available only for closed periods");
+  }
+  if (!period.is_frozen) {
+    throw new Error("Report requires frozen snapshot");
   }
 
-  // Get live data
-  const sql = `
-    SELECT po.*,
-           COALESCE(e.first_name, s.first_name, '') AS first_name,
-           COALESCE(e.last_name, s.last_name, '') AS last_name,
-           COALESCE(e.department, s.department, '') AS department,
-           COALESCE(e.position_name, s.position_name, '') AS position_name,
-           mr.amount AS base_rate,
-           mr.group_no,
-           mr.item_no,
-           mr.profession_code
-    FROM pay_results po
-    LEFT JOIN emp_profiles e ON po.citizen_id = e.citizen_id
-    LEFT JOIN emp_support_staff s ON po.citizen_id = s.citizen_id
-    LEFT JOIN cfg_payment_rates mr ON po.master_rate_id = mr.rate_id
-    WHERE po.period_id = ?
-    ORDER BY last_name, first_name
-  `;
+  const snapshot = await getSnapshot(periodId, SnapshotType.PAYOUT);
 
-  const rows = await query<RowDataPacket[]>(sql, [periodId]);
-
-  let totalAmount = 0;
-  for (const row of rows as any[]) {
-    totalAmount += row.total_payable || 0;
+  if (!snapshot) {
+    throw new Error("Snapshot not found for frozen period");
   }
 
   return {
-    source: "live",
-    data: rows as any[],
-    recordCount: rows.length,
-    totalAmount,
+    source: "snapshot",
+    data: snapshot.snapshot_data,
+    recordCount: snapshot.record_count,
+    totalAmount: snapshot.total_amount,
   };
 }
 
@@ -324,47 +296,29 @@ export async function getPayoutDataForReport(periodId: number): Promise<{
  * Get summary data for report (from snapshot if frozen, otherwise calculate)
  */
 export async function getSummaryDataForReport(periodId: number): Promise<{
-  source: "snapshot" | "live";
+  source: "snapshot";
   data: any;
 }> {
-  // Check if period is frozen
-  const isFrozen = await isPeriodFrozen(periodId);
-
-  if (isFrozen) {
-    const snapshot = await getSnapshot(periodId, SnapshotType.SUMMARY);
-
-    if (!snapshot) {
-      throw new Error("Summary snapshot not found for frozen period");
-    }
-
-    return {
-      source: "snapshot",
-      data: snapshot.snapshot_data,
-    };
+  const period = await getPeriodWithSnapshot(periodId);
+  if (!period) {
+    throw new Error("Period not found");
+  }
+  if (period.status !== "CLOSED") {
+    throw new Error("Report is available only for closed periods");
+  }
+  if (!period.is_frozen) {
+    throw new Error("Report requires frozen snapshot");
   }
 
-  // Calculate live summary
-  const payoutData = await getPayoutDataForReport(periodId);
-  const byDepartment = calculateDepartmentSummary(payoutData.data);
+  const snapshot = await getSnapshot(periodId, SnapshotType.SUMMARY);
 
-  // Get period info
-  const periodRows = await query<RowDataPacket[]>(
-    "SELECT * FROM pay_periods WHERE period_id = ?",
-    [periodId],
-  );
-
-  const period = periodRows[0] as any;
+  if (!snapshot) {
+    throw new Error("Summary snapshot not found for frozen period");
+  }
 
   return {
-    source: "live",
-    data: {
-      period_id: periodId,
-      period_month: period?.period_month,
-      period_year: period?.period_year,
-      total_employees: payoutData.recordCount,
-      total_amount: payoutData.totalAmount,
-      by_department: byDepartment,
-    },
+    source: "snapshot",
+    data: snapshot.snapshot_data,
   };
 }
 

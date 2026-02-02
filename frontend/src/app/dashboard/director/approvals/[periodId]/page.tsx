@@ -44,21 +44,28 @@ export default function DirectorPayrollDetailPage() {
           <Button onClick={() => approve.mutate(periodId)} disabled={approve.isPending}>
             {approve.isPending ? "กำลังอนุมัติ..." : "อนุมัติ"}
           </Button>
-          <Button
-            variant="outline"
-            onClick={async () => {
-              const blob = await downloadReport.mutateAsync(periodId);
-              const url = window.URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              a.download = `period-${periodId}-report.pdf`;
-              a.click();
-              window.URL.revokeObjectURL(url);
-            }}
-            disabled={downloadReport.isPending}
-          >
-            ดาวน์โหลด PDF
-          </Button>
+          <div>
+            {period?.status !== "CLOSED" && (
+              <div className="text-xs text-muted-foreground mb-1">
+                ดาวน์โหลดได้เฉพาะงวดที่ปิดแล้ว
+              </div>
+            )}
+            <Button
+              variant="outline"
+              onClick={async () => {
+                const blob = await downloadReport.mutateAsync(periodId);
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `period-${periodId}-report.pdf`;
+                a.click();
+                window.URL.revokeObjectURL(url);
+              }}
+              disabled={downloadReport.isPending || period?.status !== "CLOSED"}
+            >
+              ดาวน์โหลด PDF
+            </Button>
+          </div>
           <input
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}

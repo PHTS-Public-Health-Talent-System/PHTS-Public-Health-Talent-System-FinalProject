@@ -11,7 +11,10 @@
     "dev:frontend": "npm run dev --prefix frontend"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@tailwindcss/postcss": "^4",
+    "concurrently": "^8.2.2",
+    "tailwindcss": "^4",
+    "tailwindcss-animate": "^1.0.7"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",

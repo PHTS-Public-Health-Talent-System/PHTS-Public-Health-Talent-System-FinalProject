@@ -12,13 +12,13 @@ import {
   ExtractJwt,
   StrategyOptions,
 } from "passport-jwt";
-import dotenv from "dotenv";
+import { loadEnv } from "./env.js";
 import { JwtPayload, User } from "../types/auth.js";
 import { query } from "./database.js";
 import { getJwtSecret } from "./jwt.js";
 
 // Load environment variables
-dotenv.config();
+loadEnv();
 
 /**
  * JWT Strategy Options

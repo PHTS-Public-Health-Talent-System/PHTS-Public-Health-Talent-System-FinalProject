@@ -7,10 +7,10 @@
  */
 
 import mysql from "mysql2/promise";
-import dotenv from "dotenv";
+import { loadEnv } from "./env.js";
 
 // Load environment variables
-dotenv.config();
+loadEnv();
 
 /**
  * Database connection pool configuration

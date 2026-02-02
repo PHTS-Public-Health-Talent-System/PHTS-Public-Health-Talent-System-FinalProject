@@ -136,15 +136,18 @@ export async function getIssues(
   const total = (countResult as any)[0]?.total || 0;
 
   // Get issues
-  const offset = (page - 1) * limit;
+  // Note: LIMIT and OFFSET are embedded directly after validation because mysql2
+  // prepared statements don't handle them well as parameters (ER_WRONG_ARGUMENTS)
+  const safeLimit = Math.max(1, Math.min(1000, Number(limit) || 50));
+  const safeOffset = Math.max(0, Number((page - 1) * limit) || 0);
   const sql = `
     SELECT * FROM dq_issues
     WHERE ${whereClause}
     ORDER BY FIELD(severity, 'HIGH', 'MEDIUM', 'LOW'), detected_at DESC
-    LIMIT ? OFFSET ?
+    LIMIT ${safeLimit} OFFSET ${safeOffset}
   `;
 
-  const rows = await query<RowDataPacket[]>(sql, [...params, limit, offset]);
+  const rows = await query<RowDataPacket[]>(sql, params);
 
   const issues: DataQualityIssue[] = (rows as any[]).map((row) => ({
     issue_id: row.issue_id,

@@ -71,6 +71,7 @@ export interface PTSRequest {
   updated_at: string;
   step_started_at: string | null;
   has_verification_snapshot?: boolean;
+  submission_data?: Record<string, unknown> | string | null;
 }
 
 export interface RequestWithDetails extends PTSRequest {

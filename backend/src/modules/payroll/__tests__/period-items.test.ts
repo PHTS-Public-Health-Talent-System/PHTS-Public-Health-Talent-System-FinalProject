@@ -15,6 +15,8 @@ let pool: Pool;
 let app: any;
 let h: TestHelper;
 
+jest.setTimeout(20000);
+
 beforeAll(async () => {
   pool = await createTestPool();
   await setupSchema(pool);

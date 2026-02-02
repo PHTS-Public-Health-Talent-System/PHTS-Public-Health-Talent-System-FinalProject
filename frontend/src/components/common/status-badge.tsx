@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { RequestStatus, STATUS_LABELS } from "@/types/request.types";
+import { RequestStatus, STATUS_LABELS, STEP_LABELS } from "@/types/request.types";
 
 const STATUS_STYLES: Record<RequestStatus, string> = {
   DRAFT: "bg-gray-100 text-gray-700 hover:bg-gray-200",
@@ -17,10 +17,39 @@ const STATUS_STYLES: Record<RequestStatus, string> = {
   RETURNED: "bg-amber-100 text-amber-700 hover:bg-amber-200",
 };
 
-export function StatusBadge({ status }: { status: RequestStatus }) {
+const PENDING_STEP_STYLES: Record<number, string> = {
+  1: STATUS_STYLES.PENDING_HEAD_WARD,
+  2: STATUS_STYLES.PENDING_HEAD_DEPT,
+  3: STATUS_STYLES.PENDING_PTS_OFFICER,
+  4: STATUS_STYLES.PENDING_HR,
+  5: STATUS_STYLES.PENDING_FINANCE,
+  6: STATUS_STYLES.PENDING,
+};
+
+const getStatusLabel = (status: RequestStatus, currentStep?: number) => {
+  if (status === "PENDING" && currentStep && STEP_LABELS[currentStep]) {
+    return `รอ${STEP_LABELS[currentStep]}`;
+  }
+  return STATUS_LABELS[status] ?? status;
+};
+
+const getStatusStyle = (status: RequestStatus, currentStep?: number) => {
+  if (status === "PENDING" && currentStep && PENDING_STEP_STYLES[currentStep]) {
+    return PENDING_STEP_STYLES[currentStep];
+  }
+  return STATUS_STYLES[status] ?? "";
+};
+
+export function StatusBadge({
+  status,
+  currentStep,
+}: {
+  status: RequestStatus;
+  currentStep?: number | null;
+}) {
   return (
-    <Badge variant="outline" className={STATUS_STYLES[status] ?? ""}>
-      {STATUS_LABELS[status] ?? status}
+    <Badge variant="outline" className={getStatusStyle(status, currentStep ?? undefined)}>
+      {getStatusLabel(status, currentStep ?? undefined)}
     </Badge>
   );
 }

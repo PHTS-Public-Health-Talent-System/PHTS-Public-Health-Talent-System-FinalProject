@@ -42,8 +42,6 @@ router.post(
 // Master rates and recommended rate
 router.get("/master-rates", requestController.getMasterRates);
 router.get("/prefill", requestController.getPrefill);
-router.get("/classification", requestController.getLegacyClassification);
-router.get("/recommended-rate", requestController.getLegacyRecommendedRate);
 router.post("/:id/attachments/confirm", requestController.confirmAttachments);
 router.get(
   "/:id/recommended-classification",

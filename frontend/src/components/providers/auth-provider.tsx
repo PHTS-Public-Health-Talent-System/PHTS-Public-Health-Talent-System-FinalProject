@@ -67,21 +67,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // credentials should contain { citizen_id, password }
       const { data } = await api.post<ApiResponse<{ token: string; user: User }>>("/auth/login", credentials)
 
-      // Expected response: { success: true, token: "...", user: { ... } }
+      // Backend returns { success, token, user } (no nested data)
       if (data.success) {
-        localStorage.setItem("token", data.data.token)
-        localStorage.setItem("user", JSON.stringify(data.data.user))
+        const token = (data as unknown as { token?: string }).token ?? data.data?.token
+        const user = (data as unknown as { user?: User }).user ?? data.data?.user
+        if (!token || !user) {
+          throw new Error("Login response missing token or user")
+        }
 
-        setUser(data.data.user)
+        localStorage.setItem("token", token)
+        localStorage.setItem("user", JSON.stringify(user))
+
+        setUser(user)
 
         // Redirect based on Role
-        const role = data.data.user.role
+        const role = user.role
         if (role === 'USER') router.push('/dashboard/user')
         else if (role === 'HEAD_WARD') router.push('/dashboard/head-ward')
         else if (role === 'PTS_OFFICER') router.push('/dashboard/pts-officer')
         else if (role === 'DIRECTOR') router.push('/dashboard/director')
-        else if (role === 'HR_HEAD') router.push('/dashboard/hr-head')
-        else if (role === 'FINANCE_HEAD') router.push('/dashboard/finance-head')
+        else if (role === 'HEAD_HR') router.push('/dashboard/head-hr')
+        else if (role === 'HEAD_FINANCE') router.push('/dashboard/head-finance')
         else if (role === 'FINANCE_OFFICER') router.push('/dashboard/finance-officer')
         else if (role === 'ADMIN') router.push('/dashboard/admin')
         else router.push('/dashboard') // Default

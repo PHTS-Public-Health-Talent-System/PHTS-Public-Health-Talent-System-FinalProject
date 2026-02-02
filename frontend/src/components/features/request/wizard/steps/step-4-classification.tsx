@@ -309,7 +309,7 @@ export function Step4Classification({ data, updateData }: Step4Props) {
                         <SelectItem value="none" disabled>ไม่พบรายการเบิก</SelectItem>
                       ) : (
                         itemsForGroup.map((item) => (
-                          <SelectItem key={item.value} value={item.value}>
+                          <SelectItem key={`${item.value}-${item.amount}`} value={item.value}>
                             {item.label} — {item.amount.toLocaleString()} บาท
                           </SelectItem>
                         ))

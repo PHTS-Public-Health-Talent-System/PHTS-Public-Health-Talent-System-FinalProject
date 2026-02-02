@@ -18,16 +18,18 @@ import { mapRequestToFormData } from "./request-form-mapper";
 
 const parseGroupItem = (groupId: string, itemId: string) => {
   const groupMatch = groupId.match(/\d+/);
-  const itemMatch = itemId.match(/\d+/g);
+  const group_no = groupMatch ? Number(groupMatch[0]) : null;
 
-  const group_no = groupMatch ? Number(groupMatch[0]) : NaN;
-  const item_no = itemMatch ? Number(itemMatch[0]) : NaN;
-  const sub_item_no = itemMatch && itemMatch.length > 1 ? Number(itemMatch[1]) : null;
+  const rawItem = itemId.replace(/^item/, "");
+  if (!rawItem) {
+    return { group_no, item_no: null, sub_item_no: null };
+  }
 
+  const [itemPart, subPart] = rawItem.split("_");
   return {
-    group_no: Number.isNaN(group_no) ? null : group_no,
-    item_no: Number.isNaN(item_no) ? null : item_no,
-    sub_item_no,
+    group_no,
+    item_no: itemPart || null,
+    sub_item_no: subPart || null,
   };
 };
 
@@ -239,15 +241,19 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
     };
     fd.append("request_type", typeMap[formData.requestType] ?? formData.requestType);
     fd.append("personnel_type", formData.employeeType);
-    fd.append("title", formData.title);
-    fd.append("first_name", formData.firstName);
-    fd.append("last_name", formData.lastName);
+    const submissionData = {
+      title: formData.title,
+      first_name: formData.firstName,
+      last_name: formData.lastName,
+      position_name: formData.positionName,
+      department: formData.department,
+      sub_department: formData.subDepartment,
+      employment_region: formData.employmentRegion,
+    };
+    fd.append("submission_data", JSON.stringify(submissionData));
     fd.append("citizen_id", formData.citizenId);
-    fd.append("position_name", formData.positionName);
     fd.append("position_number", formData.positionNumber);
-    fd.append("department", formData.department);
-    fd.append("sub_department", formData.subDepartment);
-    fd.append("employment_region", formData.employmentRegion);
+    fd.append("department_group", formData.department);
     fd.append("main_duty", formData.missionGroup);
     fd.append("requested_amount", String(formData.classification.amount ?? 0));
     fd.append(

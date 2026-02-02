@@ -1,6 +1,16 @@
 "use client"
 
 import Link from "next/link"
+import {
+  FileSearch,
+  CalendarClock,
+  DatabaseZap,
+  Siren,
+  ArrowRight,
+  History,
+  Save,
+  Settings
+} from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { usePendingApprovals } from "@/features/request/hooks"
@@ -39,82 +49,132 @@ export default function PtsOfficerDashboardPage() {
   const alerts = (licenseSummary.data as LicenseAlertsSummary | undefined) ?? {}
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="text-sm text-muted-foreground">ภาพรวมเจ้าหน้าที่ พ.ต.ส.</div>
-        <div className="text-2xl font-semibold">แดชบอร์ดหลัก</div>
+    <div className="space-y-8 animate-in fade-in duration-500">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-3xl font-bold tracking-tight text-foreground">แดชบอร์ดเจ้าหน้าที่ พ.ต.ส.</h1>
+        <p className="text-muted-foreground">จัดการข้อมูล ตรวจสอบเอกสาร และดูแลระบบการเบิกจ่าย</p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">คำขอรอตรวจ</CardTitle>
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {/* Pending Requests */}
+        <Card className="hover:shadow-md transition-shadow border-l-4 border-l-primary">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">คำขอรอตรวจ</CardTitle>
+            <FileSearch className="h-4 w-4 text-primary" />
           </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-2xl font-semibold">{pendingCount}</div>
-            <Button asChild size="sm" variant="outline">
+          <CardContent>
+            <div className="text-3xl font-bold text-primary">{pendingCount}</div>
+            <p className="text-xs text-muted-foreground mt-1">รายการที่ต้องตรวจสอบเอกสาร</p>
+            <Button asChild size="sm" className="w-full mt-3 shadow-none bg-primary/10 text-primary hover:bg-primary hover:text-white">
               <Link href="/dashboard/pts-officer/verification">ไปตรวจเอกสาร</Link>
             </Button>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">งวดที่เปิดอยู่</CardTitle>
+
+        {/* Open Periods */}
+        <Card className="hover:shadow-md transition-shadow border-l-4 border-l-emerald-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">งวดที่เปิดอยู่</CardTitle>
+            <CalendarClock className="h-4 w-4 text-emerald-500" />
           </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-2xl font-semibold">{openPeriods}</div>
-            <div className="text-xs text-muted-foreground">รอส่งต่อ HR: {waitingHr} งวด</div>
-            <Button asChild size="sm" variant="outline">
+          <CardContent>
+            <div className="text-3xl font-bold text-emerald-600">{openPeriods}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+                 รอส่งต่อ HR: <span className="font-medium text-foreground">{waitingHr}</span> งวด
+            </p>
+            <Button asChild size="sm" className="w-full mt-3 shadow-none bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white">
               <Link href="/dashboard/pts-officer/payroll">จัดการงวด</Link>
             </Button>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Data Quality</CardTitle>
+
+        {/* Data Quality */}
+        <Card className="hover:shadow-md transition-shadow border-l-4 border-l-indigo-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Data Quality</CardTitle>
+            <DatabaseZap className="h-4 w-4 text-indigo-500" />
           </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-2xl font-semibold">{dq.totalIssues ?? 0}</div>
-            <div className="text-xs text-muted-foreground">
-              กระทบการคำนวณ: {dq.affectingCalculation ?? 0}
-            </div>
-            <Button asChild size="sm" variant="outline">
+          <CardContent>
+            <div className="text-3xl font-bold text-indigo-600">{dq.totalIssues ?? 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+               ประเด็นที่กระทบคำนวณ: <span className="font-medium text-destructive">{dq.affectingCalculation ?? 0}</span>
+            </p>
+            <Button asChild size="sm" className="w-full mt-3 shadow-none bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white">
               <Link href="/dashboard/pts-officer/data-quality">ตรวจคุณภาพข้อมูล</Link>
             </Button>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">License Alerts</CardTitle>
+
+        {/* License Alerts */}
+        <Card className="hover:shadow-md transition-shadow border-l-4 border-l-amber-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">License Alerts</CardTitle>
+            <Siren className="h-4 w-4 text-amber-500" />
           </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="text-2xl font-semibold">{alerts.expired ?? 0}</div>
-            <div className="text-xs text-muted-foreground">
-              ใกล้หมดอายุ &lt;=30 วัน: {alerts.expiring_30 ?? 0}
-            </div>
-            <Button asChild size="sm" variant="outline">
+          <CardContent>
+            <div className="text-3xl font-bold text-amber-600">{alerts.expired ?? 0}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+               ใกล้หมดอายุ (30 วัน): <span className="font-medium text-amber-600">{alerts.expiring_30 ?? 0}</span>
+            </p>
+            <Button asChild size="sm" className="w-full mt-3 shadow-none bg-amber-50 text-amber-700 hover:bg-amber-600 hover:text-white">
               <Link href="/dashboard/pts-officer/license-alerts">ดูรายการแจ้งเตือน</Link>
             </Button>
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>ทางลัดที่ใช้บ่อย</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button asChild variant="secondary">
-            <Link href="/dashboard/pts-officer/payroll-history">ค้นหา/ตรวจย้อนหลัง</Link>
-          </Button>
-          <Button asChild variant="secondary">
-            <Link href="/dashboard/pts-officer/snapshots">Snapshots</Link>
-          </Button>
-          <Button asChild variant="secondary">
-            <Link href="/dashboard/pts-officer/master-data">ตั้งค่าข้อมูลหลัก</Link>
-          </Button>
-        </CardContent>
-      </Card>
+      <div className="space-y-4">
+        <h3 className="text-lg font-semibold flex items-center gap-2">
+            <span className="h-6 w-1 bg-secondary rounded-full"></span>
+            เครื่องมือและทางลัด
+        </h3>
+        <div className="grid gap-4 sm:grid-cols-3">
+          <Link href="/dashboard/pts-officer/payroll-history" className="group">
+             <Card className="hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer h-full">
+                 <CardContent className="p-4 flex items-center gap-4">
+                     <div className="p-3 bg-primary/10 rounded-lg text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                         <History className="h-5 w-5" />
+                     </div>
+                     <div>
+                         <h4 className="font-medium group-hover:text-primary">ค้นหา/ตรวจย้อนหลัง</h4>
+                         <p className="text-xs text-muted-foreground">ดูประวัติการจ่ายเงินรายบุคคล</p>
+                     </div>
+                     <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground group-hover:text-primary opacity-0 group-hover:opacity-100 transition-all" />
+                 </CardContent>
+             </Card>
+          </Link>
+
+          <Link href="/dashboard/pts-officer/snapshots" className="group">
+             <Card className="hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer h-full">
+                 <CardContent className="p-4 flex items-center gap-4">
+                     <div className="p-3 bg-primary/10 rounded-lg text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                         <Save className="h-5 w-5" />
+                     </div>
+                     <div>
+                         <h4 className="font-medium group-hover:text-primary">Snapshots</h4>
+                         <p className="text-xs text-muted-foreground">ข้อมูลที่ถูกบันทึกไว้ในแต่ละงวด</p>
+                     </div>
+                     <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground group-hover:text-primary opacity-0 group-hover:opacity-100 transition-all" />
+                 </CardContent>
+             </Card>
+          </Link>
+
+          <Link href="/dashboard/pts-officer/master-data" className="group">
+             <Card className="hover:border-primary/50 hover:bg-primary/5 transition-all cursor-pointer h-full">
+                 <CardContent className="p-4 flex items-center gap-4">
+                     <div className="p-3 bg-primary/10 rounded-lg text-primary group-hover:bg-primary group-hover:text-white transition-colors">
+                         <Settings className="h-5 w-5" />
+                     </div>
+                     <div>
+                         <h4 className="font-medium group-hover:text-primary">ตั้งค่าข้อมูลหลัก</h4>
+                         <p className="text-xs text-muted-foreground">จัดการอัตราเงินและวันหยุด</p>
+                     </div>
+                     <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground group-hover:text-primary opacity-0 group-hover:opacity-100 transition-all" />
+                 </CardContent>
+             </Card>
+          </Link>
+        </div>
+      </div>
     </div>
   )
 }

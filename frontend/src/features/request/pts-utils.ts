@@ -3,12 +3,14 @@ export const parseClassificationSelection = (
   itemId: string,
 ) => {
   const groupMatch = groupId.match(/\d+/)
-  const itemMatch = itemId.match(/\d+/g)
-
   const group_no = groupMatch ? Number(groupMatch[0]) : null
-  const item_no = itemMatch ? Number(itemMatch[0]) : null
-  const sub_item_no =
-    itemMatch && itemMatch.length > 1 ? Number(itemMatch[1]) : null
+  const rawItem = itemId.replace(/^item/, "")
+  if (!rawItem) {
+    return { group_no, item_no: null, sub_item_no: null }
+  }
+  const [itemPart, subPart] = rawItem.split("_")
+  const item_no = itemPart || null
+  const sub_item_no = subPart || null
 
   return {
     group_no,
@@ -25,11 +27,13 @@ export const findRateIdForSelection = (
     sub_item_no: string | null
   }>,
   groupNo: number,
-  itemNo: number,
-  subItemNo: number | null,
+  itemNo: string | null,
+  subItemNo: string | null,
 ) => {
-  const itemToken = `${itemNo}`
-  const subToken = subItemNo ? String(subItemNo) : null
+  if (!itemNo) return null
+  const [itemBaseInput, itemSubInput] = String(itemNo).split(".")
+  const itemToken = itemBaseInput
+  const subToken = subItemNo ?? itemSubInput ?? null
   const match = rates.find((rate) => {
     const itemBase = rate.item_no?.split(".")[0]
     const itemSub = rate.sub_item_no ?? rate.item_no?.split(".")[1] ?? null

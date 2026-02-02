@@ -54,7 +54,12 @@ export async function requestOcrProcessing(_attachmentId: number, _pageNum?: num
     provider: "TYPHOON",
   });
 
-  await enqueueOcrJob({ attachmentId, attempts: 0 });
+  try {
+    await enqueueOcrJob({ attachmentId, attempts: 0 });
+  } catch (error) {
+    console.error("OCR enqueue failed, running inline:", error);
+    await processAttachmentOcr(attachmentId);
+  }
 
   return {
     ocrEnabled: true,

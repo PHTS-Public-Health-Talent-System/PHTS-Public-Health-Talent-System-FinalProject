@@ -34,26 +34,49 @@ export function Step2WorkInfo({ data, updateData }: Step2Props) {
       </div>
 
       {/* Section 1: Request Type */}
-      <Card className="border border-muted">
+      <Card className="border border-muted shadow-sm">
         <CardContent className="pt-6">
-          <Label className="text-base mb-3 block">ประเภทการยื่นคำขอ</Label>
+          <Label className="text-base mb-4 block font-semibold">ประเภทการยื่นคำขอ</Label>
           <RadioGroup
-            defaultValue={data.requestType}
+            value={data.requestType}
             onValueChange={(val) => updateData("requestType", val)}
             className="grid grid-cols-1 md:grid-cols-3 gap-4"
           >
-            <div className={`flex items-center space-x-2 border p-4 rounded-lg cursor-pointer hover:bg-muted/50 ${data.requestType === 'NEW' ? 'border-primary bg-primary/5' : ''}`}>
+            <Label
+              htmlFor="new"
+              className={`flex items-center space-x-3 border p-4 rounded-xl cursor-pointer transition-all hover:bg-accent/50 ${
+                data.requestType === "NEW"
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-border"
+              }`}
+            >
               <RadioGroupItem value="NEW" id="new" />
-              <Label htmlFor="new" className="cursor-pointer">ยื่นคำขอใหม่</Label>
-            </div>
-            <div className={`flex items-center space-x-2 border p-4 rounded-lg cursor-pointer hover:bg-muted/50 ${data.requestType === 'EDIT' ? 'border-primary bg-primary/5' : ''}`}>
+              <span className="font-medium">ยื่นคำขอใหม่</span>
+            </Label>
+
+            <Label
+              htmlFor="edit"
+              className={`flex items-center space-x-3 border p-4 rounded-xl cursor-pointer transition-all hover:bg-accent/50 ${
+                data.requestType === "EDIT"
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-border"
+              }`}
+            >
               <RadioGroupItem value="EDIT" id="edit" />
-              <Label htmlFor="edit" className="cursor-pointer">แก้ไขข้อมูล (อัตราเดิม)</Label>
-            </div>
-            <div className={`flex items-center space-x-2 border p-4 rounded-lg cursor-pointer hover:bg-muted/50 ${data.requestType === 'CHANGE_RATE' ? 'border-primary bg-primary/5' : ''}`}>
+              <span className="font-medium">แก้ไขข้อมูล (อัตราเดิม)</span>
+            </Label>
+
+            <Label
+              htmlFor="change"
+              className={`flex items-center space-x-3 border p-4 rounded-xl cursor-pointer transition-all hover:bg-accent/50 ${
+                data.requestType === "CHANGE_RATE"
+                  ? "border-primary bg-primary/5 ring-1 ring-primary"
+                  : "border-border"
+              }`}
+            >
               <RadioGroupItem value="CHANGE_RATE" id="change" />
-              <Label htmlFor="change" className="cursor-pointer">แก้ไข (เปลี่ยนอัตรา)</Label>
-            </div>
+              <span className="font-medium">แก้ไข (เปลี่ยนอัตรา)</span>
+            </Label>
           </RadioGroup>
         </CardContent>
       </Card>
@@ -61,91 +84,102 @@ export function Step2WorkInfo({ data, updateData }: Step2Props) {
       {/* Section 4: Work Details */}
       <div className="space-y-4">
         {prefill?.department && (
-          <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+          <div className="rounded-xl border bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
             สังกัดจากระบบบุคลากร: {prefill.department}
             {prefill.sub_department ? ` / ${prefill.sub_department}` : ""}
           </div>
         )}
         {/* Mission Group */}
         <div className="space-y-2">
-          <Label htmlFor="mission">หน้าที่ความรับผิดชอบหลัก (Mission Group)</Label>
+          <Label htmlFor="mission" className="font-medium">หน้าที่ความรับผิดชอบหลัก (Mission Group)</Label>
           <Input
             id="mission"
             placeholder="เช่น ให้การพยาบาลผู้ป่วยวิกฤต, ตรวจวิเคราะห์สิ่งส่งตรวจ"
             value={data.missionGroup}
             onChange={(e) => updateData("missionGroup", e.target.value)}
+            className="h-12"
           />
         </div>
 
         {/* Work Attributes Checkboxes */}
         <div className="space-y-3">
-          <Label>ลักษณะงานที่ปฏิบัติ (เลือกได้มากกว่า 1 ข้อ)</Label>
+          <Label className="font-medium text-base">ลักษณะงานที่ปฏิบัติ (เลือกได้มากกว่า 1 ข้อ)</Label>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-            <div className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm hover:bg-muted/30">
+            <Label
+              htmlFor="attr_ops"
+              className={`flex flex-row items-start space-x-3 space-y-0 rounded-xl border p-4 shadow-sm transition-all cursor-pointer hover:bg-accent/50 ${
+                data.workAttributes.operation ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"
+              }`}
+            >
               <Checkbox
                 id="attr_ops"
                 checked={data.workAttributes.operation}
                 onCheckedChange={() => toggleAttribute("operation")}
               />
               <div className="space-y-1 leading-none">
-                <Label htmlFor="attr_ops" className="font-semibold cursor-pointer">
-                  งานปฏิบัติการ (Operation)
-                </Label>
+                <span className="font-semibold block">งานปฏิบัติการ (Operation)</span>
                 <p className="text-sm text-muted-foreground">
                   ปฏิบัติงานเทคนิค/วิชาชีพโดยตรงกับผู้ป่วย
                 </p>
               </div>
-            </div>
+            </Label>
 
-            <div className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm hover:bg-muted/30">
+            <Label
+              htmlFor="attr_plan"
+              className={`flex flex-row items-start space-x-3 space-y-0 rounded-xl border p-4 shadow-sm transition-all cursor-pointer hover:bg-accent/50 ${
+                data.workAttributes.planning ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"
+              }`}
+            >
               <Checkbox
                 id="attr_plan"
                 checked={data.workAttributes.planning}
                 onCheckedChange={() => toggleAttribute("planning")}
               />
               <div className="space-y-1 leading-none">
-                <Label htmlFor="attr_plan" className="font-semibold cursor-pointer">
-                  งานวางแผน (Planning)
-                </Label>
+                <span className="font-semibold block">งานวางแผน (Planning)</span>
                 <p className="text-sm text-muted-foreground">
                   วางแผนระบบงาน พัฒนาคุณภาพ หรือนโยบาย
                 </p>
               </div>
-            </div>
+            </Label>
 
-            <div className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm hover:bg-muted/30">
+            <Label
+              htmlFor="attr_coord"
+              className={`flex flex-row items-start space-x-3 space-y-0 rounded-xl border p-4 shadow-sm transition-all cursor-pointer hover:bg-accent/50 ${
+                data.workAttributes.coordination ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"
+              }`}
+            >
               <Checkbox
                 id="attr_coord"
                 checked={data.workAttributes.coordination}
                 onCheckedChange={() => toggleAttribute("coordination")}
               />
               <div className="space-y-1 leading-none">
-                <Label htmlFor="attr_coord" className="font-semibold cursor-pointer">
-                  งานประสานงาน (Coordination)
-                </Label>
+                <span className="font-semibold block">งานประสานงาน (Coordination)</span>
                 <p className="text-sm text-muted-foreground">
                   ประสานงานกับหน่วยงานภายในและภายนอก
                 </p>
               </div>
-            </div>
+            </Label>
 
-            <div className="flex flex-row items-start space-x-3 space-y-0 rounded-md border p-4 shadow-sm hover:bg-muted/30">
+            <Label
+              htmlFor="attr_service"
+              className={`flex flex-row items-start space-x-3 space-y-0 rounded-xl border p-4 shadow-sm transition-all cursor-pointer hover:bg-accent/50 ${
+                data.workAttributes.service ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"
+              }`}
+            >
               <Checkbox
                 id="attr_service"
                 checked={data.workAttributes.service}
                 onCheckedChange={() => toggleAttribute("service")}
               />
               <div className="space-y-1 leading-none">
-                <Label htmlFor="attr_service" className="font-semibold cursor-pointer">
-                  งานบริการ (Service)
-                </Label>
+                <span className="font-semibold block">งานบริการ (Service)</span>
                 <p className="text-sm text-muted-foreground">
                   ให้บริการวิชาการ หรือสนับสนุนบริการทางการแพทย์
                 </p>
               </div>
-            </div>
-
+            </Label>
           </div>
         </div>
       </div>

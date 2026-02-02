@@ -117,10 +117,16 @@ export function Step1PersonalInfo({ data, updateData, prefillOriginal }: Step1Pr
               className="grid grid-cols-1 md:grid-cols-4 gap-4"
             >
               {Object.entries(PERSONNEL_TYPE_LABELS).map(([key, label]) => (
-                <div key={key} className="flex items-center space-x-2 border p-3 rounded-lg">
+                <Label
+                  key={key}
+                  htmlFor={`emp-${key}`}
+                  className={`flex items-center space-x-2 border p-3 rounded-lg cursor-pointer transition-colors hover:bg-accent/50 ${
+                    data.employeeType === key ? "border-primary bg-primary/5" : "border-border"
+                  }`}
+                >
                   <RadioGroupItem value={key} id={`emp-${key}`} />
-                  <Label htmlFor={`emp-${key}`} className="cursor-pointer">{label}</Label>
-                </div>
+                  <span>{label}</span>
+                </Label>
               ))}
             </RadioGroup>
             {isChanged(data.employeeType, prefillOriginal?.employee_type) && (

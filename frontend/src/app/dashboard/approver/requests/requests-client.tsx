@@ -95,10 +95,17 @@ export default function ApproverRequestsClient() {
   return (
     <div className="space-y-6">
       {/* Header & Controls */}
-      <div className="flex flex-col gap-4 bg-card p-6 rounded-xl border border-border shadow-sm">
+      <div className="flex flex-col gap-4 bg-card p-6 rounded-xl border border-border shadow-soft">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
            <div>
-              <h2 className="text-2xl font-bold tracking-tight text-foreground">คำขอรออนุมัติ</h2>
+              <h2 className="text-2xl font-heading font-bold tracking-tight text-foreground flex items-center gap-2">
+                คำขอรออนุมัติ
+                {sorted.length > 0 && (
+                  <span className="inline-flex items-center justify-center rounded-full bg-primary/10 px-2.5 py-0.5 text-sm font-medium text-primary shadow-sm">
+                    {sorted.length}
+                  </span>
+                )}
+              </h2>
               <p className="text-muted-foreground mt-1">ตรวจสอบและอนุมัติคำขอที่เข้ามาใหม่</p>
            </div>
 
@@ -114,7 +121,7 @@ export default function ApproverRequestsClient() {
                   updateQuery({ q: e.target.value })
                 }}
                 placeholder="ค้นหาเลขที่คำขอ..."
-                className="pl-9 w-full h-11"
+                className="pl-9 w-full h-11 rounded-lg"
               />
             </div>
             <Select
@@ -124,7 +131,7 @@ export default function ApproverRequestsClient() {
                 updateQuery({ scope: val })
               }}
             >
-              <SelectTrigger className="w-full sm:w-[200px] h-11">
+              <SelectTrigger className="w-full sm:w-[200px] h-11 rounded-lg">
                 <SelectValue placeholder="เลือกขอบเขต" />
               </SelectTrigger>
               <SelectContent>
@@ -139,7 +146,7 @@ export default function ApproverRequestsClient() {
       </div>
 
       {isDirector && (
-        <Card className="border-l-4 border-l-orange-500">
+        <Card className="border-l-4 border-l-orange-500 shadow-soft">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
                การอนุมัติแบบชุด <span className="text-xs font-normal text-muted-foreground">(เฉพาะผู้อำนวยการ)</span>
@@ -230,7 +237,7 @@ export default function ApproverRequestsClient() {
               {sorted.map((req) => (
                 <div
                   key={req.request_id}
-                  className={`group relative flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm transition-all hover:shadow-md md:flex-row md:items-center md:justify-between ${
+                  className={`group relative flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-soft transition-all hover:shadow-md md:flex-row md:items-center md:justify-between ${
                     selectedIds.includes(req.request_id) ? "ring-2 ring-primary border-primary" : "border-border"
                   }`}
                   onClick={(e) => {

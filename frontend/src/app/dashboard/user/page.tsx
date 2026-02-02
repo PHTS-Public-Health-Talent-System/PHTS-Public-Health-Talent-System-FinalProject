@@ -43,19 +43,19 @@ export default function UserDashboardPage() {
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between bg-primary/5 p-6 rounded-xl border border-primary/10 shadow-sm relative overflow-hidden">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between bg-primary/5 p-6 rounded-xl border border-primary/10 shadow-soft relative overflow-hidden">
         <div className="relative z-10">
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">
+          <h2 className="text-2xl font-heading font-bold tracking-tight text-foreground">
             สวัสดี, {prefill?.first_name || user?.firstName} {prefill?.last_name || user?.lastName}
           </h2>
-          <p className="text-muted-foreground mt-1">
+          <p className="text-muted-foreground mt-1 text-base">
             ยินดีต้อนรับสู่ระบบบริหารจัดการเงิน พ.ต.ส.
           </p>
         </div>
         <div className="absolute right-0 top-0 h-full w-1/3 bg-gradient-to-l from-primary/10 to-transparent pointer-events-none" />
         <Link href="/dashboard/user/request" className="relative z-10">
-          <Button className="w-full sm:w-auto shadow-lg hover:shadow-primary/20">
-            <Plus className="mr-2 h-4 w-4" /> ยื่นคำขอใหม่
+          <Button size="lg" className="w-full sm:w-auto shadow-lg hover:shadow-primary/25 rounded-xl text-base font-semibold">
+            <Plus className="mr-2 h-5 w-5" /> ยื่นคำขอใหม่
           </Button>
         </Link>
       </div>
@@ -103,16 +103,16 @@ export default function UserDashboardPage() {
 
      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Notifications */}
-        <Card className="lg:col-span-1 h-fit">
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Bell className="h-4 w-4 text-primary" /> การแจ้งเตือน
+        <Card className="lg:col-span-1 h-fit shadow-soft border-border/60">
+          <CardHeader className="flex flex-row items-center justify-between pb-2 bg-muted/30 rounded-t-xl border-b border-border/50">
+            <CardTitle className="text-lg font-heading flex items-center gap-2">
+              <Bell className="h-5 w-5 text-primary" /> การแจ้งเตือน
             </CardTitle>
             <Link href="/dashboard/user/notifications">
-              <Button variant="ghost" size="sm" className="h-8 text-xs">ดูทั้งหมด</Button>
+              <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-primary">ดูทั้งหมด</Button>
             </Link>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-4">
             {isNotifLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map((i) => (

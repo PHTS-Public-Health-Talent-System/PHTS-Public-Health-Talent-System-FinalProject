@@ -47,9 +47,14 @@ const NODE_ENV = process.env.NODE_ENV || "development";
 app.use(helmet());
 
 // Allow CORS for configured origins (comma-separated env support for multiple frontends)
-const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:3000")
+// Allow CORS for configured origins (comma-separated env support for multiple frontends)
+const envOrigins = (process.env.FRONTEND_URL || "")
   .split(",")
-  .map((origin) => origin.trim());
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const defaultOrigins = ["http://localhost:3000"];
+const allowedOrigins = [...new Set([...envOrigins, ...defaultOrigins])];
 
 app.use(
   cors({

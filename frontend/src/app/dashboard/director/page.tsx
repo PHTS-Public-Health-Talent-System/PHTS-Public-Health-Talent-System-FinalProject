@@ -29,17 +29,17 @@ export default function DirectorDashboardPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <Card className="hover:shadow-md transition-shadow border-l-4 border-l-primary">
+        <Card className="hover:shadow-md transition-shadow border-l-4 border-l-primary shadow-soft">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">งวดรออนุมัติ (ผอ.)</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground font-heading">งวดรออนุมัติ (ผอ.)</CardTitle>
             <Clock className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-primary">{waitingDirector}</div>
+            <div className="text-3xl font-bold text-primary font-heading">{waitingDirector}</div>
             <p className="text-xs text-muted-foreground mt-1">งวดที่รอการตรวจสอบและลงนามอนุมัติ</p>
             {waitingDirector > 0 && (
                 <div className="mt-4">
-                    <Button asChild size="sm" className="w-full sm:w-auto shadow-none">
+                    <Button asChild size="sm" className="w-full sm:w-auto shadow-none rounded-lg">
                         <Link href="/dashboard/director/approvals">
                             ตรวจสอบงวด <ArrowRight className="ml-2 h-4 w-4" />
                         </Link>
@@ -49,13 +49,13 @@ export default function DirectorDashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="hover:shadow-md transition-shadow border-l-4 border-l-emerald-500">
+        <Card className="hover:shadow-md transition-shadow border-l-4 border-l-emerald-500 shadow-soft">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">งวดที่ปิดแล้ว</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground font-heading">งวดที่ปิดแล้ว</CardTitle>
             <CheckCircle2 className="h-4 w-4 text-emerald-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-emerald-600">{closed}</div>
+            <div className="text-3xl font-bold text-emerald-600 font-heading">{closed}</div>
             <p className="text-xs text-muted-foreground mt-1">งวดการจ่ายที่ดำเนินการเสร็จสิ้นแล้วทั้งหมด</p>
           </CardContent>
         </Card>

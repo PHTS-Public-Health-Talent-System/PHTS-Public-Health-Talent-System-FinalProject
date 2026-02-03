@@ -79,6 +79,8 @@ export class RequestCommandService {
   ) {
     if (!files || files.length === 0) return;
     for (const file of files) {
+      if (!file.path) continue; // Skip files without path (e.g., MemoryStorage signatures)
+
       let fileType: string = FileType.OTHER;
       if (file.fieldname === "license_file") fileType = FileType.LICENSE;
       if (file.fieldname === "applicant_signature")
@@ -681,16 +683,53 @@ export class RequestCommandService {
         throw new Error("Cannot update classification of processed request");
       }
 
-      // Default profession code - in production this would be resolved from position
-      const professionCode = "NURSE";
+      // Resolve profession from position name (joined field) or fallback
+      const positionName = request.position_name || "";
+      let professionCode = this.resolveProfessionCode(positionName);
 
-      const rate = await requestRepository.findRateByDetails(professionCode, data.group_no, data.item_no, data.sub_item_no);
+      console.log(`[DEBUG_CLASS] RequestId=${requestId}`);
+      console.log(`[DEBUG_CLASS] Position="${positionName}"`);
+      console.log(`[DEBUG_CLASS] ResolvedCode="${professionCode}"`);
+      console.log(`[DEBUG_CLASS] Params: Group=${data.group_no}, Item=${data.item_no}, Sub=${data.sub_item_no}`);
+
+      if (!professionCode) {
+         // Fallback/Default or Specific logic if needed
+         console.warn(`[WARN_CLASS] Could not resolve profession for position: ${positionName}, defaulting to NURSE`);
+         professionCode = "NURSE"; // Keep legacy default if detection fails, or throw?
+         // For safety, let's throw if we can't detect, but to be safe for now, log or use default?
+         // The error "Invalid classification rate" will be thrown anyway if rate not found.
+         // Let's rely on detection.
+      }
+
+      const rate = await requestRepository.findRateByDetails(professionCode!, data.group_no, data.item_no, data.sub_item_no);
 
       if (!rate) {
         throw new Error("Invalid classification rate");
       }
 
-      await requestRepository.update(requestId, { requested_amount: rate.amount }, connection);
+      const submissionData =
+        parseJsonField<Record<string, unknown>>(
+          request.submission_data,
+          "submission_data",
+        ) || {};
+      const nextSubmissionData = {
+        ...submissionData,
+        classification: {
+          ...(submissionData as any).classification,
+          group_no: rate.group_no,
+          item_no: rate.item_no,
+          sub_item_no: rate.sub_item_no ?? null,
+          rate_id: rate.rate_id,
+          amount: rate.amount,
+          profession_code: professionCode,
+        },
+      };
+
+      await requestRepository.update(
+        requestId,
+        { requested_amount: rate.amount, submission_data: nextSubmissionData },
+        connection,
+      );
 
       await connection.commit();
 
@@ -710,6 +749,27 @@ export class RequestCommandService {
       connection.release();
     }
   }
+  private resolveProfessionCode(positionName: string): string | null {
+    const name = positionName.trim();
+    if (name.includes("ทันตแพทย์")) return "DENTIST";
+    if (name.includes("นายแพทย์") || name.includes("แพทย์")) return "DOCTOR";
+    if (name.includes("เภสัชกร")) return "PHARMACIST";
+    if (name.includes("พยาบาล")) {
+        const excluded = ["ผู้ช่วยพยาบาล", "พนักงานช่วยการพยาบาล", "พนักงานช่วยเหลือคนไข้"];
+        if (excluded.some(v => name.startsWith(v))) return null;
+        return "NURSE";
+    }
+    if (name.startsWith("นักเทคนิคการแพทย์")) return "MED_TECH";
+    if (name.startsWith("นักรังสีการแพทย์")) return "RAD_TECH";
+    if (name.startsWith("นักกายภาพบำบัด") || name.startsWith("นักกายภาพบําบัด")) return "PHYSIO";
+    if (name.startsWith("นักกิจกรรมบำบัด") || name.startsWith("นักกิจกรรมบําบัด")) return "OCC_THERAPY";
+    if (name.startsWith("นักอาชีวบำบัด") || name.startsWith("นักอาชีวบําบัด")) return "OCC_THERAPY";
+    if (name.startsWith("นักจิตวิทยา")) return "CLIN_PSY";
+    if (name.startsWith("นักแก้ไขความผิดปกติ")) return "SPEECH_THERAPIST";
+    if (name.startsWith("นักวิชาการศึกษาพิเศษ")) return "SPECIAL_EDU";
+    if (name.startsWith("นักเทคโนโลยีหัวใจและทรวงอก")) return "CARDIO_TECH";
+    return null;
+  }
 }
-// ...
+
 export const requestCommandService = new RequestCommandService();

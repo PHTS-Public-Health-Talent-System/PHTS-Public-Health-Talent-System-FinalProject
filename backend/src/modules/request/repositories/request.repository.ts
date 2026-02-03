@@ -536,6 +536,14 @@ export class RequestRepository {
     return rows.length ? (rows[0].special_position as string | null) : null;
   }
 
+  async findOriginalStatus(citizenId: string): Promise<string | null> {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT original_status FROM emp_profiles WHERE citizen_id = ? LIMIT 1`,
+      [citizenId],
+    );
+    return rows.length ? (rows[0].original_status as string | null) : null;
+  }
+
   // --- Classification / Rate Queries ---
 
   async findPositionNameByCitizenId(citizenId: string): Promise<string | null> {

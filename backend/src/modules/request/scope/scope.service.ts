@@ -62,6 +62,14 @@ export async function getApproverScopes(
     return emptyScopes;
   }
 
+  const originalStatus = await requestRepository.findOriginalStatus(citizenId);
+  if (!isActiveOriginalStatus(originalStatus)) {
+    const emptyScopes = { wardScopes: [], deptScopes: [] };
+    scopeCache.set(cacheKey, emptyScopes);
+    await setJsonCache(redisKey, emptyScopes, SCOPE_CACHE_TTL_SECONDS);
+    return emptyScopes;
+  }
+
   const specialPosition = await requestRepository.findSpecialPosition(citizenId);
   const scopes = parseAndClassifyScopes(specialPosition);
   scopeCache.set(cacheKey, scopes);
@@ -394,4 +402,9 @@ function buildSelectedScopeFilter(selectedScope: string): {
     };
   }
   return { whereClause: " AND 1 = 0", params: [] };
+}
+
+function isActiveOriginalStatus(status: string | null): boolean {
+  if (!status) return false;
+  return status.trim().startsWith("ปฏิบัติงาน");
 }

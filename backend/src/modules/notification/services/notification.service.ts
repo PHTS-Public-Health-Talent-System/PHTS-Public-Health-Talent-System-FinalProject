@@ -6,6 +6,7 @@
 
 import { PoolConnection } from "mysql2/promise";
 import { NotificationRepository } from "../repositories/notification.repository.js";
+import { NotificationOutboxService } from "./notification-outbox.service.js";
 import {
   NotificationType,
   NotificationWithCount,
@@ -26,12 +27,15 @@ export class NotificationService {
   ): Promise<number> {
     const notificationType =
       (type as NotificationType) || NotificationType.INFO;
-    return NotificationRepository.create(
-      userId,
-      title,
-      message,
-      link,
-      notificationType,
+    return NotificationOutboxService.enqueue(
+      {
+        kind: "USER",
+        userId,
+        title,
+        message,
+        link,
+        type: notificationType,
+      },
       connection,
     );
   }
@@ -46,22 +50,17 @@ export class NotificationService {
     link: string = "#",
     connection?: PoolConnection,
   ): Promise<number> {
-    const userIds = await NotificationRepository.findUserIdsByRole(
-      role,
+    return NotificationOutboxService.enqueue(
+      {
+        kind: "ROLE",
+        role,
+        title,
+        message,
+        link,
+        type: NotificationType.INFO,
+      },
       connection,
     );
-
-    if (userIds.length === 0) return 0;
-
-    const notifications = userIds.map((userId) => ({
-      userId,
-      title,
-      message,
-      link,
-      type: NotificationType.INFO,
-    }));
-
-    return NotificationRepository.createBulk(notifications, connection);
   }
 
   /**

@@ -1,0 +1,21 @@
+services:
+  mysql-test:
+    image: mysql:8.4
+    container_name: phts-mysql-test
+    environment:
+      MYSQL_DATABASE: phts_test
+      MYSQL_USER: phts_test
+      MYSQL_PASSWORD: phts_test
+      MYSQL_ROOT_PASSWORD: root
+    ports:
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-pproot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - phts_mysql_test:/var/lib/mysql
+
+volumes:
+  phts_mysql_test:

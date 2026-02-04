@@ -98,9 +98,14 @@ export class RequestRepository {
       i.created_by ?? null,
     ]);
     await db.query(
-      `INSERT IGNORE INTO special_position_scope_map
+      `INSERT INTO special_position_scope_map
        (citizen_id, role, scope_type, scope_name, source, created_by)
-       VALUES ?`,
+       VALUES ?
+       ON DUPLICATE KEY UPDATE
+         is_active = 1,
+         source = VALUES(source),
+         created_by = VALUES(created_by),
+         updated_at = NOW()`,
       [values],
     );
   }

@@ -125,18 +125,27 @@ export class RequestQueryService {
       request.current_step ===
         ROLE_STEP_MAP[userRole as keyof typeof ROLE_STEP_MAP];
 
+    let hasScopeAccess = false;
     // For HEAD_WARD and HEAD_DEPT, also verify scope access
-    if (isApprover && (userRole === "HEAD_WARD" || userRole === "HEAD_DEPT")) {
+    if (userRole === "HEAD_WARD" || userRole === "HEAD_DEPT") {
       const reqAny = request as any;
-      const hasScope = await canApproverAccessRequest(
+      hasScopeAccess = await canApproverAccessRequest(
         userId,
         userRole,
         reqAny.emp_department || request.current_department || "",
         reqAny.emp_sub_department || "",
       );
-      if (!hasScope) {
+      if (!hasScopeAccess) {
         isApprover = false;
       }
+    }
+
+    // Allow HEAD_WARD/HEAD_DEPT to view within their scope even if not current step
+    const canViewByScope =
+      (userRole === "HEAD_WARD" || userRole === "HEAD_DEPT") && hasScopeAccess;
+
+    if (canViewByScope) {
+      isApprover = true;
     }
 
     if (!isOwner && !isApprover && !isAdmin) {

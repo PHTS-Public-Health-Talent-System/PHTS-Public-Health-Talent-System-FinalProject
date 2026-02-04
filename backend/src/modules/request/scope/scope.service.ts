@@ -155,8 +155,23 @@ export async function canApproverAccessRequest(
 
   const scopes = await getApproverScopes(userId, userRole);
 
+  if (
+    userRole === "HEAD_WARD" &&
+    scopes.wardScopes.length === 0 &&
+    scopes.deptScopes.length > 0
+  ) {
+    const deptMatch = scopes.deptScopes.some(
+      (scope) => scope.toLowerCase() === (requestDepartment ?? "").toLowerCase(),
+    );
+    if (deptMatch) {
+      return true;
+    }
+  }
+
+  const wardScopesForCheck =
+    userRole === "HEAD_DEPT" ? [] : scopes.wardScopes;
   const resolvedRole = resolveApproverRole(
-    scopes.wardScopes,
+    wardScopesForCheck,
     scopes.deptScopes,
     requestDepartment,
     requestSubDepartment,
@@ -192,7 +207,7 @@ export async function getScopeFilterForApprover(
 
   const { conditions, params } =
     userRole === "HEAD_WARD"
-      ? buildWardConditions(scopes.wardScopes)
+      ? buildWardConditions([...scopes.wardScopes, ...scopes.deptScopes])
       : buildDeptConditions(scopes.deptScopes);
 
   if (conditions.length === 0) {

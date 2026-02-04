@@ -77,6 +77,8 @@ Thumbs.db
 CLAUDE.md
 database.txt
 AGENTS.md
+.agent/
+.gemini/
 
 # Uploads
 uploads/

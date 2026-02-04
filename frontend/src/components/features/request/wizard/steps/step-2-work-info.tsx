@@ -16,14 +16,6 @@ interface Step2Props {
 export function Step2WorkInfo({ data, updateData }: Step2Props) {
   const { data: prefill } = usePrefill()
 
-  // Helper for toggle checkbox
-  const toggleAttribute = (key: keyof RequestFormData['workAttributes']) => {
-    updateData("workAttributes", {
-      ...data.workAttributes,
-      [key]: !data.workAttributes[key]
-    })
-  }
-
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="space-y-1">
@@ -103,18 +95,18 @@ export function Step2WorkInfo({ data, updateData }: Step2Props) {
 
         {/* Work Attributes Checkboxes */}
         <div className="space-y-3">
-          <Label className="font-medium text-base">ลักษณะงานที่ปฏิบัติ (เลือกได้มากกว่า 1 ข้อ)</Label>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Label className="font-medium text-base text-muted-foreground">ลักษณะงานที่ปฏิบัติ (กำหนดเป็นมาตรฐาน 4 ข้อ)</Label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 opacity-80 pointer-events-none">
             <Label
               htmlFor="attr_ops"
-              className={`flex flex-row items-start space-x-3 space-y-0 rounded-xl border p-4 shadow-sm transition-all cursor-pointer hover:bg-accent/50 ${
+              className={`flex flex-row items-start space-x-3 space-y-0 rounded-xl border p-4 shadow-sm transition-all ${
                 data.workAttributes.operation ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"
               }`}
             >
               <Checkbox
                 id="attr_ops"
-                checked={data.workAttributes.operation}
-                onCheckedChange={() => toggleAttribute("operation")}
+                checked={true}
+                disabled
               />
               <div className="space-y-1 leading-none">
                 <span className="font-semibold block">งานปฏิบัติการ (Operation)</span>
@@ -126,14 +118,14 @@ export function Step2WorkInfo({ data, updateData }: Step2Props) {
 
             <Label
               htmlFor="attr_plan"
-              className={`flex flex-row items-start space-x-3 space-y-0 rounded-xl border p-4 shadow-sm transition-all cursor-pointer hover:bg-accent/50 ${
+              className={`flex flex-row items-start space-x-3 space-y-0 rounded-xl border p-4 shadow-sm transition-all ${
                 data.workAttributes.planning ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"
               }`}
             >
               <Checkbox
                 id="attr_plan"
-                checked={data.workAttributes.planning}
-                onCheckedChange={() => toggleAttribute("planning")}
+                checked={true}
+                disabled
               />
               <div className="space-y-1 leading-none">
                 <span className="font-semibold block">งานวางแผน (Planning)</span>
@@ -145,14 +137,14 @@ export function Step2WorkInfo({ data, updateData }: Step2Props) {
 
             <Label
               htmlFor="attr_coord"
-              className={`flex flex-row items-start space-x-3 space-y-0 rounded-xl border p-4 shadow-sm transition-all cursor-pointer hover:bg-accent/50 ${
+              className={`flex flex-row items-start space-x-3 space-y-0 rounded-xl border p-4 shadow-sm transition-all ${
                 data.workAttributes.coordination ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"
               }`}
             >
               <Checkbox
                 id="attr_coord"
-                checked={data.workAttributes.coordination}
-                onCheckedChange={() => toggleAttribute("coordination")}
+                checked={true}
+                disabled
               />
               <div className="space-y-1 leading-none">
                 <span className="font-semibold block">งานประสานงาน (Coordination)</span>
@@ -164,14 +156,14 @@ export function Step2WorkInfo({ data, updateData }: Step2Props) {
 
             <Label
               htmlFor="attr_service"
-              className={`flex flex-row items-start space-x-3 space-y-0 rounded-xl border p-4 shadow-sm transition-all cursor-pointer hover:bg-accent/50 ${
+              className={`flex flex-row items-start space-x-3 space-y-0 rounded-xl border p-4 shadow-sm transition-all ${
                 data.workAttributes.service ? "border-primary bg-primary/5 ring-1 ring-primary" : "border-border"
               }`}
             >
               <Checkbox
                 id="attr_service"
-                checked={data.workAttributes.service}
-                onCheckedChange={() => toggleAttribute("service")}
+                checked={true}
+                disabled
               />
               <div className="space-y-1 leading-none">
                 <span className="font-semibold block">งานบริการ (Service)</span>

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { Check, Loader2 } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -42,9 +43,8 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
   } = useRequestForm({ initialRequest })
   const { data: signatureCheck } = useCheckSignature()
 
-  const hasLicenseAttachment =
-    !!formData.files?.LICENSE ||
-    (formData.attachments ?? []).some((att) => att.file_type === "LICENSE")
+  const hasAttachments =
+    formData.files.length > 0 || (formData.attachments ?? []).length > 0
 
   const hasSignature =
     formData.signatureMode === "SAVED"
@@ -52,23 +52,34 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
       : !!formData.signature
   const isReadyToSubmit =
     hasSignature &&
-    hasLicenseAttachment &&
+    hasAttachments &&
     !!formData.rateMapping?.groupId &&
     !!formData.rateMapping?.itemId &&
     (formData.rateMapping?.amount ?? 0) > 0
   const missingReasons: string[] = []
-  if (!hasLicenseAttachment) missingReasons.push("ใบประกอบวิชาชีพ")
+  if (!hasAttachments) missingReasons.push("เอกสารแนบ")
   if (!formData.rateMapping?.groupId || !formData.rateMapping?.itemId) missingReasons.push("กลุ่ม/รายการเบิก")
   if ((formData.rateMapping?.amount ?? 0) <= 0) missingReasons.push("จำนวนเงิน")
   if (!hasSignature) missingReasons.push("ลายเซ็น")
   const disabledReason = missingReasons.length > 0 ? `ยังขาด: ${missingReasons.join(", ")}` : ""
-  const isStep3Valid = hasLicenseAttachment
+  const isStep3Valid = hasAttachments
 
   const handleNext = async () => {
-    // 1. Validation Logic (Simplified for now)
+    // 1. Validation Logic
+    if (currentStep === 2) {
+      const wa = formData.workAttributes
+      if (!wa.operation || !wa.planning || !wa.coordination || !wa.service) {
+        toast.error("กรุณาเลือกลักษณะงานที่ปฏิบัติให้ครบทั้ง 4 ข้อ")
+        return
+      }
+    }
 
     // 2. Trigger Attachment Confirmation
     if (currentStep === 3) {
+      if (!isStep3Valid) {
+         toast.error("กรุณาแนบเอกสารอย่างน้อย 1 รายการ")
+         return
+      }
       try {
          await confirmAttachments()
       } catch {
@@ -224,7 +235,7 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
                 </TooltipTrigger>
                 {currentStep === 3 && !isStep3Valid && (
                   <TooltipContent>
-                    ต้องแนบใบประกอบวิชาชีพก่อนดำเนินการต่อ
+                    ต้องแนบเอกสารก่อนดำเนินการต่อ
                   </TooltipContent>
                 )}
               </Tooltip>

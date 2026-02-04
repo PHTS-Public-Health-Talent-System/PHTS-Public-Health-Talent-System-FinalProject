@@ -40,10 +40,10 @@ export function Step5Review({ data, updateData, onGoToStep, prefillOriginal }: S
   const { data: signatureCheck } = useCheckSignature()
   const hasSavedSignature = !!signatureCheck?.has_signature
   const missing: { label: string; step: number }[] = []
-  const hasLicense =
-    !!data.files?.LICENSE ||
-    (data.attachments ?? []).some((att) => att.file_type === "LICENSE")
-  if (!hasLicense) missing.push({ label: "ใบประกอบวิชาชีพ", step: 3 })
+  const hasAttachments =
+    data.files.length > 0 ||
+    (data.attachments ?? []).length > 0
+  if (!hasAttachments) missing.push({ label: "เอกสารแนบ", step: 3 })
   if (!data.rateMapping?.groupId || !data.rateMapping?.itemId) {
     missing.push({ label: "กลุ่ม/รายการเบิก", step: 4 })
   }

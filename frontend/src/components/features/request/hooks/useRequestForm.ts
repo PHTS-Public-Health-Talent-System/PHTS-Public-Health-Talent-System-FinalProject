@@ -54,21 +54,17 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
     effectiveDate: "",
     missionGroup: "",
     workAttributes: {
-      operation: false,
-      planning: false,
-      coordination: false,
-      service: false,
-    },
-    files: {
-      LICENSE: null,
-      ORDER: null,
-      OTHER: null,
+      operation: true,
+      planning: true,
+      coordination: true,
+      service: true,
     },
     rateMapping: {
       groupId: "",
       itemId: "",
       amount: 0,
     },
+    files: [],
     signatureMode: undefined,
   });
 
@@ -80,35 +76,39 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
     setFormData((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  const handleUploadFile = (
-    type: keyof RequestFormData["files"],
-    file: File
-  ) => {
+  const handleUploadFile = (file: File) => {
     setFormData((prev) => ({
       ...prev,
-      files: { ...prev.files, [type]: file },
+      files: [...prev.files, file],
     }));
   };
 
-  const removeFile = (type: keyof RequestFormData["files"]) => {
+  const removeFile = (index: number) => {
     setFormData((prev) => ({
       ...prev,
-      files: { ...prev.files, [type]: null },
+      files: prev.files.filter((_, i) => i !== index),
     }));
   };
 
   useEffect(() => {
     if (!options?.initialRequest || initializedRef.current) return;
     const mapped = mapRequestToFormData(options.initialRequest);
+    // Ensure files is initialized as array if coming from mapper as object (should handle mapper update too ideally, but here we can override)
+    // Actually mapped.files might be problematic if mapper is not updated.
+    // Let's assume mapper returns object, we ignore it for now or convert it?
+    // attachments are separate.
     setFormData((prev) => ({
       ...prev,
       ...mapped,
       workAttributes: mapped.workAttributes ?? prev.workAttributes,
       rateMapping: mapped.rateMapping ?? prev.rateMapping,
+      files: [], // Reset local files on load, attachments handle existing
     }));
     setDraftRequestId(options.initialRequest.request_id);
     initializedRef.current = true;
   }, [options?.initialRequest]);
+
+  // ... (prefill effects remain same) ...
 
   useEffect(() => {
     if (!prefill) return;
@@ -117,7 +117,7 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
     if (prefill.mission_group && !formData.missionGroup) {
       updateFormData("missionGroup", prefill.mission_group);
     }
-
+    // ... (rest of prefill logic) ...
     if (!formData.title && prefill.title) updateFormData("title", prefill.title);
     if (!formData.firstName && prefill.first_name) updateFormData("firstName", prefill.first_name);
     if (!formData.lastName && prefill.last_name) updateFormData("lastName", prefill.last_name);
@@ -135,26 +135,26 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
     }
 
     if (prefill.employee_type && formData.employeeType === "CIVIL_SERVANT") {
-      const normalized = String(prefill.employee_type).trim().toUpperCase();
-      const directMap: Record<string, RequestFormData["employeeType"]> = {
-        CIVIL_SERVANT: "CIVIL_SERVANT",
-        GOV_EMPLOYEE: "GOV_EMPLOYEE",
-        GOVERNMENT_EMPLOYEE: "GOV_EMPLOYEE",
-        PH_EMPLOYEE: "PH_EMPLOYEE",
-        PUBLIC_HEALTH_EMPLOYEE: "PH_EMPLOYEE",
-        TEMP_EMPLOYEE: "TEMP_EMPLOYEE",
-        TEMPORARY_EMPLOYEE: "TEMP_EMPLOYEE",
-      };
-
-      const mapped =
-        directMap[normalized] ||
-        (normalized.includes("ข้าราชการ") ? "CIVIL_SERVANT" : "") ||
-        (normalized.includes("พนักงานราชการ") ? "GOV_EMPLOYEE" : "") ||
-        (normalized.includes("พนักงานกระทรวงสาธารณสุข") ? "PH_EMPLOYEE" : "") ||
-        (normalized.includes("ลูกจ้างชั่วคราว") ? "TEMP_EMPLOYEE" : "") ||
-        "CIVIL_SERVANT";
-
-      updateFormData("employeeType", mapped as RequestFormData["employeeType"]);
+        const normalized = String(prefill.employee_type).trim().toUpperCase();
+        const directMap: Record<string, RequestFormData["employeeType"]> = {
+          CIVIL_SERVANT: "CIVIL_SERVANT",
+          GOV_EMPLOYEE: "GOV_EMPLOYEE",
+          GOVERNMENT_EMPLOYEE: "GOV_EMPLOYEE",
+          PH_EMPLOYEE: "PH_EMPLOYEE",
+          PUBLIC_HEALTH_EMPLOYEE: "PH_EMPLOYEE",
+          TEMP_EMPLOYEE: "TEMP_EMPLOYEE",
+          TEMPORARY_EMPLOYEE: "TEMP_EMPLOYEE",
+        };
+  
+        const mapped =
+          directMap[normalized] ||
+          (normalized.includes("ข้าราชการ") ? "CIVIL_SERVANT" : "") ||
+          (normalized.includes("พนักงานราชการ") ? "GOV_EMPLOYEE" : "") ||
+          (normalized.includes("พนักงานกระทรวงสาธารณสุข") ? "PH_EMPLOYEE" : "") ||
+          (normalized.includes("ลูกจ้างชั่วคราว") ? "TEMP_EMPLOYEE" : "") ||
+          "CIVIL_SERVANT";
+  
+        updateFormData("employeeType", mapped as RequestFormData["employeeType"]);
     }
 
     // Auto-detect Profession from Position Name
@@ -256,9 +256,10 @@ export function useRequestForm(options?: { initialRequest?: RequestWithDetails }
     );
     fd.append("work_attributes", JSON.stringify(formData.workAttributes));
 
-    if (formData.files.LICENSE) fd.append("license_file", formData.files.LICENSE);
-    if (formData.files.ORDER) fd.append("files", formData.files.ORDER);
-    if (formData.files.OTHER) fd.append("files", formData.files.OTHER);
+    // Append all files to 'files' key
+    formData.files.forEach((file) => {
+      fd.append("files", file);
+    });
 
     if (includeSignature && formData.signatureMode === "NEW" && formData.signature) {
       const byteString = atob(formData.signature.split(",")[1] ?? "");

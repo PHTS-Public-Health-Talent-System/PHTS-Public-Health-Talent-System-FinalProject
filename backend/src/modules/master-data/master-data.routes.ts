@@ -41,6 +41,13 @@ router.delete(
 
 router.get("/rates", officerAuth, masterDataController.getMasterRates);
 
+router.post(
+  "/rates",
+  officerAuth,
+  // validate(createRateSchema), // TODO: Add schema
+  masterDataController.createMasterRate,
+);
+
 router.put(
   "/rates/:rateId",
   officerAuth,

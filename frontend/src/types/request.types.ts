@@ -111,11 +111,7 @@ export interface RequestFormData {
   };
 
   // Files
-  files: {
-    LICENSE: File | null;
-    ORDER: File | null;
-    OTHER: File | null;
-  };
+  files: File[];
   attachments?: Attachment[];
 
   // Section 6: Rate Mapping

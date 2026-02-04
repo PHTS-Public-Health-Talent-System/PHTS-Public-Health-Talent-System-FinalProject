@@ -69,6 +69,26 @@ export const updateMasterRate = async (req: Request, res: Response) => {
   }
 };
 
+export const createMasterRate = async (req: Request, res: Response) => {
+  try {
+    const { profession_code, group_no, item_no, sub_item_no, amount, condition_desc } = req.body;
+    const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
+
+    const rateId = await masterDataService.createMasterRate(
+      profession_code,
+      group_no,
+      item_no ?? null,
+      sub_item_no ?? null,
+      amount,
+      condition_desc,
+      actorId,
+    );
+    res.json({ success: true, data: { rateId }, message: "Rate created successfully" });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 // Get rates filtered by profession code
 export const getRatesByProfession = async (req: Request, res: Response) => {
   try {

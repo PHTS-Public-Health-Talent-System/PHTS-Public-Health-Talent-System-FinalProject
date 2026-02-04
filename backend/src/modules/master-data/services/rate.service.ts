@@ -41,6 +41,39 @@ export const updateMasterRate = async (
   });
 };
 
+export const createMasterRate = async (
+  profession_code: string,
+  group_no: number,
+  item_no: string | null,
+  sub_item_no: string | null,
+  amount: number,
+  condition_desc: string,
+  actorId?: number,
+): Promise<number> => {
+  const result = await query<ResultSetHeader>(
+    "INSERT INTO cfg_payment_rates (profession_code, group_no, item_no, sub_item_no, amount, condition_desc, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)",
+    [profession_code, group_no, item_no, sub_item_no, amount, condition_desc],
+  );
+
+  const rateId = result.insertId;
+
+  await emitAuditEvent({
+    eventType: AuditEventType.MASTER_RATE_UPDATE,
+    entityType: "payment_rate",
+    entityId: rateId,
+    actorId: actorId ?? null,
+    actorRole: null,
+    actionDetail: {
+      action: "create",
+      profession_code,
+      group_no,
+      amount,
+    },
+  });
+
+  return rateId;
+};
+
 /**
  * Get payment rates filtered by profession code.
  * This is used for the simplified dropdown in the request wizard.

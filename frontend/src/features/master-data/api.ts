@@ -21,6 +21,16 @@ export async function getMasterRates() {
   return res.data.data;
 }
 
+export async function getProfessions() {
+  const res = await api.get<ApiResponse<string[]>>('/config/professions');
+  return res.data.data;
+}
+
+export async function createMasterRate(payload: ApiPayload) {
+  const res = await api.post<ApiResponse<ApiPayload>>('/config/rates', payload);
+  return res.data.data;
+}
+
 export async function updateMasterRate(rateId: number | string, payload: ApiPayload) {
   const res = await api.put<ApiResponse<ApiPayload>>(`/config/rates/${rateId}`, payload);
   return res.data.data;

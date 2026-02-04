@@ -83,6 +83,37 @@ export class RequestRepository {
     return rows as RequestSubmissionEntity[];
   }
 
+  async findPendingByStepForOfficer(
+    stepNo: number,
+    officerId: number,
+  ): Promise<RequestSubmissionEntity[]> {
+    const baseSelect = `
+      SELECT r.*,
+             e.department AS emp_department,
+             e.sub_department AS emp_sub_department,
+             CASE WHEN vs.snapshot_id IS NULL THEN 0 ELSE 1 END AS has_verification_snapshot
+      FROM req_submissions r
+      LEFT JOIN emp_profiles e ON r.citizen_id = e.citizen_id
+      LEFT JOIN (
+        SELECT request_id, MAX(snapshot_id) AS snapshot_id
+        FROM req_verification_snapshots
+        GROUP BY request_id
+      ) vs ON vs.request_id = r.request_id
+      WHERE r.status = 'PENDING' AND r.current_step = ?
+    `;
+
+    const sql = `
+      (${baseSelect} AND r.assigned_officer_id = ?)
+      UNION ALL
+      (${baseSelect} AND r.assigned_officer_id IS NULL)
+      ORDER BY created_at ASC
+    `;
+
+    const params = [stepNo, officerId, stepNo];
+    const [rows] = await pool.query<RowDataPacket[]>(sql, params);
+    return rows as RequestSubmissionEntity[];
+  }
+
   async findAttachments(requestId: number): Promise<RequestAttachmentEntity[]> {
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT * FROM req_attachments WHERE request_id = ? ORDER BY uploaded_at DESC`,
@@ -142,7 +173,7 @@ export class RequestRepository {
     return rows as RequestSubmissionEntity[];
   }
 
-  // Fetch Attachments (OCR joins removed)
+  // Fetch Attachments
   async findAttachmentsWithMetadata(requestId: number): Promise<any[]> {
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT * FROM req_attachments WHERE request_id = ? ORDER BY uploaded_at DESC`,
@@ -413,15 +444,6 @@ export class RequestRepository {
 
   async delete(requestId: number, connection: PoolConnection): Promise<void> {
     const db = this.getDb(connection);
-    await db.execute(
-      `DELETE FROM req_ocr_qualifications WHERE request_id = ?`,
-      [requestId],
-    );
-    await db.execute(
-      `DELETE FROM req_ocr_results WHERE attachment_id IN
-       (SELECT attachment_id FROM req_attachments WHERE request_id = ?)`,
-      [requestId],
-    );
     await db.execute(`DELETE FROM req_attachments WHERE request_id = ?`, [
       requestId,
     ]);
@@ -517,7 +539,6 @@ export class RequestRepository {
     );
   }
 
-  // OCR Operations removed
   // --- Scope Resolution ---
 
   async findCitizenIdByUserId(userId: number): Promise<string | null> {

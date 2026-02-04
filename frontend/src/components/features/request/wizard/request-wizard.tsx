@@ -67,12 +67,12 @@ export function RequestWizard({ initialRequest }: RequestWizardProps) {
   const handleNext = async () => {
     // 1. Validation Logic (Simplified for now)
 
-    // 2. Trigger Attachment Confirmation (No OCR)
+    // 2. Trigger Attachment Confirmation
     if (currentStep === 3) {
       try {
          await confirmAttachments()
       } catch {
-         // Silently fail or ignore as OCR is removed
+         // Silently fail or ignore
       }
     }
 

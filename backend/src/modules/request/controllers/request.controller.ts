@@ -243,10 +243,6 @@ export class RequestController {
     res.json({ success: true, message: "Leave request adjusted successfully" });
   });
 
-  // --- OCR & ATTACHMENTS ---
-
-
-
   // --- OTHER ---
 
   getMasterRates = catchAsync(async (_req: Request, res: Response<ApiResponse>) => {

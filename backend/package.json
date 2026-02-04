@@ -13,7 +13,6 @@
     "db:setup": "tsx src/scripts/db/setup.ts",
     "admin:create": "tsx src/scripts/admin/create_admin.ts",
     "jobs:run": "tsx src/scripts/jobs/scheduled_jobs.ts",
-    "ocr:worker": "tsx src/workers/ocr.worker.ts",
     "lint": "eslint src/**/*.ts",
     "format": "prettier --write \"src/**/*.{ts,js,json}\"",
     "test": "jest",

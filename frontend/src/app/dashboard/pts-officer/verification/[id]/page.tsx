@@ -63,7 +63,6 @@ export default function PtsOfficerRequestDetailPage({
   const updateChecks = useUpdateVerificationChecks()
   const processAction = useProcessAction()
   const createSnapshot = useCreateVerificationSnapshot()
-  // const requestOcr = useRequestAttachmentOcr() // Removed
   const { data: rates, isLoading: isRatesLoading } = useMasterRates()
   // const { data: recommended } = useRecommendedClassification(id) // Removed
   const { data: availableOfficers } = useAvailableOfficers()
@@ -104,7 +103,6 @@ export default function PtsOfficerRequestDetailPage({
     remark: "",
   })
 
-  // Removed useAttachmentOcr for license
 
   if (isLoading) {
     return (
@@ -503,7 +501,7 @@ export default function PtsOfficerRequestDetailPage({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">เอกสารแนบ & OCR</CardTitle>
+          <CardTitle className="text-lg">เอกสารแนบ</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           {request.attachments.length === 0 ? (
@@ -534,7 +532,6 @@ export default function PtsOfficerRequestDetailPage({
             ))
           )}
 
-          {/* License OCR Removed */}
         </CardContent>
       </Card>
 

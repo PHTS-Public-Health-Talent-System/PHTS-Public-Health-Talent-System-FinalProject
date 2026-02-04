@@ -2,7 +2,7 @@
  * Entity interfaces matching request-related DB tables.
  *
  * Core request tables: req_submissions, req_approvals, req_attachments
- * Related tables: req_eligibility, req_ocr_results
+ * Related tables: req_eligibility
  * External tables (read-only joins): users, emp_profiles, emp_support_staff,
  *   sig_images, cfg_payment_rates, cfg_classification_rules, leave_records
  */
@@ -88,7 +88,6 @@ export interface RequestVerificationSnapshotEntity {
   created_at: Date;
 }
 
-// RequestOcrResultEntity removed
 
 // ─── cfg_payment_rates (read-only) ───────────────────────────────────────────
 

@@ -82,7 +82,6 @@ router.get(
   requestController.getPendingApprovals,
 );
 
-// OCR routes removed
 
 // Get approval history for current approver
 router.get(

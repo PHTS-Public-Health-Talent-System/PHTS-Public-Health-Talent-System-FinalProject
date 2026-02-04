@@ -93,7 +93,6 @@ export function useAvailableOfficers() {
   });
 }
 
-// Removed useAttachmentOcr
 
 export function useCreateRequest() {
   const qc = useQueryClient();
@@ -143,7 +142,6 @@ export function useConfirmAttachments() {
   });
 }
 
-// Removed useRequestAttachmentOcr
 // Removed useRecommendedClassification
 
 export function useUpdateClassification() {

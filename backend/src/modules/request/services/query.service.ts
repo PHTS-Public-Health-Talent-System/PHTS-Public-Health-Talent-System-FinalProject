@@ -43,6 +43,15 @@ export class RequestQueryService {
       throw new Error(`Invalid approver role: ${userRole}`);
     }
 
+    if (userRole === "PTS_OFFICER") {
+      if (userId === undefined || userId === null) {
+        throw new Error("User ID is required for PTS_OFFICER");
+      }
+      const requestRows =
+        await requestRepository.findPendingByStepForOfficer(stepNo, userId);
+      return await hydrateRequests(requestRows as any[]);
+    }
+
     let extraWhere = "";
     const extraParams: any[] = [];
 
@@ -65,13 +74,6 @@ export class RequestQueryService {
         extraWhere += " AND r.user_id = ?";
         extraParams.push(userId);
       }
-    }
-
-    // PTS_OFFICER should see only assigned requests
-    if (userId !== undefined && userId !== null && userRole === "PTS_OFFICER") {
-      extraWhere +=
-        " AND (r.assigned_officer_id IS NULL OR r.assigned_officer_id = ?)";
-      extraParams.push(userId);
     }
 
     const requestRows = await requestRepository.findPendingByStep(
@@ -212,7 +214,6 @@ export class RequestQueryService {
         file_size: att.file_size,
         mime_type: att.mime_type,
         uploaded_at: att.uploaded_at,
-        // OCR fields removed
       })) as RequestAttachment[],
       actions: actionsWithActor,
     };

@@ -5,7 +5,6 @@ import type { DisplayScope } from '@/features/request/approver-utils';
 
 
 // Removed RecommendedClassification interface
-// Removed OcrResult interface
 
 export interface MasterRate {
   rate_id: number;
@@ -115,8 +114,6 @@ export async function confirmAttachments(id: number | string) {
   return res.data.data;
 }
 
-// Removed getAttachmentOcr
-// Removed requestAttachmentOcr
 // Removed getRecommendedClassification
 
 export async function updateClassification(

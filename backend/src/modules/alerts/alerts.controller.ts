@@ -6,7 +6,7 @@ import {
   deleteRetirement,
 } from "./services/alerts.service.js";
 
-export async function getRetirements(req: Request, res: Response) {
+export async function getRetirements(_req: Request, res: Response) {
   const records = await listRetirements();
   res.json({ success: true, data: records });
 }

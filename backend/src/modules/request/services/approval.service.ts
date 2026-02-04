@@ -452,7 +452,8 @@ export class RequestApprovalService {
     const { requestIds, comment } = params;
     const result: BatchApproveResult = { success: [], failed: [] };
 
-    const expectedStep = ROLE_STEP_MAP[actorRole];
+    const expectedStep =
+      ROLE_STEP_MAP[actorRole as keyof typeof ROLE_STEP_MAP];
     const allowedSteps =
       actorRole === "DIRECTOR"
         ? [5, 6]

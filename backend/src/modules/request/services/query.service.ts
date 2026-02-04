@@ -37,7 +37,7 @@ export class RequestQueryService {
     userId?: number,
     selectedScope?: string,
   ): Promise<RequestWithDetails[]> {
-    const stepNo = ROLE_STEP_MAP[userRole];
+    const stepNo = ROLE_STEP_MAP[userRole as keyof typeof ROLE_STEP_MAP];
 
     if (!stepNo) {
       throw new Error(`Invalid approver role: ${userRole}`);
@@ -120,9 +120,10 @@ export class RequestQueryService {
 
     // Check if user is approver at the current step
     let isApprover =
-      ROLE_STEP_MAP[userRole] !== undefined &&
+      ROLE_STEP_MAP[userRole as keyof typeof ROLE_STEP_MAP] !== undefined &&
       request.status === RequestStatus.PENDING &&
-      request.current_step === ROLE_STEP_MAP[userRole];
+      request.current_step ===
+        ROLE_STEP_MAP[userRole as keyof typeof ROLE_STEP_MAP];
 
     // For HEAD_WARD and HEAD_DEPT, also verify scope access
     if (isApprover && (userRole === "HEAD_WARD" || userRole === "HEAD_DEPT")) {

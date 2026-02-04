@@ -8,7 +8,10 @@ export type PayrollAction =
   | "APPROVE_DIRECTOR"
   | "REJECT";
 
-const TRANSITIONS: Record<PayrollAction, Record<PeriodStatus, PeriodStatus>> = {
+const TRANSITIONS: Record<
+  PayrollAction,
+  Partial<Record<PeriodStatus, PeriodStatus>>
+> = {
   SUBMIT: {
     [PeriodStatus.OPEN]: PeriodStatus.WAITING_HR,
   },

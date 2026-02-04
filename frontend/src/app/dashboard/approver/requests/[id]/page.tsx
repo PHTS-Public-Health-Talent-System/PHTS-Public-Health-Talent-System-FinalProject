@@ -181,26 +181,26 @@ export default function ApproverRequestDetailPage({
                <div>
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">สังกัด</p>
                  <p className="font-medium text-base">
-                   {formView.department ?? departmentGroup ?? "-"}
+                   {formView?.department ?? departmentGroup ?? "-"}
                  </p>
                </div>
                <div>
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">เลขที่ตำแหน่ง</p>
                  <p className="font-medium text-base">
-                   {formView.positionNumber ?? positionNumber ?? "-"}
+                   {formView?.positionNumber ?? positionNumber ?? "-"}
                  </p>
                </div>
                <div>
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ตำแหน่ง</p>
-                 <p className="font-medium">{formView.positionName ?? "-"}</p>
+                 <p className="font-medium">{formView?.positionName ?? "-"}</p>
                </div>
                <div>
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">หน่วยงาน</p>
-                 <p className="font-medium">{formView.subDepartment ?? "-"}</p>
+                 <p className="font-medium">{formView?.subDepartment ?? "-"}</p>
                </div>
                <div className="sm:col-span-2">
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">ภารกิจหลัก</p>
-                 <p className="font-medium">{formView.missionGroup ?? request.main_duty ?? "-"}</p>
+                 <p className="font-medium">{formView?.missionGroup ?? request.main_duty ?? "-"}</p>
                </div>
                <div>
                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">วันที่มีผล</p>

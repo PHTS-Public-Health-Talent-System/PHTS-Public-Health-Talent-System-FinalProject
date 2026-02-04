@@ -2,9 +2,9 @@
  * src/modules/request/services/command.service.ts
  */
 
-import { getConnection } from "../../../config/database.js";
-import { readFile } from "node:fs/promises";
-import { PoolConnection } from "mysql2/promise";
+import { getConnection } from '../../../config/database.js';
+import { readFile } from 'node:fs/promises';
+import { PoolConnection } from 'mysql2/promise';
 import {
   RequestStatus,
   ActionType,
@@ -13,19 +13,19 @@ import {
   STEP_ROLE_MAP,
   ROLE_STEP_MAP,
   RequestWithDetails,
-} from "../request.types.js";
-import { CreateRequestDTO, UpdateRequestDTO } from "../dto/index.js";
-import { NotificationService } from "../../notification/services/notification.service.js";
+} from '../request.types.js';
+import { CreateRequestDTO, UpdateRequestDTO } from '../dto/index.js';
+import { NotificationService } from '../../notification/services/notification.service.js';
 import {
   generateRequestNoFromId,
   normalizeDateToYMD,
   mapRequestRow,
   getRequestLinkForRole,
   parseJsonField,
-} from "./helpers.js";
-import { requestQueryService } from "./query.service.js"; // Use the class instance
-import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
-import { requestRepository } from "../repositories/request.repository.js"; // [NEW]
+} from './helpers.js';
+import { requestQueryService } from './query.service.js'; // Use the class instance
+import { emitAuditEvent, AuditEventType } from '../../audit/services/audit.service.js';
+import { requestRepository } from '../repositories/request.repository.js'; // [NEW]
 
 export class RequestCommandService {
   // --- Helpers (Internal) ---
@@ -53,9 +53,8 @@ export class RequestCommandService {
       if (!file.path) continue; // Skip files without path (e.g., MemoryStorage signatures)
 
       let fileType: string = FileType.OTHER;
-      if (file.fieldname === "license_file") fileType = FileType.LICENSE;
-      if (file.fieldname === "applicant_signature")
-        fileType = FileType.SIGNATURE;
+      if (file.fieldname === 'license_file') fileType = FileType.LICENSE;
+      if (file.fieldname === 'applicant_signature') fileType = FileType.SIGNATURE;
       await requestRepository.insertAttachment(
         {
           request_id: requestId,
@@ -85,23 +84,18 @@ export class RequestCommandService {
 
       const citizenId = await requestRepository.findUserCitizenId(userId);
       if (!citizenId) {
-        throw new Error("User not found");
+        throw new Error('User not found');
       }
 
-      const signatureId = await requestRepository.findSignatureIdByUserId(
-        userId,
-        connection,
-      );
+      const signatureId = await requestRepository.findSignatureIdByUserId(userId, connection);
       if (!signatureId && !_signatureFile) {
-        throw new Error("ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนยื่นคำขอ");
+        throw new Error('ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนยื่นคำขอ');
       }
 
       const requestedAmount = data.requested_amount ?? 0;
       // Rate validation skipped - allowing any amount for testing
 
-      const effectiveDateStr = normalizeDateToYMD(
-        data.effective_date as string | Date,
-      );
+      const effectiveDateStr = normalizeDateToYMD(data.effective_date as string | Date);
 
       // [REFACTOR] Use Repo Create
       const requestId = await requestRepository.create(
@@ -133,10 +127,10 @@ export class RequestCommandService {
       await emitAuditEvent(
         {
           eventType: AuditEventType.REQUEST_CREATE,
-          entityType: "request",
+          entityType: 'request',
           entityId: requestId,
           actorId: userId,
-          actorRole: "USER", // Creating user usually has role USER in this context
+          actorRole: 'USER', // Creating user usually has role USER in this context
           actionDetail: {
             request_no: requestNo,
             personnel_type: data.personnel_type,
@@ -179,16 +173,13 @@ export class RequestCommandService {
     try {
       await connection.beginTransaction();
 
-      const requestEntity = await requestRepository.findById(
-        requestId,
-        connection,
-      );
+      const requestEntity = await requestRepository.findById(requestId, connection);
       if (!requestEntity) {
-        throw new Error("Request not found");
+        throw new Error('Request not found');
       }
 
-      if (!["PTS_OFFICER", "HEAD_HR"].includes(actorRole)) {
-        throw new Error("Invalid role for verification snapshot");
+      if (!['PTS_OFFICER', 'HEAD_HR'].includes(actorRole)) {
+        throw new Error('Invalid role for verification snapshot');
       }
 
       const snapshotId = await requestRepository.insertVerificationSnapshot(
@@ -204,10 +195,7 @@ export class RequestCommandService {
         connection,
       );
 
-      const snapshot = await requestRepository.findVerificationSnapshotById(
-        snapshotId,
-        connection,
-      );
+      const snapshot = await requestRepository.findVerificationSnapshotById(snapshotId, connection);
 
       await connection.commit();
       return snapshot;
@@ -223,75 +211,57 @@ export class RequestCommandService {
   // Submit Request
   // ============================================================================
 
-  async submitRequest(
-    requestId: number,
-    userId: number,
-    userRole: string,
-  ): Promise<PTSRequest> {
+  async submitRequest(requestId: number, userId: number, userRole: string): Promise<PTSRequest> {
     const connection = await getConnection();
 
     try {
       await connection.beginTransaction();
 
       // [REFACTOR] Lock row for update check
-      const requestEntity = await requestRepository.findById(
-        requestId,
-        connection,
-      );
+      const requestEntity = await requestRepository.findById(requestId, connection);
 
       if (!requestEntity) {
-        throw new Error("Request not found");
+        throw new Error('Request not found');
       }
 
       // Check Permission
       if (requestEntity.user_id !== userId) {
-        throw new Error("You do not have permission to submit this request");
+        throw new Error('You do not have permission to submit this request');
       }
 
       if (requestEntity.status !== RequestStatus.DRAFT) {
-        throw new Error(
-          `Cannot submit request with status: ${requestEntity.status}`,
-        );
+        throw new Error(`Cannot submit request with status: ${requestEntity.status}`);
       }
 
-      if (
-        !requestEntity.requested_amount ||
-        requestEntity.requested_amount <= 0
-      ) {
-        throw new Error("requested_amount is required before submit");
+      if (!requestEntity.requested_amount || requestEntity.requested_amount <= 0) {
+        throw new Error('requested_amount is required before submit');
       }
-
-
 
       const stepNo =
         requestEntity.current_step && requestEntity.current_step > 0
           ? requestEntity.current_step
           : 1;
       const nextStep =
-        userRole === "HEAD_WARD" && stepNo === 1
+        userRole === 'HEAD_WARD' && stepNo === 1
           ? 2
-          : userRole === "HEAD_DEPT" && stepNo === 1
+          : userRole === 'HEAD_DEPT' && stepNo === 1
             ? 3
             : stepNo;
 
       // Capture signature snapshot on submit (sig_images or applicant signature)
-      let signatureSnapshot = await requestRepository.findSignatureSnapshot(
-        userId,
-        connection,
-      );
+      let signatureSnapshot = await requestRepository.findSignatureSnapshot(userId, connection);
       if (!signatureSnapshot) {
-        const signaturePath =
-          await requestRepository.findSignatureAttachmentPath(
-            requestId,
-            connection,
-          );
+        const signaturePath = await requestRepository.findSignatureAttachmentPath(
+          requestId,
+          connection,
+        );
         if (signaturePath) {
           signatureSnapshot = await readFile(signaturePath);
         }
       }
 
       if (!signatureSnapshot) {
-        throw new Error("ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนส่งคำขอ");
+        throw new Error('ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนส่งคำขอ');
       }
 
       // [REFACTOR] Use Repo Update
@@ -317,14 +287,13 @@ export class RequestCommandService {
         connection,
       );
 
-
       await connection.commit();
 
       // Notification (After commit)
-      const nextRole = STEP_ROLE_MAP[nextStep] || "HEAD_WARD";
+      const nextRole = STEP_ROLE_MAP[nextStep] || 'HEAD_WARD';
       await NotificationService.notifyRole(
         nextRole,
-        "มีคำขอใหม่รออนุมัติ",
+        'มีคำขอใหม่รออนุมัติ',
         `มีคำขอเลขที่ ${requestEntity.request_no} รอการตรวจสอบจากท่าน`,
         getRequestLinkForRole(nextRole, requestId),
         connection,
@@ -358,20 +327,17 @@ export class RequestCommandService {
       await connection.beginTransaction();
 
       // [REFACTOR] Lock row
-      const requestEntity = await requestRepository.findById(
-        requestId,
-        connection,
-      );
+      const requestEntity = await requestRepository.findById(requestId, connection);
 
       if (!requestEntity) {
-        throw new Error("ไม่พบคำขอที่ต้องการแก้ไข");
+        throw new Error('ไม่พบคำขอที่ต้องการแก้ไข');
       }
 
       const isOwner = requestEntity.user_id === userId;
-      const isOfficer = userRole === "PTS_OFFICER";
+      const isOfficer = userRole === 'PTS_OFFICER';
 
       if (!isOwner && !isOfficer) {
-        throw new Error("คุณไม่มีสิทธิ์แก้ไขคำขอนี้");
+        throw new Error('คุณไม่มีสิทธิ์แก้ไขคำขอนี้');
       }
 
       if (isOwner) {
@@ -386,23 +352,18 @@ export class RequestCommandService {
       }
 
       if (isOfficer) {
-        const officerStep = ROLE_STEP_MAP["PTS_OFFICER"];
+        const officerStep = ROLE_STEP_MAP['PTS_OFFICER'];
         if (
           requestEntity.status !== RequestStatus.PENDING ||
           requestEntity.current_step !== officerStep
         ) {
-          throw new Error(
-            "คำขอนี้ไม่อยู่ในขั้นตอนที่เจ้าหน้าที่สามารถแก้ไขได้",
-          );
+          throw new Error('คำขอนี้ไม่อยู่ในขั้นตอนที่เจ้าหน้าที่สามารถแก้ไขได้');
         }
-        if (
-          requestEntity.assigned_officer_id &&
-          requestEntity.assigned_officer_id !== userId
-        ) {
-          throw new Error("คำขอนี้ถูกมอบหมายให้เจ้าหน้าที่ท่านอื่นแล้ว");
+        if (requestEntity.assigned_officer_id && requestEntity.assigned_officer_id !== userId) {
+          throw new Error('คำขอนี้ถูกมอบหมายให้เจ้าหน้าที่ท่านอื่นแล้ว');
         }
         if ((files && files.length > 0) || _signatureFile) {
-          throw new Error("PTS_OFFICER cannot modify attachments or signature");
+          throw new Error('PTS_OFFICER cannot modify attachments or signature');
         }
 
         const hasDisallowedFields =
@@ -417,19 +378,15 @@ export class RequestCommandService {
           data.reason !== undefined;
 
         if (hasDisallowedFields) {
-          throw new Error(
-            "PTS_OFFICER can only update verification checks via submission_data",
-          );
+          throw new Error('PTS_OFFICER can only update verification checks via submission_data');
         }
 
         if (data.submission_data) {
           const keys = Object.keys(data.submission_data || {});
-          const allowedKeys = new Set(["verification_checks"]);
+          const allowedKeys = new Set(['verification_checks']);
           const hasOther = keys.some((key) => !allowedKeys.has(key));
           if (hasOther) {
-            throw new Error(
-              "PTS_OFFICER can only update verification_checks in submission_data",
-            );
+            throw new Error('PTS_OFFICER can only update verification_checks in submission_data');
           }
         }
       }
@@ -437,18 +394,14 @@ export class RequestCommandService {
       // Build update object
       const updateData: any = {};
 
-      if (data.personnel_type !== undefined)
-        updateData.personnel_type = data.personnel_type;
+      if (data.personnel_type !== undefined) updateData.personnel_type = data.personnel_type;
       if (data.position_number !== undefined)
         updateData.current_position_number = data.position_number || null;
       if (data.department_group !== undefined)
         updateData.current_department = data.department_group || null;
-      if (data.main_duty !== undefined)
-        updateData.main_duty = data.main_duty || null;
-      if (data.work_attributes !== undefined)
-        updateData.work_attributes = data.work_attributes;
-      if (data.request_type !== undefined)
-        updateData.request_type = data.request_type;
+      if (data.main_duty !== undefined) updateData.main_duty = data.main_duty || null;
+      if (data.work_attributes !== undefined) updateData.work_attributes = data.work_attributes;
+      if (data.request_type !== undefined) updateData.request_type = data.request_type;
 
       if (data.requested_amount !== undefined) {
         const amount = Number(data.requested_amount);
@@ -457,9 +410,7 @@ export class RequestCommandService {
       }
 
       if (data.effective_date !== undefined) {
-        updateData.effective_date = new Date(
-          normalizeDateToYMD(data.effective_date),
-        );
+        updateData.effective_date = new Date(normalizeDateToYMD(data.effective_date));
       }
 
       if (data.submission_data !== undefined) {
@@ -504,19 +455,14 @@ export class RequestCommandService {
     try {
       await connection.beginTransaction();
 
-      const requestEntity = await requestRepository.findById(
-        requestId,
-        connection,
-      );
+      const requestEntity = await requestRepository.findById(requestId, connection);
 
       if (!requestEntity) {
-        throw new Error("Request not found");
+        throw new Error('Request not found');
       }
 
       if (requestEntity.status !== RequestStatus.PENDING) {
-        throw new Error(
-          `Cannot update verification checks with status: ${requestEntity.status}`,
-        );
+        throw new Error(`Cannot update verification checks with status: ${requestEntity.status}`);
       }
 
       const expectedRole = STEP_ROLE_MAP[requestEntity.current_step];
@@ -528,14 +474,10 @@ export class RequestCommandService {
 
       // Logic to handle JSON
       const submissionData =
-        parseJsonField<Record<string, unknown>>(
-          requestEntity.submission_data,
-          "submission_data",
-        ) || {};
+        parseJsonField<Record<string, unknown>>(requestEntity.submission_data, 'submission_data') ||
+        {};
       const existingChecks =
-        (submissionData.verification_checks as
-          | Record<string, unknown>
-          | undefined) || {};
+        (submissionData.verification_checks as Record<string, unknown> | undefined) || {};
       const nextChecks: Record<string, unknown> = { ...existingChecks };
 
       const buildCheck = (input: any) => ({
@@ -580,38 +522,24 @@ export class RequestCommandService {
   // Cancel Request
   // ============================================================================
 
-  async cancelRequest(
-    requestId: number,
-    userId: number,
-    reason?: string,
-  ): Promise<PTSRequest> {
+  async cancelRequest(requestId: number, userId: number, reason?: string): Promise<PTSRequest> {
     const connection = await getConnection();
 
     try {
       await connection.beginTransaction();
 
-      const requestEntity = await requestRepository.findById(
-        requestId,
-        connection,
-      );
+      const requestEntity = await requestRepository.findById(requestId, connection);
       if (!requestEntity) {
-        throw new Error("ไม่พบคำขอที่ต้องการยกเลิก");
+        throw new Error('ไม่พบคำขอที่ต้องการยกเลิก');
       }
 
       if (requestEntity.user_id !== userId) {
-        throw new Error("คุณไม่มีสิทธิ์ยกเลิกคำขอนี้");
+        throw new Error('คุณไม่มีสิทธิ์ยกเลิกคำขอนี้');
       }
 
-      const nonCancellableStatuses = [
-        RequestStatus.APPROVED,
-        RequestStatus.CANCELLED,
-      ];
-      if (
-        nonCancellableStatuses.includes(requestEntity.status as RequestStatus)
-      ) {
-        throw new Error(
-          `ไม่สามารถยกเลิกคำขอที่มีสถานะ ${requestEntity.status} ได้`,
-        );
+      const nonCancellableStatuses = [RequestStatus.APPROVED, RequestStatus.CANCELLED];
+      if (nonCancellableStatuses.includes(requestEntity.status as RequestStatus)) {
+        throw new Error(`ไม่สามารถยกเลิกคำขอที่มีสถานะ ${requestEntity.status} ได้`);
       }
 
       // [REFACTOR] Update Status
@@ -630,7 +558,7 @@ export class RequestCommandService {
           actor_id: userId,
           step_no: requestEntity.current_step || 0,
           action: ActionType.CANCEL,
-          comment: reason || "ผู้ยื่นขอยกเลิกคำขอ",
+          comment: reason || 'ผู้ยื่นขอยกเลิกคำขอ',
           signature_snapshot: null,
         },
         connection,
@@ -660,7 +588,7 @@ export class RequestCommandService {
     remark: string,
     editorName: string,
   ): Promise<void> {
-    const fullRemark = `${remark ?? ""} [Edited by ${editorName}]`;
+    const fullRemark = `${remark ?? ''} [Edited by ${editorName}]`;
 
     // [REFACTOR] Use Repo
     await requestRepository.updateLeaveAdjustment(id, {
@@ -687,25 +615,25 @@ export class RequestCommandService {
       await connection.beginTransaction();
 
       const request = await requestRepository.findById(requestId, connection);
-      if (!request) throw new Error("Request not found");
+      if (!request) throw new Error('Request not found');
 
       if (request.status !== RequestStatus.PENDING && request.status !== RequestStatus.DRAFT) {
-        throw new Error("Cannot update rate mapping of processed request");
+        throw new Error('Cannot update rate mapping of processed request');
       }
 
       // Resolve profession from position name (joined field) or fallback
-      const positionName = request.position_name || "";
-      let professionCode = this.resolveProfessionCode(positionName);
+      const positionName = request.position_name || '';
+      const professionCode = this.resolveProfessionCode(positionName);
 
       console.log(`[DEBUG_RATE] RequestId=${requestId}`);
       console.log(`[DEBUG_RATE] Position="${positionName}"`);
       console.log(`[DEBUG_RATE] ResolvedCode="${professionCode}"`);
-      console.log(`[DEBUG_RATE] Params: Group=${data.group_no}, Item=${data.item_no}, Sub=${data.sub_item_no}`);
+      console.log(
+        `[DEBUG_RATE] Params: Group=${data.group_no}, Item=${data.item_no}, Sub=${data.sub_item_no}`,
+      );
 
       if (!professionCode) {
-         throw new Error(
-           `Cannot resolve profession from position: ${positionName}`,
-         );
+        throw new Error(`Cannot resolve profession from position: ${positionName}`);
       }
 
       const rate = await requestRepository.findRateByDetails(
@@ -716,14 +644,11 @@ export class RequestCommandService {
       );
 
       if (!rate) {
-        throw new Error("Invalid rate mapping");
+        throw new Error('Invalid rate mapping');
       }
 
       const submissionData =
-        parseJsonField<Record<string, unknown>>(
-          request.submission_data,
-          "submission_data",
-        ) || {};
+        parseJsonField<Record<string, unknown>>(request.submission_data, 'submission_data') || {};
       const existingRateMapping =
         (submissionData as any).rate_mapping || (submissionData as any).classification;
       const nextSubmissionData = {
@@ -754,7 +679,7 @@ export class RequestCommandService {
         amount: rate.amount,
         group_no: rate.group_no,
         item_no: rate.item_no,
-        sub_item_no: rate.sub_item_no
+        sub_item_no: rate.sub_item_no,
       };
     } catch (error) {
       await connection.rollback();
@@ -765,23 +690,24 @@ export class RequestCommandService {
   }
   private resolveProfessionCode(positionName: string): string | null {
     const name = positionName.trim();
-    if (name.includes("ทันตแพทย์")) return "DENTIST";
-    if (name.includes("นายแพทย์") || name.includes("แพทย์")) return "DOCTOR";
-    if (name.includes("เภสัชกร")) return "PHARMACIST";
-    if (name.includes("พยาบาล")) {
-        const excluded = ["ผู้ช่วยพยาบาล", "พนักงานช่วยการพยาบาล", "พนักงานช่วยเหลือคนไข้"];
-        if (excluded.some(v => name.startsWith(v))) return null;
-        return "NURSE";
+    if (name.includes('ทันตแพทย์')) return 'DENTIST';
+    if (name.includes('นายแพทย์') || name.includes('แพทย์')) return 'DOCTOR';
+    if (name.includes('เภสัชกร')) return 'PHARMACIST';
+    if (name.includes('พยาบาล')) {
+      const excluded = ['ผู้ช่วยพยาบาล', 'พนักงานช่วยการพยาบาล', 'พนักงานช่วยเหลือคนไข้'];
+      if (excluded.some((v) => name.startsWith(v))) return null;
+      return 'NURSE';
     }
-    if (name.startsWith("นักเทคนิคการแพทย์")) return "MED_TECH";
-    if (name.startsWith("นักรังสีการแพทย์")) return "RAD_TECH";
-    if (name.startsWith("นักกายภาพบำบัด") || name.startsWith("นักกายภาพบําบัด")) return "PHYSIO";
-    if (name.startsWith("นักกิจกรรมบำบัด") || name.startsWith("นักกิจกรรมบําบัด")) return "OCC_THERAPY";
-    if (name.startsWith("นักอาชีวบำบัด") || name.startsWith("นักอาชีวบําบัด")) return "OCC_THERAPY";
-    if (name.startsWith("นักจิตวิทยา")) return "CLIN_PSY";
-    if (name.startsWith("นักแก้ไขความผิดปกติ")) return "SPEECH_THERAPIST";
-    if (name.startsWith("นักวิชาการศึกษาพิเศษ")) return "SPECIAL_EDU";
-    if (name.startsWith("นักเทคโนโลยีหัวใจและทรวงอก")) return "CARDIO_TECH";
+    if (name.startsWith('นักเทคนิคการแพทย์')) return 'MED_TECH';
+    if (name.startsWith('นักรังสีการแพทย์')) return 'RAD_TECH';
+    if (name.startsWith('นักกายภาพบำบัด') || name.startsWith('นักกายภาพบําบัด')) return 'PHYSIO';
+    if (name.startsWith('นักกิจกรรมบำบัด') || name.startsWith('นักกิจกรรมบําบัด'))
+      return 'OCC_THERAPY';
+    if (name.startsWith('นักอาชีวบำบัด') || name.startsWith('นักอาชีวบําบัด')) return 'OCC_THERAPY';
+    if (name.startsWith('นักจิตวิทยา')) return 'CLIN_PSY';
+    if (name.startsWith('นักแก้ไขความผิดปกติ')) return 'SPEECH_THERAPIST';
+    if (name.startsWith('นักวิชาการศึกษาพิเศษ')) return 'SPECIAL_EDU';
+    if (name.startsWith('นักเทคโนโลยีหัวใจและทรวงอก')) return 'CARDIO_TECH';
     return null;
   }
 }

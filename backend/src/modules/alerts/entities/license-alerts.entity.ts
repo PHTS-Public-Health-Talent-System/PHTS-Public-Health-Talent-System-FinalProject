@@ -28,3 +28,11 @@ export interface LicenseAlertSummary {
   expiring_90: number;
   total: number;
 }
+
+export interface LicenseExpiryRow {
+  citizen_id: string;
+  full_name: string;
+  position_name: string;
+  effective_expiry: string | null;
+  days_left: number | null;
+}

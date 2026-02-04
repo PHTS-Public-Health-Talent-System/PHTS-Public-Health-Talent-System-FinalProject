@@ -26,9 +26,8 @@ import financeRoutes from "./modules/finance/finance.routes.js";
 import auditRoutes from "./modules/audit/audit.routes.js";
 import slaRoutes from "./modules/sla/sla.routes.js";
 import accessReviewRoutes from "./modules/access-review/access-review.routes.js";
-import dataQualityRoutes from "./modules/data-quality/data-quality.routes.js";
 import snapshotRoutes from "./modules/snapshot/snapshot.routes.js";
-import licenseAlertsRoutes from "./modules/license-alerts/license-alerts.routes.js";
+import alertsRoutes from "./modules/alerts/alerts.routes.js";
 import { ApiResponse } from "./types/auth.js";
 import { errorHandler, notFoundHandler } from "./middlewares/errorHandler.js";
 import { apiRateLimiter } from "./middlewares/rateLimiter.js";
@@ -147,9 +146,8 @@ app.use("/api/finance", financeRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/sla", slaRoutes);
 app.use("/api/access-review", accessReviewRoutes);
-app.use("/api/data-quality", dataQualityRoutes);
 app.use("/api/snapshots", snapshotRoutes);
-app.use("/api/license-alerts", licenseAlertsRoutes);
+app.use("/api/alerts", alertsRoutes);
 
 /**
  * 404 Handler - Route Not Found

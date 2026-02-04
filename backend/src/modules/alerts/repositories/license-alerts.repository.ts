@@ -6,7 +6,12 @@
 
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
 import db from "../../../config/database.js";
-import { AlertBucket, LicenseAlertRow, LicenseAlertSummary } from "../entities/license-alerts.entity.js";
+import {
+  AlertBucket,
+  LicenseAlertRow,
+  LicenseAlertSummary,
+  LicenseExpiryRow,
+} from "../entities/license-alerts.entity.js";
 
 // SQL fragments for license alert queries
 const bucketCaseSql = `
@@ -125,6 +130,40 @@ export class LicenseAlertsRepository {
       license_expiry: row.license_expiry ? String(row.license_expiry) : null,
       days_left: row.days_left !== null ? Number(row.days_left) : null,
       bucket: row.bucket as AlertBucket,
+    }));
+  }
+
+  static async getAllWithExpiry(
+    asOf: Date = new Date(),
+    conn?: PoolConnection,
+  ): Promise<LicenseExpiryRow[]> {
+    const executor = conn ?? db;
+    const sql = `
+      SELECT
+        citizen_id,
+        TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) AS full_name,
+        position_name,
+        DATE(effective_expiry) AS effective_expiry,
+        DATEDIFF(effective_expiry, DATE(?)) AS days_left
+      FROM (
+        ${baseSubquerySql}
+      ) base
+      ORDER BY citizen_id ASC
+    `;
+
+    const params = [
+      asOf, // subquery (next_valid)
+      asOf,
+    ];
+
+    const [rows] = await executor.query<RowDataPacket[]>(sql, params);
+
+    return (rows as any[]).map((row) => ({
+      citizen_id: row.citizen_id,
+      full_name: row.full_name?.trim() ? row.full_name.trim() : row.citizen_id,
+      position_name: row.position_name,
+      effective_expiry: row.effective_expiry ? String(row.effective_expiry) : null,
+      days_left: row.days_left !== null ? Number(row.days_left) : null,
     }));
   }
 

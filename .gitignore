@@ -77,8 +77,6 @@ Thumbs.db
 CLAUDE.md
 database.txt
 AGENTS.md
-.agent/
-.gemini/
 
 # Uploads
 uploads/
@@ -96,3 +94,7 @@ scripts/
 
 # frontend_old
 /frontend_old
+
+# skills
+.agent/
+.gemini/

@@ -648,7 +648,12 @@ export class RequestCommandService {
          // Let's rely on detection.
       }
 
-      const rate = await requestRepository.findRateByDetails(professionCode!, data.group_no, data.item_no, data.sub_item_no);
+      const rate = await requestRepository.findRateByDetails(
+        professionCode!,
+        data.group_no,
+        data.item_no ?? null,
+        data.sub_item_no ?? null,
+      );
 
       if (!rate) {
         throw new Error("Invalid rate mapping");

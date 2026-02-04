@@ -634,15 +634,21 @@ export class RequestRepository {
   async findRateByDetails(
     professionCode: string,
     groupNo: number,
-    itemNo: string,
+    itemNo: string | null,
     subItemNo?: string | null,
   ): Promise<RowDataPacket | null> {
     let sql = `SELECT * FROM cfg_payment_rates
                WHERE profession_code = ?
                  AND group_no = ?
-                 AND item_no = ?
                  AND is_active = 1`;
-    const params: any[] = [professionCode, groupNo, itemNo];
+    const params: any[] = [professionCode, groupNo];
+
+    if (itemNo) {
+      sql += " AND item_no = ?";
+      params.push(itemNo);
+    } else {
+      sql += " AND item_no IS NULL";
+    }
 
     if (subItemNo) {
       sql += " AND sub_item_no = ?";

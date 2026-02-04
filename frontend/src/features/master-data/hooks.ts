@@ -52,12 +52,6 @@ export function useProfessions() {
   });
 }
 
-export function useCreateMasterRate() {
-  return useMutation({
-    mutationFn: (payload: ApiPayload) => createMasterRate(payload),
-  });
-}
-
 export function useUpdateMasterRate() {
   return useMutation({
     mutationFn: ({ rateId, payload }: { rateId: number | string; payload: ApiPayload }) =>

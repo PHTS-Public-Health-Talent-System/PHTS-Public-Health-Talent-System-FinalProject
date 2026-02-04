@@ -4,7 +4,6 @@ import Link from "next/link"
 import {
   FileSearch,
   CalendarClock,
-  DatabaseZap,
   Siren,
   ArrowRight,
   History,
@@ -15,7 +14,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { usePendingApprovals } from "@/features/request/hooks"
 import { usePeriods } from "@/features/payroll/hooks"
-import { useDataQualityDashboard } from "@/features/data-quality/hooks"
 import { useLicenseAlertsSummary } from "@/features/license-alerts/hooks"
 import type { RequestWithDetails } from "@/types/request.types"
 import type { PayPeriod } from "@/features/payroll/api"
@@ -28,16 +26,9 @@ type LicenseAlertsSummary = {
   total?: number
 }
 
-type DataQualityDashboard = {
-  totalIssues?: number
-  criticalIssues?: number
-  affectingCalculation?: number
-}
-
 export default function PtsOfficerDashboardPage() {
   const pending = usePendingApprovals()
   const periods = usePeriods()
-  const dataQuality = useDataQualityDashboard()
   const licenseSummary = useLicenseAlertsSummary()
 
   const pendingCount = (pending.data as RequestWithDetails[] | undefined)?.length ?? 0
@@ -45,7 +36,6 @@ export default function PtsOfficerDashboardPage() {
   const openPeriods = periodRows.filter((p) => p.status === "OPEN").length
   const waitingHr = periodRows.filter((p) => p.status === "WAITING_HR").length
 
-  const dq = (dataQuality.data as DataQualityDashboard | undefined) ?? {}
   const alerts = (licenseSummary.data as LicenseAlertsSummary | undefined) ?? {}
 
   return (
@@ -84,23 +74,6 @@ export default function PtsOfficerDashboardPage() {
             </p>
             <Button asChild size="sm" className="w-full mt-3 shadow-none bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white">
               <Link href="/dashboard/pts-officer/payroll">จัดการงวด</Link>
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Data Quality */}
-        <Card className="hover:shadow-md transition-shadow border-l-4 border-l-sky-500">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Data Quality</CardTitle>
-            <DatabaseZap className="h-4 w-4 text-sky-500" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-sky-600">{dq.totalIssues ?? 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">
-               ประเด็นที่กระทบคำนวณ: <span className="font-medium text-destructive">{dq.affectingCalculation ?? 0}</span>
-            </p>
-            <Button asChild size="sm" className="w-full mt-3 shadow-none bg-sky-50 text-sky-600 hover:bg-sky-600 hover:text-white">
-              <Link href="/dashboard/pts-officer/data-quality">ตรวจคุณภาพข้อมูล</Link>
             </Button>
           </CardContent>
         </Card>

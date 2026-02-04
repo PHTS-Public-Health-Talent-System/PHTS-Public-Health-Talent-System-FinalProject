@@ -16,7 +16,6 @@ import {
   UserCheck,
   ShieldAlert,
   Database,
-  ShieldCheck,
   SlidersHorizontal
 } from "lucide-react";
 import {
@@ -91,7 +90,6 @@ const roleMenus: Record<string, MenuItem[]> = {
     { title: "การแจ้งเตือน", url: "/dashboard/pts-officer/notifications", icon: Bell },
     { title: "จัดการเงินเดือน", url: "/dashboard/pts-officer/payroll", icon: CreditCard },
     { title: "ค้นหา/ตรวจย้อนหลัง", url: "/dashboard/pts-officer/payroll-history", icon: History },
-    { title: "Data Quality", url: "/dashboard/pts-officer/data-quality", icon: ShieldCheck },
     { title: "License Alerts", url: "/dashboard/pts-officer/license-alerts", icon: ShieldAlert },
     { title: "Snapshots", url: "/dashboard/pts-officer/snapshots", icon: Database },
     { title: "ตั้งค่าข้อมูลหลัก", url: "/dashboard/pts-officer/master-data", icon: SlidersHorizontal },

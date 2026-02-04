@@ -46,18 +46,6 @@ export class RequestRepository {
     return rows as RequestSubmissionEntity[];
   }
 
-  async findUserRoleById(
-    userId: number,
-    connection?: PoolConnection,
-  ): Promise<string | null> {
-    const db = this.getDb(connection);
-    const [rows] = await db.query<RowDataPacket[]>(
-      "SELECT role FROM users WHERE id = ? LIMIT 1",
-      [userId],
-    );
-    return rows.length ? (rows[0].role as string) : null;
-  }
-
   async findPendingByStep(
     stepNo: number,
     userId?: number,

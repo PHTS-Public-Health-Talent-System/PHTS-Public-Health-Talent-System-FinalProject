@@ -223,11 +223,7 @@ export class RequestCommandService {
   // Submit Request
   // ============================================================================
 
-  async submitRequest(
-    requestId: number,
-    userId: number,
-    userRole: string,
-  ): Promise<PTSRequest> {
+  async submitRequest(requestId: number, userId: number): Promise<PTSRequest> {
     const connection = await getConnection();
 
     try {
@@ -311,38 +307,11 @@ export class RequestCommandService {
         connection,
       );
 
-      // If requester is also the role of current step, auto-forward to next step
-      const currentRole = STEP_ROLE_MAP[stepNo];
-      if (currentRole && currentRole === userRole) {
-        const nextStep = stepNo + 1;
-        await requestRepository.insertApproval(
-          {
-            request_id: requestId,
-            actor_id: userId,
-            step_no: stepNo,
-            action: ActionType.APPROVE,
-            comment: "AUTO-FORWARD (self-approval disabled)",
-            signature_snapshot: null,
-          },
-          connection,
-        );
-
-        await requestRepository.update(
-          requestId,
-          {
-            current_step: nextStep,
-          },
-          connection,
-        );
-      }
 
       await connection.commit();
 
       // Notification (After commit)
-      const nextRole =
-        STEP_ROLE_MAP[
-          currentRole && currentRole === userRole ? stepNo + 1 : stepNo
-        ] || "HEAD_WARD";
+      const nextRole = STEP_ROLE_MAP[stepNo] || "HEAD_WARD";
       await NotificationService.notifyRole(
         nextRole,
         "มีคำขอใหม่รออนุมัติ",

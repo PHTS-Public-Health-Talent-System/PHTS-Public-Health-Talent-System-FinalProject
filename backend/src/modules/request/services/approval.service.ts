@@ -21,7 +21,6 @@ import {
 } from "./helpers.js";
 import {
   canApproverAccessRequest,
-  canSelfApprove,
   isRequestOwner,
 } from "../scope/scope.service.js";
 import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
@@ -157,38 +156,8 @@ export class RequestApprovalService {
           );
         }
 
-        if (isSelfApproval && !canSelfApprove(actorRole, request.current_step)) {
-          // Self-approval disabled: allow auto-forward without signature requirement
-          await this.performApproval(
-            connection,
-            request,
-            requestId,
-            actorId,
-            "AUTO-FORWARD (self-approval disabled)",
-            null,
-            true,
-          );
-
-          await emitAuditEvent(
-            {
-              eventType: AuditEventType.REQUEST_APPROVE,
-              entityType: "request",
-              entityId: requestId,
-              actorId: actorId,
-              actorRole: actorRole,
-              actionDetail: {
-                request_no: request.request_no,
-                step: request.current_step,
-                skipped_self: true,
-              },
-            },
-            connection,
-          );
-
-          await connection.commit();
-
-          const updatedEntity = await requestRepository.findById(requestId);
-          return mapRequestRow(updatedEntity!) as PTSRequest;
+        if (isSelfApproval) {
+          throw new Error("Self-approval is not allowed");
         }
       }
 
@@ -208,7 +177,6 @@ export class RequestApprovalService {
         actorId,
         comment || null,
         signatureFromStore,
-        false,
       );
 
       await emitAuditEvent(
@@ -551,7 +519,6 @@ export class RequestApprovalService {
             actorId,
             comment || null,
             signatureSnapshot,
-            false,
           );
 
           await emitAuditEvent(
@@ -602,8 +569,7 @@ export class RequestApprovalService {
     requestId: number,
     actorId: number,
     comment: string | null,
-    signatureSnapshot: Buffer | null,
-    autoForwardSelf: boolean,
+    signatureSnapshot: Buffer,
   ): Promise<void> {
     const currentStep = request.current_step;
     const nextStep = currentStep + 1;
@@ -650,51 +616,14 @@ export class RequestApprovalService {
       );
 
       const nextRole = STEP_ROLE_MAP[nextStep];
-
-      if (!autoForwardSelf && nextRole) {
-        // If next role equals requester role, auto-forward one more step
-        const requesterRole =
-          await requestRepository.findUserRoleById(request.user_id, connection);
-        if (requesterRole && requesterRole === nextRole) {
-          await requestRepository.insertApproval(
-            {
-              request_id: requestId,
-              actor_id: request.user_id,
-              step_no: nextStep,
-              action: ActionType.APPROVE,
-              comment: "AUTO-FORWARD (self-approval disabled)",
-              signature_snapshot: null,
-            },
-            connection,
-          );
-
-          await requestRepository.update(
-            requestId,
-            {
-              current_step: nextStep + 1,
-            },
-            connection,
-          );
-
-          const nextNextRole = STEP_ROLE_MAP[nextStep + 1];
-          if (nextNextRole) {
-            await NotificationService.notifyRole(
-              nextNextRole,
-              "งานรออนุมัติ",
-              `มีคำขอเลขที่ ${request.request_no} ส่งต่อมาถึงท่าน`,
-              getRequestLinkForRole(nextNextRole, requestId),
-              connection,
-            );
-          }
-        } else {
-          await NotificationService.notifyRole(
-            nextRole,
-            "งานรออนุมัติ",
-            `มีคำขอเลขที่ ${request.request_no} ส่งต่อมาถึงท่าน`,
-            getRequestLinkForRole(nextRole, requestId),
-            connection,
-          );
-        }
+      if (nextRole) {
+        await NotificationService.notifyRole(
+          nextRole,
+          "งานรออนุมัติ",
+          `มีคำขอเลขที่ ${request.request_no} ส่งต่อมาถึงท่าน`,
+          getRequestLinkForRole(nextRole, requestId),
+          connection,
+        );
       }
     }
   }

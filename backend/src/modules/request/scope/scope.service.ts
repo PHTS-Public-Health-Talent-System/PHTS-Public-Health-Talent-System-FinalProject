@@ -214,17 +214,6 @@ export async function isRequestOwner(
 }
 
 /**
- * Determine if self-approval is allowed for this role and step
- *
- * Per docs: HEAD_WARD and HEAD_DEPT can self-approve when the request
- * is at their step and they are the owner
- */
-export function canSelfApprove(_userRole: string, _currentStep: number): boolean {
-  // Self-approval is disabled; requests should auto-forward to next step.
-  return false;
-}
-
-/**
  * Get list of scopes for UI display (multi-scope dropdown)
  *
  * Returns all scopes the user has access to, formatted for display

@@ -2,6 +2,21 @@ import mysql from "mysql2/promise";
 import { loadEnv } from '@config/env.js';
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+const ensureColumn = async (
+  conn: mysql.Connection,
+  table: string,
+  column: string,
+  definition: string,
+) => {
+  try {
+    await conn.execute(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  } catch (error: any) {
+    const message = String(error?.message || "");
+    if (!message.includes("Duplicate column")) {
+      throw error;
+    }
+  }
+};
 
 export async function getTestConnection() {
   loadEnv();
@@ -53,9 +68,8 @@ export async function resetAuthSchema(): Promise<void> {
       )
     `);
 
-    await conn.execute("DROP TABLE IF EXISTS emp_profiles");
     await conn.execute(`
-      CREATE TABLE emp_profiles (
+      CREATE TABLE IF NOT EXISTS emp_profiles (
         citizen_id VARCHAR(20) PRIMARY KEY,
         first_name VARCHAR(100) NULL,
         last_name VARCHAR(100) NULL,
@@ -68,6 +82,13 @@ export async function resetAuthSchema(): Promise<void> {
         start_work_date DATE NULL
       )
     `);
+    await ensureColumn(conn, "emp_profiles", "position_name", "VARCHAR(255) NULL");
+    await ensureColumn(conn, "emp_profiles", "department", "VARCHAR(255) NULL");
+    await ensureColumn(conn, "emp_profiles", "sub_department", "VARCHAR(255) NULL");
+    await ensureColumn(conn, "emp_profiles", "position_number", "VARCHAR(100) NULL");
+    await ensureColumn(conn, "emp_profiles", "emp_type", "VARCHAR(50) NULL");
+    await ensureColumn(conn, "emp_profiles", "mission_group", "VARCHAR(255) NULL");
+    await ensureColumn(conn, "emp_profiles", "start_work_date", "DATE NULL");
 
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS emp_support_staff (

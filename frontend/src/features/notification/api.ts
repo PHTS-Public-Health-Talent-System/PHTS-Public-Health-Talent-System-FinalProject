@@ -41,3 +41,10 @@ export async function updateNotificationSettings(payload: NotificationSettings) 
   const res = await api.put<ApiResponse<NotificationSettings>>('/notifications/settings', payload);
   return res.data.data;
 }
+
+export async function deleteReadNotifications(payload?: { older_than_days?: number }) {
+  const res = await api.delete<ApiResponse<{ deleted: number }>>('/notifications/read', {
+    data: payload ?? {},
+  });
+  return res.data.data;
+}

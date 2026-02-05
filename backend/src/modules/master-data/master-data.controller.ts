@@ -1,5 +1,9 @@
 import { Request, Response } from "express";
 import * as masterDataService from '@/modules/master-data/services/master-data.service.js';
+import { requestRepository } from '@/modules/request/repositories/request.repository.js';
+import { UserRole } from '@/types/auth.js';
+import { AuthorizationError, AuthenticationError } from '@shared/utils/errors.js';
+import { resolveProfessionCode } from '@shared/utils/profession.js';
 import {
   CreateHolidayDTO,
   GetHolidaysQuery,
@@ -93,6 +97,12 @@ export const createMasterRate = async (req: Request, res: Response) => {
 export const getRatesByProfession = async (req: Request, res: Response) => {
   try {
     const { professionCode } = req.params;
+    const userProfession = await getUserProfessionCode(req);
+    if (req.user?.role !== UserRole.PTS_OFFICER) {
+      if (!userProfession || userProfession !== professionCode) {
+        throw new AuthorizationError("ไม่มีสิทธิ์เข้าถึงอัตราของวิชาชีพนี้");
+      }
+    }
     const rates = await masterDataService.getRatesByProfession(professionCode);
     res.json({ success: true, data: rates });
   } catch (error: any) {
@@ -101,21 +111,43 @@ export const getRatesByProfession = async (req: Request, res: Response) => {
 };
 
 // Get list of professions that have active rates
-export const getProfessions = async (_req: Request, res: Response) => {
+export const getProfessions = async (req: Request, res: Response) => {
   try {
+    if (!req.user) throw new AuthenticationError("Unauthorized access");
     const professions = await masterDataService.getProfessions();
-    res.json({ success: true, data: professions });
+    if (req.user.role === UserRole.PTS_OFFICER) {
+      res.json({ success: true, data: professions });
+      return;
+    }
+    const userProfession = await getUserProfessionCode(req);
+    res.json({ success: true, data: userProfession ? [userProfession] : [] });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
 };
 
 // Get full rate hierarchy
-export const getRateHierarchy = async (_req: Request, res: Response) => {
+export const getRateHierarchy = async (req: Request, res: Response) => {
   try {
+    if (!req.user) throw new AuthenticationError("Unauthorized access");
     const data = await masterDataService.getRateHierarchy();
-    res.json({ success: true, data });
+    if (req.user.role === UserRole.PTS_OFFICER) {
+      res.json({ success: true, data });
+      return;
+    }
+    const userProfession = await getUserProfessionCode(req);
+    const filtered = userProfession
+      ? data.filter((entry) => entry.id === userProfession)
+      : [];
+    res.json({ success: true, data: filtered });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
+};
+
+const getUserProfessionCode = async (req: Request): Promise<string | null> => {
+  if (!req.user?.citizenId) return null;
+  const profile = await requestRepository.findEmployeeProfile(req.user.citizenId);
+  if (!profile) return null;
+  return resolveProfessionCode(profile.position_name || "");
 };

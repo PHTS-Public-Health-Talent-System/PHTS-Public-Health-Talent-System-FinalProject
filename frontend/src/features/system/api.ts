@@ -16,6 +16,21 @@ export async function triggerSync() {
   return res.data.data;
 }
 
+export async function triggerUserSync(userId: number | string) {
+  const res = await api.post<ApiResponse<ApiPayload>>(`/system/users/${userId}/sync`);
+  return res.data.data;
+}
+
+export async function getJobStatus() {
+  const res = await api.get<ApiResponse<ApiPayload>>('/system/jobs');
+  return res.data.data;
+}
+
+export async function getVersionInfo() {
+  const res = await api.get<ApiResponse<ApiPayload>>('/system/version');
+  return res.data.data;
+}
+
 export async function toggleMaintenance(payload: { enabled: boolean; reason?: string }) {
   const res = await api.post<ApiResponse<ApiPayload>>('/system/maintenance', payload);
   return res.data.data;

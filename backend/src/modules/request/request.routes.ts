@@ -58,6 +58,13 @@ router.post(
   requestController.updateRateMapping,
 );
 
+// Confirm attachments (license file)
+router.post(
+  "/:id/attachments/confirm",
+  validate(requestIdParamSchema),
+  requestController.confirmAttachments,
+);
+
 // Create new request with file uploads and signature
 router.post(
   "/",

@@ -6,7 +6,7 @@
  */
 
 import { Request, Response } from "express";
-import { ApiResponse } from '@/types/auth.js';
+import { ApiResponse, UserRole } from '@/types/auth.js';
 
 // Services
 import { requestQueryService } from '@/modules/request/services/query.service.js';
@@ -29,8 +29,10 @@ import {
 import {
   catchAsync,
   AuthenticationError,
+  AuthorizationError,
   ValidationError,
 } from '@shared/utils/errors.js';
+import { resolveProfessionCode } from '@shared/utils/profession.js';
 
 const decodeSignatureBase64 = (payload?: string): Buffer | null => {
   if (!payload || typeof payload !== "string") return null;
@@ -45,6 +47,7 @@ export class RequestController {
 
   getRequestById = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
     if (!req.user) throw new AuthenticationError("Unauthorized access");
+    assertNotAdmin(req);
     const requestId = parseInt(req.params.id);
     if (isNaN(requestId)) throw new ValidationError("Invalid Request ID");
 
@@ -59,6 +62,7 @@ export class RequestController {
 
   getMyRequests = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
      if (!req.user) throw new AuthenticationError("Unauthorized access");
+     assertNotAdmin(req);
      const requests = await requestQueryService.getMyRequests(req.user.userId);
      res.json({ success: true, data: requests });
   });
@@ -87,6 +91,7 @@ export class RequestController {
 
   createRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
 
       const validation = createRequestSchema.safeParse(req);
       if (!validation.success) {
@@ -122,6 +127,7 @@ export class RequestController {
 
   updateRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
       const requestId = parseInt(req.params.id);
 
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
@@ -270,6 +276,9 @@ export class RequestController {
   // --- OTHER ---
 
   getMasterRates = catchAsync(async (_req: Request, res: Response<ApiResponse>) => {
+      const req = _req as Request;
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
       const rates = await rateService.getMasterRates();
       res.json({ success: true, data: rates });
   });
@@ -277,6 +286,7 @@ export class RequestController {
 
   getPrefill = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user?.citizenId) throw new AuthenticationError("Unauthorized");
+      assertNotAdmin(req);
 
       const emp = await requestRepository.findEmployeeProfile(req.user.citizenId);
 
@@ -295,6 +305,18 @@ export class RequestController {
 
       const scopes = await getUserScopesForDisplay(req.user.userId, req.user.role);
       res.json({ success: true, data: scopes });
+  });
+
+  confirmAttachments = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+    if (!req.user) throw new AuthenticationError("Unauthorized access");
+    assertNotAdmin(req);
+    const requestId = parseInt(req.params.id);
+    if (isNaN(requestId)) throw new ValidationError("Invalid Request ID");
+    const result = await requestCommandService.confirmAttachments(
+      requestId,
+      req.user.userId,
+    );
+    res.json({ success: true, data: result, message: "Attachments confirmed" });
   });
 
 
@@ -319,12 +341,16 @@ export class RequestController {
   });
 
   cancelRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+     if (!req.user) throw new AuthenticationError("Unauthorized access");
+     assertNotAdmin(req);
      const requestId = parseInt(req.params.id);
      await requestCommandService.cancelRequest(requestId, req.user!.userId);
      res.json({ success: true, message: "Cancelled" });
   });
 
   submitRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+     if (!req.user) throw new AuthenticationError("Unauthorized access");
+     assertNotAdmin(req);
      const requestId = parseInt(req.params.id);
      const result = await requestCommandService.submitRequest(
        requestId,
@@ -346,27 +372,10 @@ export class RequestController {
   });
 }
 
-// Helper
-const resolveProfessionCode = (positionName: string): string | null => {
-  const name = positionName.trim();
-  if (name.includes("ทันตแพทย์")) return "DENTIST";
-  if (name.includes("นายแพทย์") || name.includes("แพทย์")) return "DOCTOR";
-  if (name.includes("เภสัชกร")) return "PHARMACIST";
-  if (name.includes("พยาบาล")) {
-      const excluded = ["ผู้ช่วยพยาบาล", "พนักงานช่วยการพยาบาล", "พนักงานช่วยเหลือคนไข้"];
-      if (excluded.some(v => name.startsWith(v))) return null;
-      return "NURSE";
+const assertNotAdmin = (req: Request) => {
+  if (req.user?.role === UserRole.ADMIN) {
+    throw new AuthorizationError("ADMIN ไม่สามารถทำรายการคำขอได้");
   }
-  if (name.startsWith("นักเทคนิคการแพทย์")) return "MED_TECH";
-  if (name.startsWith("นักรังสีการแพทย์")) return "RAD_TECH";
-  if (name.startsWith("นักกายภาพบำบัด") || name.startsWith("นักกายภาพบําบัด")) return "PHYSIO";
-  if (name.startsWith("นักกิจกรรมบำบัด") || name.startsWith("นักกิจกรรมบําบัด")) return "OCC_THERAPY";
-  if (name.startsWith("นักอาชีวบำบัด") || name.startsWith("นักอาชีวบําบัด")) return "OCC_THERAPY";
-  if (name.startsWith("นักจิตวิทยา")) return "CLIN_PSY";
-  if (name.startsWith("นักแก้ไขความผิดปกติ")) return "SPEECH_THERAPIST";
-  if (name.startsWith("นักวิชาการศึกษาพิเศษ")) return "SPECIAL_EDU";
-  if (name.startsWith("นักเทคโนโลยีหัวใจและทรวงอก")) return "CARDIO_TECH";
-  return null;
 };
 
 export const requestController = new RequestController();

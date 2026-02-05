@@ -26,6 +26,8 @@ import {
 import { requestQueryService } from '@/modules/request/services/query.service.js'; // Use the class instance
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 import { requestRepository } from '@/modules/request/repositories/request.repository.js'; // [NEW]
+import { resolveProfessionCode } from '@shared/utils/profession.js';
+import { AuthorizationError, ValidationError } from '@shared/utils/errors.js';
 
 export class RequestCommandService {
   // --- Helpers (Internal) ---
@@ -65,6 +67,28 @@ export class RequestCommandService {
         connection,
       );
     }
+  }
+
+  async confirmAttachments(requestId: number, userId: number) {
+    const request = await requestRepository.findById(requestId);
+    if (!request) {
+      throw new ValidationError("ไม่พบคำขอที่ระบุ");
+    }
+    if (request.user_id !== userId) {
+      throw new AuthorizationError("ไม่มีสิทธิ์ยืนยันไฟล์แนบของคำขอนี้");
+    }
+    const status = request.status as RequestStatus;
+    if (![RequestStatus.DRAFT, RequestStatus.RETURNED].includes(status)) {
+      throw new ValidationError("ไม่สามารถยืนยันไฟล์แนบในสถานะนี้ได้");
+    }
+
+    const attachments = await requestRepository.findAttachments(requestId);
+    const hasLicense = attachments.some((att) => att.file_type === FileType.LICENSE);
+    if (!hasLicense) {
+      throw new ValidationError("ไม่พบไฟล์ใบอนุญาต");
+    }
+
+    return { confirmed: true };
   }
 
   // ============================================================================
@@ -624,7 +648,7 @@ export class RequestCommandService {
 
       // Resolve profession from position name (joined field) or fallback
       const positionName = request.position_name || '';
-      const professionCode = this.resolveProfessionCode(positionName);
+      const professionCode = resolveProfessionCode(positionName);
 
       console.log(`[DEBUG_RATE] RequestId=${requestId}`);
       console.log(`[DEBUG_RATE] Position="${positionName}"`);
@@ -688,28 +712,6 @@ export class RequestCommandService {
     } finally {
       connection.release();
     }
-  }
-  private resolveProfessionCode(positionName: string): string | null {
-    const name = positionName.trim();
-    if (name.includes('ทันตแพทย์')) return 'DENTIST';
-    if (name.includes('นายแพทย์') || name.includes('แพทย์')) return 'DOCTOR';
-    if (name.includes('เภสัชกร')) return 'PHARMACIST';
-    if (name.includes('พยาบาล')) {
-      const excluded = ['ผู้ช่วยพยาบาล', 'พนักงานช่วยการพยาบาล', 'พนักงานช่วยเหลือคนไข้'];
-      if (excluded.some((v) => name.startsWith(v))) return null;
-      return 'NURSE';
-    }
-    if (name.startsWith('นักเทคนิคการแพทย์')) return 'MED_TECH';
-    if (name.startsWith('นักรังสีการแพทย์')) return 'RAD_TECH';
-    if (name.startsWith('นักกายภาพบำบัด') || name.startsWith('นักกายภาพบําบัด')) return 'PHYSIO';
-    if (name.startsWith('นักกิจกรรมบำบัด') || name.startsWith('นักกิจกรรมบําบัด'))
-      return 'OCC_THERAPY';
-    if (name.startsWith('นักอาชีวบำบัด') || name.startsWith('นักอาชีวบําบัด')) return 'OCC_THERAPY';
-    if (name.startsWith('นักจิตวิทยา')) return 'CLIN_PSY';
-    if (name.startsWith('นักแก้ไขความผิดปกติ')) return 'SPEECH_THERAPIST';
-    if (name.startsWith('นักวิชาการศึกษาพิเศษ')) return 'SPECIAL_EDU';
-    if (name.startsWith('นักเทคโนโลยีหัวใจและทรวงอก')) return 'CARDIO_TECH';
-    return null;
   }
 }
 

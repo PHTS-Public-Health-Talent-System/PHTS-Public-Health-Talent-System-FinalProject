@@ -72,10 +72,19 @@ class Logger {
       level: levelName,
       message,
       module: this.module,
-      ...(context?.requestId && { requestId: context.requestId as string }),
-      ...(context?.userId && { userId: context.userId as number }),
-      ...(context?.duration && { duration: context.duration as number }),
     };
+    const requestId = context?.requestId;
+    const userId = context?.userId;
+    const duration = context?.duration;
+    if (requestId) {
+      entry.requestId = String(requestId);
+    }
+    if (typeof userId === "number") {
+      entry.userId = userId;
+    }
+    if (typeof duration === "number") {
+      entry.duration = duration;
+    }
 
     // Add error details
     if (error) {

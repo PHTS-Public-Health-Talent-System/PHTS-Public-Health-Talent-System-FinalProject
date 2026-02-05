@@ -10,7 +10,7 @@
  */
 
 import redis from "@config/redis.js";
-import Logger from '@/utils/logger.js';
+import Logger from '@shared/utils/logger.js';
 
 const TOKEN_BLACKLIST_PREFIX = "blacklist:token:";
 const USER_TOKENS_PREFIX = "user:tokens:";

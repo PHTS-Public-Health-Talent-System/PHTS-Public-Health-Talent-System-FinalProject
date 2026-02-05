@@ -51,7 +51,7 @@ export const loggingMiddleware = (
 export const errorLoggingMiddleware = (
   err: Error,
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction,
 ) => {
   const requestId = (req as any).requestId || "unknown";
@@ -77,7 +77,7 @@ export const errorLoggingMiddleware = (
  */
 export const requestIdLogger = (
   req: Request,
-  res: Response,
+  _res: Response,
   next: NextFunction,
 ) => {
   const requestId = (req as any).requestId || "unknown";

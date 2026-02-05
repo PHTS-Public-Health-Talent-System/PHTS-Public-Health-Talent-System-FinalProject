@@ -6,9 +6,11 @@
  */
 
 import { Request, Response, NextFunction } from "express";
-import { FIELD_LIMITS, sanitizeObject, validateLength } from '@shared/utils/inputValidator.js';
-
-const MAX_BODY_SIZE = 10 * 1024 * 1024; // 10MB (already limited by express.json)
+import {
+  FIELD_LIMITS,
+  sanitizeObject,
+  validateLength,
+} from "@shared/utils/inputValidator.js";
 
 /**
  * Validate input field lengths

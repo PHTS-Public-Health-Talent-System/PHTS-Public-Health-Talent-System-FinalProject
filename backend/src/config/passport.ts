@@ -13,7 +13,7 @@ import {
   StrategyOptions,
 } from "passport-jwt";
 import { loadEnv } from '@config/env.js';
-import { JwtPayload, User } from '@types/auth.js';
+import { JwtPayload, User } from '@/types/auth.js';
 import { query } from '@config/database.js';
 import { getJwtSecret } from '@config/jwt.js';
 

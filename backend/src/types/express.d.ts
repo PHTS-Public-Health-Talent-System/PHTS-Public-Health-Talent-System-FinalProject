@@ -1,5 +1,5 @@
 import "express";
-import type { UserRole } from '@types/auth.js';
+import type { UserRole } from '@/types/auth.js';
 
 declare global {
   namespace Express {

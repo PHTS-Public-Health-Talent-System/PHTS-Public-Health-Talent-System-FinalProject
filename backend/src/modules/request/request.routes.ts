@@ -105,7 +105,6 @@ router.get(
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
-    UserRole.ADMIN,
   ),
   requestController.getHistory,
 );

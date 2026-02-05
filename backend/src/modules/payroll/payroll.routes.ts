@@ -56,7 +56,6 @@ router.get(
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
-    UserRole.ADMIN,
   ),
   searchPayouts,
 );
@@ -68,7 +67,6 @@ router.get(
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
-    UserRole.ADMIN,
   ),
   listPeriods,
 );
@@ -80,7 +78,6 @@ router.get(
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
-    UserRole.ADMIN,
   ),
   validate(periodIdParamSchema),
   getPeriodDetail,
@@ -93,7 +90,6 @@ router.get(
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
-    UserRole.ADMIN,
   ),
   validate(periodIdParamSchema),
   getPeriodReport,
@@ -101,23 +97,23 @@ router.get(
 router.get(
   "/period/:periodId/summary-by-profession",
   protect,
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  restrictTo(UserRole.PTS_OFFICER),
   validate(periodIdParamSchema),
   getPeriodSummaryByProfession,
 );
 
-// Create a new period (PTS_OFFICER/ADMIN)
+// Create a new period (PTS_OFFICER)
 router.post(
   "/period",
   protect,
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  restrictTo(UserRole.PTS_OFFICER),
   validate(createPeriodSchema),
   createPeriod,
 );
 router.post(
   "/period/:periodId/items",
   protect,
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  restrictTo(UserRole.PTS_OFFICER),
   validate(periodIdParamSchema),
   validate(addPeriodItemsSchema),
   addPeriodItems,
@@ -125,7 +121,7 @@ router.post(
 router.delete(
   "/period/:periodId/items/:itemId",
   protect,
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  restrictTo(UserRole.PTS_OFFICER),
   validate(periodItemParamSchema),
   removePeriodItem,
 );
@@ -135,7 +131,6 @@ router.post(
   "/calculate",
   protect,
   restrictTo(
-    UserRole.ADMIN,
     UserRole.PTS_OFFICER,
     UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
@@ -145,20 +140,20 @@ router.post(
   calculateOnDemand,
 );
 
-// Calculate (OFFICER/ADMIN)
+// Calculate (OFFICER)
 router.post(
   "/period/:periodId/calculate",
   protect,
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  restrictTo(UserRole.PTS_OFFICER),
   validate(periodIdParamSchema),
   calculatePeriod,
 );
 
-// Submit to HR (OFFICER/ADMIN)
+// Submit to HR (OFFICER)
 router.post(
   "/period/:periodId/submit",
   protect,
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  restrictTo(UserRole.PTS_OFFICER),
   validate(periodIdParamSchema),
   submitToHR,
 );
@@ -167,7 +162,7 @@ router.post(
 router.post(
   "/period/:periodId/approve-hr",
   protect,
-  restrictTo(UserRole.HEAD_HR, UserRole.ADMIN),
+  restrictTo(UserRole.HEAD_HR),
   validate(periodIdParamSchema),
   approveByHR,
 );
@@ -176,7 +171,7 @@ router.post(
 router.post(
   "/period/:periodId/approve-director",
   protect,
-  restrictTo(UserRole.DIRECTOR, UserRole.ADMIN),
+  restrictTo(UserRole.DIRECTOR),
   validate(periodIdParamSchema),
   approveByDirector,
 );
@@ -185,16 +180,16 @@ router.post(
 router.post(
   "/period/:periodId/approve-head-finance",
   protect,
-  restrictTo(UserRole.HEAD_FINANCE, UserRole.ADMIN),
+  restrictTo(UserRole.HEAD_FINANCE),
   validate(periodIdParamSchema),
   approveByHeadFinance,
 );
 
-// Reject (HR/Director/Admin)
+// Reject (HR/Director)
 router.post(
   "/period/:periodId/reject",
   protect,
-  restrictTo(UserRole.HEAD_HR, UserRole.DIRECTOR, UserRole.ADMIN),
+  restrictTo(UserRole.HEAD_HR, UserRole.DIRECTOR),
   validate(periodIdParamSchema),
   validate(rejectPeriodSchema),
   rejectPeriod,

@@ -2,7 +2,10 @@ import bcrypt from "bcryptjs";
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import db from '@config/database.js';
 import redis from '@config/redis.js';
-import { assignRoles } from '@/modules/system/services/roleAssignmentService.js';
+import {
+  assignRoles,
+  RoleAssignmentService,
+} from '@/modules/system/services/roleAssignmentService.js';
 import { clearScopeCache } from '@/modules/request/scope/scope.service.js';
 import { requestRepository } from '@/modules/request/repositories/request.repository.js';
 import {
@@ -614,6 +617,80 @@ const syncSpecialPositionScopes = async (conn: PoolConnection) => {
   }
 };
 
+const syncSpecialPositionScopesForCitizen = async (
+  conn: PoolConnection,
+  citizenId: string,
+) => {
+  const [rows] = await conn.query<RowDataPacket[]>(
+    `
+      SELECT u.id AS user_id,
+             u.citizen_id,
+             u.role,
+             e.special_position,
+             e.original_status,
+             s.is_currently_active AS support_active
+      FROM users u
+      LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
+      LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
+      WHERE u.citizen_id = ?
+        AND u.role IN ('HEAD_WARD','HEAD_DEPT')
+      LIMIT 1
+    `,
+    [citizenId],
+  );
+
+  const row = rows[0];
+  if (!row) return;
+
+  const role = row.role as string;
+  const specialPosition = row.special_position as string | null;
+  const originalStatus = row.original_status as string | null;
+  const supportActive = row.support_active as number | null;
+
+  const isActive =
+    isActiveOriginalStatus(originalStatus) || Number(supportActive) === 1;
+
+  if (!isActive) {
+    await requestRepository.disableScopeMappings(citizenId, role, conn);
+    return;
+  }
+
+  const scopes = buildScopesFromSpecialPosition(specialPosition);
+
+  await requestRepository.disableScopeMappings(citizenId, role, conn);
+
+  if (scopes.wardScopes.length === 0 && scopes.deptScopes.length === 0) {
+    console.warn(
+      `[SyncService] special_position parse failed: citizen_id=${citizenId}, role=${role}, special_position="${specialPosition ?? ""}"`,
+    );
+    return;
+  }
+
+  const inputs = [
+    ...scopes.wardScopes.map((scopeName) => ({
+      citizen_id: citizenId,
+      role,
+      scope_type: "UNIT" as const,
+      scope_name: scopeName,
+      source: "AUTO" as const,
+    })),
+    ...scopes.deptScopes.map((scopeName) => ({
+      citizen_id: citizenId,
+      role,
+      scope_type: "DEPT" as const,
+      scope_name: scopeName,
+      source: "AUTO" as const,
+    })),
+  ];
+
+  await requestRepository.insertScopeMappings(inputs, conn);
+
+  const userId = row.user_id as number;
+  if (userId) {
+    clearScopeCache(userId);
+  }
+};
+
 export class SyncService {
   /**
    * Return cached status (fast path for dashboards).
@@ -720,6 +797,374 @@ export class SyncService {
       throw error;
     } finally {
       await SyncService.releaseLock(lockValue);
+      conn.release();
+    }
+  }
+
+  /**
+   * Sync a single user by userId (granular sync).
+   */
+  static async performUserSync(userId: number) {
+    const conn = await db.getConnection();
+    try {
+      const [userRows] = await conn.query<RowDataPacket[]>(
+        "SELECT id, citizen_id, role FROM users WHERE id = ? LIMIT 1",
+        [userId],
+      );
+      const dbUser = userRows[0];
+      if (!dbUser?.citizen_id) {
+        throw new Error("User not found for sync");
+      }
+
+      const citizenId = dbUser.citizen_id as string;
+      const stats: SyncStats = {
+        users: { added: 0, updated: 0, skipped: 0 },
+        employees: { upserted: 0, skipped: 0 },
+        support_employees: { upserted: 0, skipped: 0 },
+        signatures: { added: 0, skipped: 0 },
+        licenses: { upserted: 0 },
+        quotas: { upserted: 0 },
+        leaves: { upserted: 0, skipped: 0 },
+        movements: { added: 0 },
+        roles: { updated: 0, skipped: 0, missing: 0 },
+      };
+
+      await conn.beginTransaction();
+
+      // Users (single)
+      const [viewUsers] = await conn.query<RowDataPacket[]>(
+        "SELECT * FROM vw_hrms_users_sync WHERE citizen_id = ? LIMIT 1",
+        [citizenId],
+      );
+      const vUser = viewUsers[0];
+      if (vUser) {
+        const decision = evaluateUserSync(dbUser, vUser, stats);
+        if (decision) {
+          let { finalPass } = decision;
+          if (
+            decision.shouldHash &&
+            finalPass &&
+            !isBcryptHash(String(finalPass))
+          ) {
+            finalPass = await bcrypt.hash(String(finalPass), SALT_ROUNDS);
+          }
+          await conn.execute(
+            `
+              INSERT INTO users (citizen_id, password_hash, role, is_active)
+              VALUES (?, ?, ?, ?)
+              ON DUPLICATE KEY UPDATE
+                password_hash = VALUES(password_hash),
+                is_active = VALUES(is_active),
+                updated_at = NOW()
+            `,
+            [vUser.citizen_id, finalPass, decision.roleForInsert, vUser.is_active],
+          );
+        }
+      }
+
+      const userIdMap = new Map<string, number>([
+        [citizenId, dbUser.id as number],
+      ]);
+
+      // Employees (single)
+      const [viewEmps] = await conn.query<RowDataPacket[]>(
+        "SELECT * FROM vw_hrms_employees WHERE citizen_id = ? LIMIT 1",
+        [citizenId],
+      );
+      const vEmp = viewEmps[0];
+      if (vEmp) {
+        await conn.execute(
+          `
+            INSERT INTO emp_profiles (
+              citizen_id, title, first_name, last_name, sex, birth_date,
+              position_name, position_number, level, special_position, emp_type,
+              department, sub_department, mission_group, specialist, expert,
+              start_work_date, first_entry_date, original_status, last_synced_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE
+              position_name = VALUES(position_name),
+              level = VALUES(level),
+              special_position = VALUES(special_position),
+              department = VALUES(department),
+              sub_department = VALUES(sub_department),
+              specialist = VALUES(specialist),
+              expert = VALUES(expert),
+              last_synced_at = NOW()
+          `,
+          [
+            vEmp.citizen_id,
+            vEmp.title,
+            vEmp.first_name,
+            vEmp.last_name,
+            vEmp.sex,
+            vEmp.birth_date,
+            vEmp.position_name,
+            vEmp.position_number,
+            vEmp.level,
+            (vEmp.special_position || "").substring(0, 65535),
+            vEmp.employee_type,
+            vEmp.department,
+            vEmp.sub_department,
+            vEmp.mission_group,
+            vEmp.specialist,
+            vEmp.expert,
+            vEmp.start_current_position,
+            vEmp.first_entry_date,
+            vEmp.original_status,
+          ],
+        );
+        stats.employees.upserted++;
+        if (userIdMap.get(citizenId)) {
+          clearScopeCache(userIdMap.get(citizenId)!);
+        }
+      }
+
+      // Support employees (single)
+      const [viewSupEmps] = await conn.query<RowDataPacket[]>(
+        "SELECT * FROM vw_hrms_support_staff WHERE citizen_id = ? LIMIT 1",
+        [citizenId],
+      );
+      const vSup = viewSupEmps[0];
+      if (vSup) {
+        await conn.execute(
+          `
+            INSERT INTO emp_support_staff (
+              citizen_id, title, first_name, last_name,
+              position_name, level, special_position, emp_type,
+              department, is_currently_active, last_synced_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE
+              title = VALUES(title),
+              first_name = VALUES(first_name),
+              last_name = VALUES(last_name),
+              position_name = VALUES(position_name),
+              level = VALUES(level),
+              special_position = VALUES(special_position),
+              emp_type = VALUES(emp_type),
+              department = VALUES(department),
+              is_currently_active = VALUES(is_currently_active),
+              last_synced_at = NOW()
+          `,
+          [
+            toNull(vSup.citizen_id),
+            toNull(vSup.title),
+            toNull(vSup.first_name),
+            toNull(vSup.last_name),
+            toNull(vSup.position_name),
+            toNull(vSup.level),
+            toNull(vSup.special_position),
+            toNull(vSup.employee_type),
+            toNull(vSup.department),
+            toNull(vSup.is_currently_active),
+          ],
+        );
+        stats.support_employees.upserted++;
+      }
+
+      // Signatures (single)
+      const [viewSigs] = await conn.query<RowDataPacket[]>(
+        `
+          SELECT u.id as user_id, s.signature_blob
+          FROM vw_hrms_signatures s
+          JOIN users u ON CONVERT(s.citizen_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = u.citizen_id
+          WHERE u.citizen_id = ?
+        `,
+        [citizenId],
+      );
+      const vSig = viewSigs[0];
+      if (vSig) {
+        const [existingSigs] = await conn.query<RowDataPacket[]>(
+          "SELECT user_id FROM sig_images WHERE user_id = ?",
+          [vSig.user_id],
+        );
+        if (!existingSigs.length) {
+          await conn.execute(
+            `INSERT INTO sig_images (user_id, signature_image, updated_at) VALUES (?, ?, NOW())`,
+            [vSig.user_id, vSig.signature_blob],
+          );
+          stats.signatures.added++;
+        } else {
+          stats.signatures.skipped++;
+        }
+      }
+
+      // Licenses (single)
+      await conn.execute(
+        `
+          INSERT INTO emp_licenses (citizen_id, license_no, valid_from, valid_until, status, synced_at)
+          SELECT l.citizen_id, l.license_no, l.valid_from, l.valid_until, l.status, NOW()
+          FROM vw_hrms_licenses l
+          WHERE l.citizen_id = ?
+          ON DUPLICATE KEY UPDATE valid_from=VALUES(valid_from), valid_until=VALUES(valid_until), status=VALUES(status), synced_at=NOW()
+        `,
+        [citizenId],
+      );
+
+      // Quotas (single)
+      const [viewQuotas] = await conn.query<RowDataPacket[]>(
+        `
+          SELECT q.citizen_id, q.fiscal_year, q.total_quota
+          FROM vw_hrms_leave_quotas q
+          WHERE q.citizen_id = ?
+        `,
+        [citizenId],
+      );
+      for (const q of viewQuotas) {
+        await conn.execute(
+          `
+            INSERT INTO leave_quotas (citizen_id, fiscal_year, quota_vacation, updated_at)
+            VALUES (?, ?, ?, NOW())
+            ON DUPLICATE KEY UPDATE quota_vacation = VALUES(quota_vacation), updated_at = NOW()
+          `,
+          [q.citizen_id, q.fiscal_year, q.total_quota],
+        );
+        stats.quotas.upserted++;
+      }
+
+      // Leaves (single)
+      const [statusCols] = await conn.query<RowDataPacket[]>(
+        `SELECT 1
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'leave_records'
+           AND COLUMN_NAME = 'status'
+         LIMIT 1`,
+      );
+      const hasStatusColumn = statusCols.length > 0;
+      const [viewLeaves] = await conn.query<RowDataPacket[]>(
+        `SELECT lr.* FROM vw_hrms_leave_requests lr WHERE lr.citizen_id = ?`,
+        [citizenId],
+      );
+
+      for (const vLeave of viewLeaves) {
+        if (!vLeave.ref_id) continue;
+        if (hasStatusColumn) {
+          await conn.execute(
+            `
+              INSERT INTO leave_records (
+                ref_id, citizen_id, leave_type, start_date, end_date,
+                duration_days, fiscal_year, remark, status, is_no_pay, synced_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+              ON DUPLICATE KEY UPDATE
+                status = VALUES(status),
+                start_date = VALUES(start_date),
+                end_date = VALUES(end_date),
+                duration_days = VALUES(duration_days),
+                is_no_pay = VALUES(is_no_pay),
+                synced_at = NOW()
+            `,
+            [
+              toNull(vLeave.ref_id),
+              toNull(vLeave.citizen_id),
+              toNull(vLeave.leave_type),
+              toNull(vLeave.start_date),
+              toNull(vLeave.end_date),
+              toNull(vLeave.duration_days),
+              toNull(vLeave.fiscal_year),
+              toNull(vLeave.remark),
+              toNull(vLeave.status),
+              toNull(vLeave.is_no_pay ?? 0),
+            ],
+          );
+        } else {
+          await conn.execute(
+            `
+              INSERT INTO leave_records (
+                ref_id, citizen_id, leave_type, start_date, end_date,
+                duration_days, fiscal_year, remark, is_no_pay, synced_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+              ON DUPLICATE KEY UPDATE
+                start_date = VALUES(start_date),
+                end_date = VALUES(end_date),
+                duration_days = VALUES(duration_days),
+                is_no_pay = VALUES(is_no_pay),
+                synced_at = NOW()
+            `,
+            [
+              toNull(vLeave.ref_id),
+              toNull(vLeave.citizen_id),
+              toNull(vLeave.leave_type),
+              toNull(vLeave.start_date),
+              toNull(vLeave.end_date),
+              toNull(vLeave.duration_days),
+              toNull(vLeave.fiscal_year),
+              toNull(vLeave.remark),
+              toNull(vLeave.is_no_pay ?? 0),
+            ],
+          );
+        }
+        stats.leaves.upserted++;
+      }
+
+      // Movements (single)
+      await conn.execute(
+        `
+          INSERT INTO emp_movements (citizen_id, movement_type, effective_date, remark, synced_at)
+          SELECT m.citizen_id, m.movement_type, m.effective_date, m.remark, NOW()
+          FROM vw_hrms_movements m
+          WHERE m.citizen_id = ?
+          ON DUPLICATE KEY UPDATE
+            movement_type = VALUES(movement_type),
+            effective_date = VALUES(effective_date),
+            remark = VALUES(remark),
+            synced_at = NOW()
+        `,
+        [citizenId],
+      );
+
+      // Scope mapping (HEAD roles only)
+      await syncSpecialPositionScopesForCitizen(conn, citizenId);
+
+      await conn.commit();
+
+      // Assign role for this user (if not protected)
+      try {
+        const [hrRows] = await conn.query<RowDataPacket[]>(
+          `
+            SELECT citizen_id, position_name, special_position, department, sub_department
+            FROM emp_profiles WHERE citizen_id = ?
+            UNION ALL
+            SELECT citizen_id, position_name, special_position, department, NULL AS sub_department
+            FROM emp_support_staff WHERE citizen_id = ?
+            LIMIT 1
+          `,
+          [citizenId, citizenId],
+        );
+        const hrRow = hrRows[0] as any;
+        if (hrRow) {
+          const currentRole = dbUser.role as string;
+          if (!RoleAssignmentService.PROTECTED_ROLES.has(currentRole)) {
+            const nextRole = RoleAssignmentService.deriveRole(hrRow);
+            if (nextRole !== currentRole) {
+              await conn.execute(
+                "UPDATE users SET role = ?, updated_at = NOW() WHERE citizen_id = ?",
+                [nextRole, citizenId],
+              );
+              clearScopeCache(dbUser.id as number);
+              stats.roles.updated++;
+            } else {
+              stats.roles.skipped++;
+            }
+          } else {
+            stats.roles.skipped++;
+          }
+        } else {
+          stats.roles.missing++;
+        }
+      } catch (roleError) {
+        console.warn("[SyncService] Single role assignment failed:", roleError);
+      }
+
+      return {
+        success: true,
+        stats,
+        citizenId,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
       conn.release();
     }
   }

@@ -12,7 +12,6 @@ router.get(
   "/detail",
   protect,
   restrictTo(
-    UserRole.ADMIN,
     UserRole.DIRECTOR,
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
@@ -26,7 +25,6 @@ router.get(
   "/summary",
   protect,
   restrictTo(
-    UserRole.ADMIN,
     UserRole.DIRECTOR,
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,

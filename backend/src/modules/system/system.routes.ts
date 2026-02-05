@@ -7,6 +7,7 @@ import {
   searchUsersSchema,
   updateUserRoleSchema,
   toggleMaintenanceModeSchema,
+  syncUserSchema,
 } from '@/modules/system/system.schema.js';
 
 const router = Router();
@@ -32,11 +33,19 @@ router.put(
 
 router.post("/sync", adminAuth, systemController.triggerSync);
 router.post(
+  "/users/:userId/sync",
+  adminAuth,
+  validate(syncUserSchema),
+  systemController.triggerUserSync,
+);
+router.post(
   "/maintenance",
   adminAuth,
   validate(toggleMaintenanceModeSchema),
   systemController.toggleMaintenanceMode,
 );
 router.post("/backup", adminAuth, systemController.triggerBackup);
+router.get("/jobs", adminAuth, systemController.getJobStatus);
+router.get("/version", adminAuth, systemController.getVersionInfo);
 
 export default router;

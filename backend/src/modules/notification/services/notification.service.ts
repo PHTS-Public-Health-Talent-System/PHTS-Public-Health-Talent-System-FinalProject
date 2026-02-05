@@ -137,6 +137,16 @@ export class NotificationService {
   }
 
   /**
+   * Delete read notifications for a user
+   */
+  static async deleteRead(
+    userId: number,
+    olderThanDays?: number,
+  ): Promise<number> {
+    return NotificationRepository.deleteRead(userId, olderThanDays);
+  }
+
+  /**
    * Delete old notifications (cleanup job)
    */
   static async cleanupOldNotifications(days: number = 90): Promise<number> {

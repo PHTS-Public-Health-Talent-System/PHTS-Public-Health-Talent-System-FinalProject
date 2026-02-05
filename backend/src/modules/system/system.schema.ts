@@ -36,3 +36,12 @@ export const toggleMaintenanceModeSchema = z.object({
 export type ToggleMaintenanceModeBody = z.infer<
   typeof toggleMaintenanceModeSchema
 >["body"];
+
+// POST /system/users/:userId/sync
+export const syncUserSchema = z.object({
+  params: z.object({
+    userId: z.string().regex(/^\d+$/, "userId ต้องเป็นตัวเลข"),
+  }),
+});
+
+export type SyncUserParams = z.infer<typeof syncUserSchema>["params"];

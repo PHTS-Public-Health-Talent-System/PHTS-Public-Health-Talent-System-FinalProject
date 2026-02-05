@@ -149,6 +149,28 @@ export class NotificationRepository {
     return result.affectedRows;
   }
 
+  static async deleteRead(
+    userId: number,
+    olderThanDays?: number,
+    conn?: PoolConnection,
+  ): Promise<number> {
+    const executor = conn ?? db;
+    if (olderThanDays && olderThanDays > 0) {
+      const [result] = await executor.execute<ResultSetHeader>(
+        `DELETE FROM ntf_messages
+         WHERE user_id = ? AND is_read = 1
+           AND created_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+        [userId, olderThanDays],
+      );
+      return result.affectedRows;
+    }
+    const [result] = await executor.execute<ResultSetHeader>(
+      `DELETE FROM ntf_messages WHERE user_id = ? AND is_read = 1`,
+      [userId],
+    );
+    return result.affectedRows;
+  }
+
   // ── Find users by role ──────────────────────────────────────────────────────
 
   static async findUserIdsByRole(

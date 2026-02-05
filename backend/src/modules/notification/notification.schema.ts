@@ -9,6 +9,17 @@ export const markReadSchema = z.object({
 
 export type MarkReadParams = z.infer<typeof markReadSchema>["params"];
 
+// DELETE /notifications/read
+export const deleteReadSchema = z.object({
+  body: z
+    .object({
+      older_than_days: z.number().int().positive().optional(),
+    })
+    .optional(),
+});
+
+export type DeleteReadBody = z.infer<typeof deleteReadSchema>["body"];
+
 // PUT /notifications/settings
 export const notificationSettingsSchema = z.object({
   body: z.object({

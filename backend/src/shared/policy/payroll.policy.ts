@@ -32,11 +32,11 @@ const TRANSITIONS: Record<
 };
 
 const ROLE_RULES: Record<PayrollAction, UserRole[]> = {
-  SUBMIT: [UserRole.PTS_OFFICER, UserRole.ADMIN],
-  APPROVE_HR: [UserRole.HEAD_HR, UserRole.ADMIN],
-  APPROVE_HEAD_FINANCE: [UserRole.HEAD_FINANCE, UserRole.ADMIN],
-  APPROVE_DIRECTOR: [UserRole.DIRECTOR, UserRole.ADMIN],
-  REJECT: [UserRole.HEAD_HR, UserRole.DIRECTOR, UserRole.ADMIN],
+  SUBMIT: [UserRole.PTS_OFFICER],
+  APPROVE_HR: [UserRole.HEAD_HR],
+  APPROVE_HEAD_FINANCE: [UserRole.HEAD_FINANCE],
+  APPROVE_DIRECTOR: [UserRole.DIRECTOR],
+  REJECT: [UserRole.HEAD_HR, UserRole.DIRECTOR],
 };
 
 export function resolveNextStatus(

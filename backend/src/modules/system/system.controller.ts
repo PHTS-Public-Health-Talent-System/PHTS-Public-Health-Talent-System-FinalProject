@@ -7,6 +7,7 @@ import type {
   UpdateUserRoleParams,
   UpdateUserRoleBody,
   ToggleMaintenanceModeBody,
+  SyncUserParams,
 } from '@/modules/system/system.schema.js';
 
 export const searchUsers = async (req: Request, res: Response) => {
@@ -71,6 +72,18 @@ export const triggerSync = async (_req: Request, res: Response) => {
   }
 };
 
+export const triggerUserSync = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.params as unknown as SyncUserParams;
+    const result = await systemService.SyncService.performUserSync(
+      Number(userId),
+    );
+    res.json({ success: true, data: result });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 export const toggleMaintenanceMode = async (req: Request, res: Response) => {
   try {
     const { enabled } = req.body as ToggleMaintenanceModeBody;
@@ -89,6 +102,33 @@ export const triggerBackup = async (_req: Request, res: Response) => {
   try {
     const result = await systemService.runBackupJob();
     res.json({ success: true, data: result });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getJobStatus = async (_req: Request, res: Response) => {
+  try {
+    const data = await systemService.getJobStatus();
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(503).json({ success: false, error: error.message });
+  }
+};
+
+export const getVersionInfo = async (_req: Request, res: Response) => {
+  try {
+    const version = process.env.APP_VERSION ?? "unknown";
+    const commit = process.env.APP_COMMIT ?? "unknown";
+    const env = process.env.NODE_ENV ?? "development";
+    res.json({
+      success: true,
+      data: {
+        version,
+        commit,
+        env,
+      },
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

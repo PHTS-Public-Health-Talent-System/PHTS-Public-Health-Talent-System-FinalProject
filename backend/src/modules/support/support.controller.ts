@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { SupportService } from '@/modules/support/services/support.service.js';
-import { ApiResponse } from '@types/auth.js';
+import { ApiResponse } from '@/types/auth.js';
 import { AuthenticationError, ValidationError, catchAsync } from '@shared/utils/errors.js';
 
 export const createTicket = catchAsync(async (req: Request, res: Response<ApiResponse>) => {

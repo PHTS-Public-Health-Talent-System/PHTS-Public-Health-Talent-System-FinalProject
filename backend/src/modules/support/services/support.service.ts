@@ -1,9 +1,9 @@
-import { supportRepository } from '@/repositories/support.repository.js';
+import { supportRepository } from "../repositories/support.repository.js";
 import type {
   SupportTicket,
   SupportTicketStatus,
-} from '@/entities/support-ticket.entity.js';
-import { NotificationService } from '@/modules/notification/services/notification.service.js';
+} from "../entities/support-ticket.entity.js";
+import { NotificationService } from "../../notification/services/notification.service.js";
 
 export class SupportService {
   static async createTicket(input: {

@@ -1,6 +1,9 @@
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import pool from '@config/database.js';
-import type { SupportTicket, SupportTicketStatus } from '@/entities/support-ticket.entity.js';
+import type {
+  SupportTicket,
+  SupportTicketStatus,
+} from "../entities/support-ticket.entity.js";
 
 export class SupportRepository {
   private getDb(connection?: PoolConnection) {

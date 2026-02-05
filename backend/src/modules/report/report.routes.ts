@@ -4,7 +4,7 @@ import {
   downloadSummaryReport,
 } from '@/modules/report/report.controller.js';
 import { protect, restrictTo } from '@middlewares/authMiddleware.js';
-import { UserRole } from '@types/auth.js';
+import { UserRole } from '@/types/auth.js';
 
 const router = Router();
 

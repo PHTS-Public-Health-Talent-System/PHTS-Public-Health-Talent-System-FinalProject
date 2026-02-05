@@ -37,7 +37,7 @@ import {
   leavePayExceptionIdSchema,
   leaveReturnReportIdSchema,
 } from '@/modules/payroll/payroll.schema.js';
-import { UserRole } from '@types/auth.js';
+import { UserRole } from '@/types/auth.js';
 
 const router = Router();
 

@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { PayrollService } from '@/modules/payroll/payroll.service.js';
-import { ApiResponse } from '@types/auth.js';
+import { ApiResponse } from '@/types/auth.js';
 import type {
   CreatePeriodDto,
   CalculatePeriodDto,

@@ -1,4 +1,4 @@
-import { UserRole } from "../../types/auth.js";
+import { UserRole } from '@types/auth.js';
 
 export const STEP_ROLE_MAP: Record<number, UserRole> = {
   1: UserRole.HEAD_WARD,

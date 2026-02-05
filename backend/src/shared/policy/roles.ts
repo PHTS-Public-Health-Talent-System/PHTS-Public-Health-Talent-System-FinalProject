@@ -1,4 +1,4 @@
-import { UserRole } from "../../types/auth.js";
+import { UserRole } from '@types/auth.js';
 
 export { UserRole };
 

@@ -1,4 +1,4 @@
-import { UserRole } from "../../../types/auth.js";
+import { UserRole } from '@types/auth.js';
 import {
   STEP_ROLE_MAP,
   ROLE_STEP_MAP,
@@ -10,7 +10,7 @@ import {
   canReassign,
   canAdjustLeave,
   canViewScopes,
-} from "../request.policy.js";
+} from '@shared/policy/request.policy.js';
 
 describe("request.policy", () => {
   test("role-step maps are consistent for approval roles", () => {

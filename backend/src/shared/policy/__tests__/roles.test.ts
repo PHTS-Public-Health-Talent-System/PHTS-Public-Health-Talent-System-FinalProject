@@ -1,5 +1,5 @@
-import { UserRole } from "../../../types/auth.js";
-import { APPROVER_ROLES, isApproverRole, isAdminRole } from "../roles.js";
+import { UserRole } from '@types/auth.js';
+import { APPROVER_ROLES, isApproverRole, isAdminRole } from '@shared/policy/roles.js';
 
 describe("roles policy", () => {
   test("approver roles contain expected roles", () => {

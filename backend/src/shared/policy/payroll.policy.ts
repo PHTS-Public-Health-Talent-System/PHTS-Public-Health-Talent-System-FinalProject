@@ -1,5 +1,5 @@
-import { UserRole } from "../../types/auth.js";
-import { PeriodStatus } from "../../modules/payroll/entities/payroll.entity.js";
+import { UserRole } from '@types/auth.js';
+import { PeriodStatus } from '@/modules/payroll/entities/payroll.entity.js';
 
 export type PayrollAction =
   | "SUBMIT"

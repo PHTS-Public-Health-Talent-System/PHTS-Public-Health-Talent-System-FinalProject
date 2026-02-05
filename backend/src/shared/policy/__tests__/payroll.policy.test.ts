@@ -1,9 +1,9 @@
-import { UserRole } from "../../../types/auth.js";
-import { PeriodStatus } from "../../../modules/payroll/entities/payroll.entity.js";
+import { UserRole } from '@types/auth.js';
+import { PeriodStatus } from '@/modules/payroll/entities/payroll.entity.js';
 import {
   resolveNextStatus,
   canTransition,
-} from "../payroll.policy.js";
+} from '@shared/policy/payroll.policy.js';
 
 describe("payroll.policy", () => {
   test("resolveNextStatus returns next status for valid transitions", () => {

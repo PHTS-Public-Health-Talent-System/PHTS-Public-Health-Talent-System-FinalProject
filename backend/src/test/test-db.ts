@@ -1,5 +1,5 @@
 import mysql from "mysql2/promise";
-import { loadEnv } from "../config/env.js";
+import { loadEnv } from '@config/env.js';
 
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 

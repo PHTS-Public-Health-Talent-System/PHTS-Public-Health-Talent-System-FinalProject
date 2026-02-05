@@ -3,8 +3,8 @@ import {
   PersonnelType,
   RequestType,
   WorkAttributes,
-} from "../request.types.js";
-import { CreateRequestDTO } from "../dto/index.js";
+} from '@/modules/request/request.types.js';
+import { CreateRequestDTO } from '@/modules/request/dto/index.js';
 
 /**
  * Parsed request payload with file categorization

@@ -1,6 +1,6 @@
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
-import db from "../../../config/database.js";
-import { clearScopeCache } from "../../request/scope/scope.service.js";
+import db from '@config/database.js';
+import { clearScopeCache } from '@/modules/request/scope/scope.service.js';
 
 type HrUserRow = {
   citizen_id: string;

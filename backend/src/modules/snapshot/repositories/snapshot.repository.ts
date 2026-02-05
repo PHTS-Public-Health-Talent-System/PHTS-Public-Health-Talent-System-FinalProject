@@ -5,8 +5,8 @@
  */
 
 import { RowDataPacket, ResultSetHeader, PoolConnection } from "mysql2/promise";
-import db, { getConnection } from "../../../config/database.js";
-import { Snapshot, SnapshotType, PeriodWithSnapshot } from "../entities/snapshot.entity.js";
+import db, { getConnection } from '@config/database.js';
+import { Snapshot, SnapshotType, PeriodWithSnapshot } from '@/modules/snapshot/entities/snapshot.entity.js';
 
 export class SnapshotRepository {
   // ── Period queries ──────────────────────────────────────────────────────────

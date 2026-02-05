@@ -1,9 +1,9 @@
-import { FinanceRepository } from "../finance.repository.js";
-import { PaymentStatus } from "../../entities/finance.entity.js";
+import { FinanceRepository } from '@/modules/finance/repositories/finance.repository.js';
+import { PaymentStatus } from '@/modules/finance/entities/finance.entity.js';
 import {
   resetFinanceSchema,
   getTestConnection,
-} from "../../../../test/test-db.js";
+} from '@/test/test-db.js';
 
 jest.setTimeout(30000);
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { SnapshotType } from "./services/snapshot.service.js";
+import { SnapshotType } from '@/modules/snapshot/services/snapshot.service.js';
 
 // GET /snapshots/periods/:id
 export const getPeriodSchema = z.object({

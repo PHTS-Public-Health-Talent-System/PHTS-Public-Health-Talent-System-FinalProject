@@ -5,8 +5,8 @@
  */
 
 import { RowDataPacket, ResultSetHeader } from "mysql2/promise";
-import { query } from "../../../config/database.js";
-import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
+import { query } from '@config/database.js';
+import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 
 export const getHolidays = async (year?: string | number): Promise<any[]> => {
   let sql = "SELECT * FROM cfg_holidays WHERE is_active = 1";

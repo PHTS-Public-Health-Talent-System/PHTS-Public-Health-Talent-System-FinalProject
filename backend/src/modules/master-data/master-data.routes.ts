@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { protect, restrictTo } from "../../middlewares/authMiddleware.js";
-import { validate } from "../../shared/validate.middleware.js";
+import { protect, restrictTo } from '@middlewares/authMiddleware.js';
+import { validate } from '@shared/validate.middleware.js';
 import {
   createHolidaySchema,
   deleteHolidaySchema,
   getHolidaysSchema,
   updateRateSchema,
-} from "./master-data.schema.js";
-import { UserRole } from "../../types/auth.js";
-import * as masterDataController from "./master-data.controller.js";
+} from '@/modules/master-data/master-data.schema.js';
+import { UserRole } from '@types/auth.js';
+import * as masterDataController from '@/modules/master-data/master-data.controller.js';
 
 const router = Router();
 

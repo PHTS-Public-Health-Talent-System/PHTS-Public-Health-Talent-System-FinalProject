@@ -1,5 +1,5 @@
-import { RetirementsRepository } from "../repositories/retirements.repository.js";
-import type { RetirementInput, RetirementRecord } from "../entities/alerts.entity.js";
+import { RetirementsRepository } from '@/modules/alerts/repositories/retirements.repository.js';
+import type { RetirementInput, RetirementRecord } from '@/modules/alerts/entities/alerts.entity.js';
 
 export async function listRetirements(): Promise<RetirementRecord[]> {
   return RetirementsRepository.list();

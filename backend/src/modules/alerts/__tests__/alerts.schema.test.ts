@@ -1,4 +1,4 @@
-import { retirementCreateSchema } from "../alerts.schema.js";
+import { retirementCreateSchema } from '@/modules/alerts/alerts.schema.js';
 
 describe("alerts schema", () => {
   test("rejects invalid retire_date", async () => {

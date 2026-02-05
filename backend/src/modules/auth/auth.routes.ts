@@ -7,10 +7,10 @@
  */
 
 import { Router } from "express";
-import * as authController from "./auth.controller.js";
-import { protect } from "../../middlewares/authMiddleware.js";
-import { validate } from "../../shared/validate.middleware.js";
-import { loginSchema } from "./auth.schema.js";
+import * as authController from '@/modules/auth/auth.controller.js';
+import { protect } from '@middlewares/authMiddleware.js';
+import { validate } from '@shared/validate.middleware.js';
+import { loginSchema } from '@/modules/auth/auth.schema.js';
 
 const router = Router();
 

@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
-import { PayrollRepository } from "../repositories/payroll.repository.js";
-import { getPayoutDataForReport } from "../../snapshot/services/snapshot.service.js";
+import { PayrollRepository } from '@/modules/payroll/repositories/payroll.repository.js';
+import { getPayoutDataForReport } from '@/modules/snapshot/services/snapshot.service.js';
 
 export async function buildPeriodReport(periodId: number): Promise<Buffer> {
   const period = await PayrollRepository.findPeriodById(periodId);

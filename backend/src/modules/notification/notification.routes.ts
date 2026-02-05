@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { protect } from "../../middlewares/authMiddleware.js";
-import { validate } from "../../shared/validate.middleware.js";
-import * as notifCtrl from "./notification.controller.js";
-import { markReadSchema, notificationSettingsSchema } from "./notification.schema.js";
+import { protect } from '@middlewares/authMiddleware.js';
+import { validate } from '@shared/validate.middleware.js';
+import * as notifCtrl from '@/modules/notification/notification.controller.js';
+import { markReadSchema, notificationSettingsSchema } from '@/modules/notification/notification.schema.js';
 
 const router = Router();
 

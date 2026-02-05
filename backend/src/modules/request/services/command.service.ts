@@ -2,7 +2,7 @@
  * src/modules/request/services/command.service.ts
  */
 
-import { getConnection } from '../../../config/database.js';
+import { getConnection } from '@config/database.js';
 import { readFile } from 'node:fs/promises';
 import { PoolConnection } from 'mysql2/promise';
 import {
@@ -13,19 +13,19 @@ import {
   STEP_ROLE_MAP,
   ROLE_STEP_MAP,
   RequestWithDetails,
-} from '../request.types.js';
-import { CreateRequestDTO, UpdateRequestDTO } from '../dto/index.js';
-import { NotificationService } from '../../notification/services/notification.service.js';
+} from '@/modules/request/request.types.js';
+import { CreateRequestDTO, UpdateRequestDTO } from '@/modules/request/dto/index.js';
+import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import {
   generateRequestNoFromId,
   normalizeDateToYMD,
   mapRequestRow,
   getRequestLinkForRole,
   parseJsonField,
-} from './helpers.js';
-import { requestQueryService } from './query.service.js'; // Use the class instance
-import { emitAuditEvent, AuditEventType } from '../../audit/services/audit.service.js';
-import { requestRepository } from '../repositories/request.repository.js'; // [NEW]
+} from '@/modules/request/services/helpers.js';
+import { requestQueryService } from '@/modules/request/services/query.service.js'; // Use the class instance
+import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
+import { requestRepository } from '@/modules/request/repositories/request.repository.js'; // [NEW]
 
 export class RequestCommandService {
   // --- Helpers (Internal) ---

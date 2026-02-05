@@ -1,7 +1,7 @@
 import {
   getTestConnection,
   resetRequestSchema,
-} from "../../../../test/test-db.js";
+} from '@/test/test-db.js';
 
 jest.setTimeout(30000);
 

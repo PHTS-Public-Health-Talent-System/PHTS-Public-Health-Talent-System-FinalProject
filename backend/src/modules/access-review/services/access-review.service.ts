@@ -8,9 +8,9 @@
  */
 
 import { RowDataPacket } from "mysql2/promise";
-import { query, getConnection } from "../../../config/database.js";
-import { NotificationService } from "../../notification/services/notification.service.js";
-import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
+import { query, getConnection } from '@config/database.js';
+import { NotificationService } from '@/modules/notification/services/notification.service.js';
+import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 
 /**
  * Review cycle status

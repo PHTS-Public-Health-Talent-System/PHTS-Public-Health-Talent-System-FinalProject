@@ -1,14 +1,14 @@
 import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { Decimal } from "decimal.js";
-import pool from "../../../config/database.js";
+import pool from '@config/database.js';
 import {
   calculateDeductions,
   LeaveRow,
   NoSalaryPeriodRow,
   QuotaRow,
   ReturnReportRow,
-} from "./deductions.js";
-import { formatLocalDate, makeLocalDate } from "./utils.js";
+} from '@/modules/payroll/core/deductions.js';
+import { formatLocalDate, makeLocalDate } from '@/modules/payroll/core/utils.js';
 
 export interface EligibilityRow extends RowDataPacket {
   effective_date: Date | string;

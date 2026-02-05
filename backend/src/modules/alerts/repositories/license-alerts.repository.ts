@@ -5,13 +5,13 @@
  */
 
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
-import db from "../../../config/database.js";
+import db from '@config/database.js';
 import {
   AlertBucket,
   LicenseAlertRow,
   LicenseAlertSummary,
   LicenseExpiryRow,
-} from "../entities/license-alerts.entity.js";
+} from '@/modules/alerts/entities/license-alerts.entity.js';
 
 // SQL fragments for license alert queries
 const bucketCaseSql = `

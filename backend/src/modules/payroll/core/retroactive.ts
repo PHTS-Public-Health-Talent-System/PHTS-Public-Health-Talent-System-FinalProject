@@ -1,6 +1,6 @@
 import { PoolConnection, RowDataPacket } from "mysql2/promise";
-import pool from "../../../config/database.js";
-import { calculateMonthly, RetroDetail } from "./calculator.js";
+import pool from '@config/database.js';
+import { calculateMonthly, RetroDetail } from '@/modules/payroll/core/calculator.js';
 
 const shiftMonth = (year: number, month: number, offset: number) => {
   let targetMonth = month - offset;

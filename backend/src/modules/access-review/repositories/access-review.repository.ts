@@ -5,13 +5,13 @@
  */
 
 import { RowDataPacket, ResultSetHeader, PoolConnection } from "mysql2/promise";
-import db, { getConnection } from "../../../config/database.js";
+import db, { getConnection } from '@config/database.js';
 import {
   ReviewCycle,
   ReviewCycleStatus,
   ReviewItem,
   ReviewResult,
-} from "../entities/access-review.entity.js";
+} from '@/modules/access-review/entities/access-review.entity.js';
 
 export class AccessReviewRepository {
   // ── Cycle queries ───────────────────────────────────────────────────────────

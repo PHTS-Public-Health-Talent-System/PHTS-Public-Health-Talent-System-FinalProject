@@ -1,4 +1,4 @@
-import { resetAuthSchema, getTestConnection } from "../../../test/test-db.js";
+import { resetAuthSchema, getTestConnection } from '@/test/test-db.js';
 
 jest.setTimeout(30000);
 

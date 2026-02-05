@@ -7,15 +7,15 @@ import {
   RequestWithDetails,
   ROLE_STEP_MAP,
   RequestActionWithActor,
-} from "../request.types.js";
-import { mapRequestRow, hydrateRequests } from "./helpers.js";
+} from '@/modules/request/request.types.js';
+import { mapRequestRow, hydrateRequests } from '@/modules/request/services/helpers.js';
 import {
   getScopeFilterForApprover,
   getScopeFilterForSelectedScope,
   canApproverAccessRequest,
   getApproverScopes,
-} from "../scope/scope.service.js";
-import { requestRepository } from "../repositories/request.repository.js"; // [NEW]
+} from '@/modules/request/scope/scope.service.js';
+import { requestRepository } from '@/modules/request/repositories/request.repository.js'; // [NEW]
 
 // ============================================================================
 // User's Requests

@@ -7,20 +7,20 @@
  */
 
 import { Router } from "express";
-import { protect, restrictTo } from "../../middlewares/authMiddleware.js";
-import { requestUpload } from "../../config/upload.js";
-import { requestController } from "./controllers/request.controller.js"; // Import instance
-import { validate } from "../../shared/validate.middleware.js";
-import { actionSchema, verificationSchema } from "./dto/update-status.dto.js"; // Use correct DTO file
-import { verificationSnapshotSchema } from "./dto/verification-snapshot.dto.js";
+import { protect, restrictTo } from '@middlewares/authMiddleware.js';
+import { requestUpload } from '@config/upload.js';
+import { requestController } from '@/modules/request/controllers/request.controller.js'; // Import instance
+import { validate } from '@shared/validate.middleware.js';
+import { actionSchema, verificationSchema } from '@/modules/request/dto/update-status.dto.js'; // Use correct DTO file
+import { verificationSnapshotSchema } from '@/modules/request/dto/verification-snapshot.dto.js';
 import {
   requestAdjustLeaveSchema,
   requestApproveBatchSchema,
   requestIdParamSchema,
   requestRateMappingSchema,
   requestReassignSchema,
-} from "./dto/request-params.dto.js";
-import { UserRole } from "../../types/auth.js";
+} from '@/modules/request/dto/request-params.dto.js';
+import { UserRole } from '@types/auth.js';
 // Note: createRequestSchema is used inside controller manually for file upload handling, or added here if middleware used.
 // Current controller implementation handles validation manually after file upload.
 

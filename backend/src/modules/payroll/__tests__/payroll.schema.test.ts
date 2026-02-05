@@ -1,4 +1,4 @@
-import { leaveReturnReportSchema } from "../payroll.schema.js";
+import { leaveReturnReportSchema } from '@/modules/payroll/payroll.schema.js';
 
 describe("payroll schema", () => {
   test("rejects invalid return_date format", async () => {

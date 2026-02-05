@@ -22,9 +22,9 @@ import {
   rejectPeriod,
   searchPayouts,
   submitToHR,
-} from "./payroll.controller.js";
-import { protect, restrictTo } from "../../middlewares/authMiddleware.js";
-import { validate } from "../../shared/validate.middleware.js";
+} from '@/modules/payroll/payroll.controller.js';
+import { protect, restrictTo } from '@middlewares/authMiddleware.js';
+import { validate } from '@shared/validate.middleware.js';
 import {
   createPeriodSchema,
   calculateOnDemandSchema,
@@ -36,8 +36,8 @@ import {
   periodItemParamSchema,
   leavePayExceptionIdSchema,
   leaveReturnReportIdSchema,
-} from "./payroll.schema.js";
-import { UserRole } from "../../types/auth.js";
+} from '@/modules/payroll/payroll.schema.js';
+import { UserRole } from '@types/auth.js';
 
 const router = Router();
 

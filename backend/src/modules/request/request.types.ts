@@ -64,7 +64,7 @@ export {
   STEP_ROLE_MAP,
   ROLE_STEP_MAP,
   TOTAL_APPROVAL_STEPS,
-} from "../../shared/policy/request.policy.js";
+} from '@shared/policy/request.policy.js';
 
 /**
  * Work attributes interface for P.T.S. form
@@ -175,7 +175,7 @@ export interface RequestActionWithActor extends RequestAction {
 }
 
 // ─── DTOs moved to dto/ directory ───────────────────────────────────────────
-// Import from "./dto/index.js" instead:
+// Import from '@/modules/request/dto/index.js' instead:
 //   CreateRequestDTO, UpdateRequestDTO, CancelRequestDTO, SubmitRequestDTO,
 //   ApproveRequestDTO, RejectRequestDTO, ReturnRequestDTO,
 //   BatchApproveParams, BatchApproveResult, RequestFilters, PaginatedResult

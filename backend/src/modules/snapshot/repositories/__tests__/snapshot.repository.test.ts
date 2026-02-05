@@ -1,9 +1,9 @@
-import { SnapshotRepository } from "../snapshot.repository.js";
-import { SnapshotType } from "../../entities/snapshot.entity.js";
+import { SnapshotRepository } from '@/modules/snapshot/repositories/snapshot.repository.js';
+import { SnapshotType } from '@/modules/snapshot/entities/snapshot.entity.js';
 import {
   resetSnapshotSchema,
   getTestConnection,
-} from "../../../../test/test-db.js";
+} from '@/test/test-db.js';
 
 jest.setTimeout(30000);
 

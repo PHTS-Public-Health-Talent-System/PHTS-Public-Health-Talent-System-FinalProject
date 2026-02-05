@@ -4,27 +4,27 @@
  * Approval workflow operations: approve, reject, return, batch approve
  */
 import { PoolConnection } from "mysql2/promise";
-import { getConnection } from "../../../config/database.js";
+import { getConnection } from '@config/database.js';
 import {
   RequestStatus,
   ActionType,
   PTSRequest,
   STEP_ROLE_MAP,
   ROLE_STEP_MAP,
-} from "../request.types.js";
-import { BatchApproveParams, BatchApproveResult } from "../dto/index.js";
-import { NotificationService } from "../../notification/services/notification.service.js";
+} from '@/modules/request/request.types.js';
+import { BatchApproveParams, BatchApproveResult } from '@/modules/request/dto/index.js';
+import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import {
   mapRequestRow,
   normalizeDateToYMD,
   getRequestLinkForRole,
-} from "./helpers.js";
+} from '@/modules/request/services/helpers.js';
 import {
   canApproverAccessRequest,
   isRequestOwner,
-} from "../scope/scope.service.js";
-import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
-import { requestRepository } from "../repositories/request.repository.js";
+} from '@/modules/request/scope/scope.service.js';
+import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
+import { requestRepository } from '@/modules/request/repositories/request.repository.js';
 
 // ============================================================================
 // Finalization

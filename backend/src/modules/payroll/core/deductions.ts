@@ -1,11 +1,11 @@
 import { RowDataPacket } from "mysql2/promise";
-import { LEAVE_RULES } from "../payroll.constants.js";
+import { LEAVE_RULES } from '@/modules/payroll/payroll.constants.js';
 import {
   countBusinessDays,
   countCalendarDays,
   formatLocalDate,
   isHoliday,
-} from "./utils.js";
+} from '@/modules/payroll/core/utils.js';
 
 export interface LeaveRow extends RowDataPacket {
   id?: number;

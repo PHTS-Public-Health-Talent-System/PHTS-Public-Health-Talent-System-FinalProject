@@ -1,11 +1,11 @@
 import crypto from "node:crypto";
-import { NotificationService } from "../../notification/services/notification.service.js";
-import { AlertLogsRepository } from "../repositories/alert-logs.repository.js";
-import { AlertsRepository } from "../repositories/alerts.repository.js";
-import { LicenseAlertsRepository } from "../repositories/license-alerts.repository.js";
-import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
-import { getSLAReport } from "../../sla/services/sla.service.js";
-import type { AlertType } from "../entities/alerts.entity.js";
+import { NotificationService } from '@/modules/notification/services/notification.service.js';
+import { AlertLogsRepository } from '@/modules/alerts/repositories/alert-logs.repository.js';
+import { AlertsRepository } from '@/modules/alerts/repositories/alerts.repository.js';
+import { LicenseAlertsRepository } from '@/modules/alerts/repositories/license-alerts.repository.js';
+import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
+import { getSLAReport } from '@/modules/sla/services/sla.service.js';
+import type { AlertType } from '@/modules/alerts/entities/alerts.entity.js';
 
 const DATE_FMT = (d: Date) => d.toISOString().slice(0, 10);
 

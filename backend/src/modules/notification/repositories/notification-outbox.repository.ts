@@ -1,10 +1,10 @@
 import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
-import db from "../../../config/database.js";
+import db from '@config/database.js';
 import type {
   NotificationOutboxPayload,
   NotificationOutboxRecord,
   NotificationOutboxStatus,
-} from "../entities/notification-outbox.entity.js";
+} from '@/modules/notification/entities/notification-outbox.entity.js';
 
 export class NotificationOutboxRepository {
   static async enqueue(

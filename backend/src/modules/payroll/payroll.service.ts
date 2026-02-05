@@ -1,12 +1,12 @@
-import { NotificationService } from "../notification/services/notification.service.js";
-import { payrollService as calculator } from "./core/calculator.js";
-import { calculateRetroactive } from "./core/retroactive.js";
-import { emitAuditEvent, AuditEventType } from "../audit/services/audit.service.js";
-import { PayPeriod, PeriodStatus } from "./entities/payroll.entity.js";
-import { resolveNextStatus } from "../../shared/policy/payroll.policy.js";
-import { PayrollRepository } from "./repositories/payroll.repository.js";
+import { NotificationService } from '@/modules/notification/services/notification.service.js';
+import { payrollService as calculator } from '@/modules/payroll/core/calculator.js';
+import { calculateRetroactive } from '@/modules/payroll/core/retroactive.js';
+import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
+import { PayPeriod, PeriodStatus } from '@/modules/payroll/entities/payroll.entity.js';
+import { resolveNextStatus } from '@shared/policy/payroll.policy.js';
+import { PayrollRepository } from '@/modules/payroll/repositories/payroll.repository.js';
 
-export { PeriodStatus } from "./entities/payroll.entity.js";
+export { PeriodStatus } from '@/modules/payroll/entities/payroll.entity.js';
 
 export class PayrollService {
   /**

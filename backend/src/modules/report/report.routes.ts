@@ -2,9 +2,9 @@ import { Router } from "express";
 import {
   downloadDetailReport,
   downloadSummaryReport,
-} from "./report.controller.js";
-import { protect, restrictTo } from "../../middlewares/authMiddleware.js";
-import { UserRole } from "../../types/auth.js";
+} from '@/modules/report/report.controller.js';
+import { protect, restrictTo } from '@middlewares/authMiddleware.js';
+import { UserRole } from '@types/auth.js';
 
 const router = Router();
 

@@ -1,10 +1,10 @@
 import { Request, Response } from "express";
-import { ApiResponse } from "../../types/auth.js";
+import { ApiResponse } from '@types/auth.js';
 import {
   AlertBucket,
   getLicenseAlertList,
   getLicenseAlertSummary,
-} from "./services/license-alerts.service.js";
+} from '@/modules/alerts/services/license-alerts.service.js';
 
 const VALID_BUCKETS: AlertBucket[] = ["expired", "30", "60", "90"];
 

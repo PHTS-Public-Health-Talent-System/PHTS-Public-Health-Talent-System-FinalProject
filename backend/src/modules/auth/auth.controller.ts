@@ -11,15 +11,15 @@ import {
   LoginResponse,
   ApiResponse,
   UserProfile,
-} from "../../types/auth.js";
-import { extractRequestInfo } from "../audit/services/audit.service.js";
-import { LoginSchema } from "./auth.schema.js";
+} from '@types/auth.js';
+import { extractRequestInfo } from '@/modules/audit/services/audit.service.js';
+import { LoginSchema } from '@/modules/auth/auth.schema.js';
 import {
   AuthService,
   AuthenticationError,
   AccountDisabledError,
   InvalidCitizenIdError,
-} from "./services/auth.service.js";
+} from '@/modules/auth/services/auth.service.js';
 
 /**
  * Login Handler

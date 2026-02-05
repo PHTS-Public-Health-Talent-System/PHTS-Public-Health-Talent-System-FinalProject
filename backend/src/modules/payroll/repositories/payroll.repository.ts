@@ -1,6 +1,6 @@
 import { RowDataPacket, ResultSetHeader, PoolConnection } from "mysql2/promise";
-import db from "../../../config/database.js";
-import { PayPeriod, PeriodStatus } from "../entities/payroll.entity.js";
+import db from '@config/database.js';
+import { PayPeriod, PeriodStatus } from '@/modules/payroll/entities/payroll.entity.js';
 
 // ─── Types for batch-fetched data ────────────────────────────────────────────
 

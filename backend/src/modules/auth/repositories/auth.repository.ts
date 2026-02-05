@@ -5,8 +5,8 @@
  */
 
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
-import db from "../../../config/database.js";
-import { User, EmployeeProfile } from "../entities/auth.entity.js";
+import db from '@config/database.js';
+import { User, EmployeeProfile } from '@/modules/auth/entities/auth.entity.js';
 
 export class AuthRepository {
   // ── User queries ────────────────────────────────────────────────────────────

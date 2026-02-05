@@ -5,8 +5,8 @@
  */
 
 import { RowDataPacket, ResultSetHeader } from "mysql2/promise";
-import { query } from "../../../config/database.js";
-import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
+import { query } from '@config/database.js';
+import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 
 export const getMasterRates = async (): Promise<any[]> => {
   const rates = await query<RowDataPacket[]>(

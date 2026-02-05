@@ -1,7 +1,7 @@
 import { RowDataPacket } from "mysql2/promise";
-import { query } from "../../../config/database.js";
-import { NotificationService } from "../../notification/services/notification.service.js";
-import { getLicenseAlertSummary } from "./license-alerts.service.js";
+import { query } from '@config/database.js';
+import { NotificationService } from '@/modules/notification/services/notification.service.js';
+import { getLicenseAlertSummary } from '@/modules/alerts/services/license-alerts.service.js';
 
 type DigestResult = {
   sent: number;

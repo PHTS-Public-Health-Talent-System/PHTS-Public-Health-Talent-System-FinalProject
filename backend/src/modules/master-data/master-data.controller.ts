@@ -1,10 +1,10 @@
 import { Request, Response } from "express";
-import * as masterDataService from "./services/master-data.service.js";
+import * as masterDataService from '@/modules/master-data/services/master-data.service.js';
 import {
   CreateHolidayDTO,
   GetHolidaysQuery,
   UpdateRateBody,
-} from "./master-data.schema.js";
+} from '@/modules/master-data/master-data.schema.js';
 
 // Holidays
 export const getHolidays = async (req: Request, res: Response) => {

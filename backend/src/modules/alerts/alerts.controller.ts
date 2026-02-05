@@ -4,7 +4,7 @@ import {
   createRetirement,
   updateRetirement,
   deleteRetirement,
-} from "./services/alerts.service.js";
+} from '@/modules/alerts/services/alerts.service.js';
 
 export async function getRetirements(_req: Request, res: Response) {
   const records = await listRetirements();

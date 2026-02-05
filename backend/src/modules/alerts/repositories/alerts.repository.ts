@@ -1,5 +1,5 @@
 import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
-import db from "../../../config/database.js";
+import db from '@config/database.js';
 
 export type MovementOutRow = {
   citizen_id: string;

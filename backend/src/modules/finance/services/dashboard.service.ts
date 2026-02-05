@@ -4,15 +4,15 @@
  * Handles finance dashboard data aggregation and summaries.
  */
 
-import { FinanceRepository } from "../repositories/finance.repository.js";
+import { FinanceRepository } from '@/modules/finance/repositories/finance.repository.js';
 import type {
   FinanceSummary,
   YearlySummary,
   FinanceDashboard,
-} from "../entities/finance.entity.js";
+} from '@/modules/finance/entities/finance.entity.js';
 
 // Re-export for backward compatibility
-export type { FinanceSummary, YearlySummary } from "../entities/finance.entity.js";
+export type { FinanceSummary, YearlySummary } from '@/modules/finance/entities/finance.entity.js';
 
 /**
  * Get finance summary by period (from view)

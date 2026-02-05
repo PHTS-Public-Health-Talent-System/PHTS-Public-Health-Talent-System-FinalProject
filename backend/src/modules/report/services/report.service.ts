@@ -1,14 +1,14 @@
 import ExcelJS from "exceljs";
-import { getPayoutDataForReport } from "../../snapshot/services/snapshot.service.js";
-import { ReportRepository } from "../repositories/report.repository.js";
+import { getPayoutDataForReport } from '@/modules/snapshot/services/snapshot.service.js';
+import { ReportRepository } from '@/modules/report/repositories/report.repository.js';
 import {
   ReportParams,
   PayoutRow,
   PROFESSION_NAME_MAP,
-} from "../entities/report.entity.js";
+} from '@/modules/report/entities/report.entity.js';
 
 // Re-export entities for backward compatibility
-export * from "../entities/report.entity.js";
+export * from '@/modules/report/entities/report.entity.js';
 
 const BORDER_STYLE: Partial<ExcelJS.Borders> = {
   top: { style: "thin" },

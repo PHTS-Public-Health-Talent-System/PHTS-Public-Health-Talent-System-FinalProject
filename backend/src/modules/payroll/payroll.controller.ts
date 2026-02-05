@@ -1,13 +1,13 @@
 import { Request, Response } from "express";
-import { PayrollService } from "./payroll.service.js";
-import { ApiResponse } from "../../types/auth.js";
+import { PayrollService } from '@/modules/payroll/payroll.service.js';
+import { ApiResponse } from '@types/auth.js';
 import type {
   CreatePeriodDto,
   CalculatePeriodDto,
   CreateLeavePayExceptionDto,
   CreateLeaveReturnReportDto,
-} from "./dto/index.js";
-import { buildPeriodReport } from "./report/payroll-report.service.js";
+} from '@/modules/payroll/dto/index.js';
+import { buildPeriodReport } from '@/modules/payroll/report/payroll-report.service.js';
 
 export const getPeriodStatus = async (req: Request, res: Response) => {
   try {

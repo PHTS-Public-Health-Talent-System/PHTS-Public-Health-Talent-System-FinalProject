@@ -5,8 +5,8 @@
  */
 
 import { RowDataPacket, ResultSetHeader, PoolConnection } from "mysql2/promise";
-import db from "../../../config/database.js";
-import { Notification, NotificationType, NotificationSettings } from "../entities/notification.entity.js";
+import db from '@config/database.js';
+import { Notification, NotificationType, NotificationSettings } from '@/modules/notification/entities/notification.entity.js';
 
 const DEFAULT_CHUNK_SIZE = 200;
 

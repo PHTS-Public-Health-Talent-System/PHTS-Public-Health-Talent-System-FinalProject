@@ -4,16 +4,16 @@
  * Handles payment status updates, batch payments, and cancellations.
  */
 
-import { FinanceRepository } from "../repositories/finance.repository.js";
+import { FinanceRepository } from '@/modules/finance/repositories/finance.repository.js';
 import {
   PaymentStatus,
-} from "../entities/finance.entity.js";
-import type { PayoutWithDetails, BatchPaymentResult } from "../entities/finance.entity.js";
-import { emitAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
+} from '@/modules/finance/entities/finance.entity.js';
+import type { PayoutWithDetails, BatchPaymentResult } from '@/modules/finance/entities/finance.entity.js';
+import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 
 // Re-export for backward compatibility
-export { PaymentStatus } from "../entities/finance.entity.js";
-export type { PayoutWithDetails } from "../entities/finance.entity.js";
+export { PaymentStatus } from '@/modules/finance/entities/finance.entity.js';
+export type { PayoutWithDetails } from '@/modules/finance/entities/finance.entity.js';
 
 /**
  * Mark a single payout as paid

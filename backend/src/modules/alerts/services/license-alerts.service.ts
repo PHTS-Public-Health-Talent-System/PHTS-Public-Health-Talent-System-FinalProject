@@ -1,5 +1,5 @@
 import { RowDataPacket } from "mysql2/promise";
-import { query } from "../../../config/database.js";
+import { query } from '@config/database.js';
 
 type AlertBucket = "expired" | "30" | "60" | "90";
 

@@ -5,13 +5,13 @@
  */
 
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
-import db, { getConnection } from "../../../config/database.js";
+import db, { getConnection } from '@config/database.js';
 import {
   PaymentStatus,
   PayoutWithDetails,
   FinanceSummary,
   YearlySummary,
-} from "../entities/finance.entity.js";
+} from '@/modules/finance/entities/finance.entity.js';
 
 export class FinanceRepository {
   // ── Payout queries ──────────────────────────────────────────────────────────

@@ -5,9 +5,9 @@
  */
 
 import { Request, Response } from "express";
-import { ApiResponse } from "../../types/auth.js";
-import * as auditService from "./services/audit.service.js";
-import { AuditEventType, AuditSearchFilter } from "./services/audit.service.js";
+import { ApiResponse } from '@types/auth.js';
+import * as auditService from '@/modules/audit/services/audit.service.js';
+import { AuditEventType, AuditSearchFilter } from '@/modules/audit/services/audit.service.js';
 
 function getStringQuery(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;

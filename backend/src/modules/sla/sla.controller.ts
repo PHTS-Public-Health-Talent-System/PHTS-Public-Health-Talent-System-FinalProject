@@ -5,8 +5,8 @@
  */
 
 import { Request, Response } from "express";
-import { ApiResponse } from "../../types/auth.js";
-import * as slaService from "./services/sla.service.js";
+import { ApiResponse } from '@types/auth.js';
+import * as slaService from '@/modules/sla/services/sla.service.js';
 
 /**
  * Get all SLA configurations

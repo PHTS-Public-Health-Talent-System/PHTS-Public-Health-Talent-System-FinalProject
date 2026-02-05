@@ -3,8 +3,8 @@ import {
   normalizeDateToYMD,
   parseJsonField,
   mapRequestRow,
-} from "../helpers.js";
-import { RequestStatus, RequestType, PersonnelType } from "../../request.types.js";
+} from '@/modules/request/services/helpers.js';
+import { RequestStatus, RequestType, PersonnelType } from '@/modules/request/request.types.js';
 
 describe("request helpers", () => {
   test("generateRequestNoFromId pads to 6 digits", () => {

@@ -6,18 +6,18 @@
 
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { getJwtSecret } from "../../../config/jwt.js";
-import { isValidCitizenId } from "../../../shared/utils/validationUtils.js";
-import { AuthRepository } from "../repositories/auth.repository.js";
+import { getJwtSecret } from '@config/jwt.js';
+import { isValidCitizenId } from '@shared/utils/validationUtils.js';
+import { AuthRepository } from '@/modules/auth/repositories/auth.repository.js';
 import {
   UserProfile,
   LoginResult,
   JwtPayload,
-} from "../entities/auth.entity.js";
+} from '@/modules/auth/entities/auth.entity.js';
 import {
   emitAuditEvent,
   AuditEventType,
-} from "../../audit/services/audit.service.js";
+} from '@/modules/audit/services/audit.service.js';
 
 // ─── Custom Errors ────────────────────────────────────────────────────────────
 

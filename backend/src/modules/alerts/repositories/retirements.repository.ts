@@ -1,6 +1,6 @@
 import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
-import db from "../../../config/database.js";
-import type { RetirementInput, RetirementRecord } from "../entities/alerts.entity.js";
+import db from '@config/database.js';
+import type { RetirementInput, RetirementRecord } from '@/modules/alerts/entities/alerts.entity.js';
 
 export class RetirementsRepository {
   static async list(conn?: PoolConnection): Promise<RetirementRecord[]> {

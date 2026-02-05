@@ -4,15 +4,15 @@
  * Service layer for SLA tracking and management
  */
 
-import { SLARepository } from "../repositories/sla.repository.js";
+import { SLARepository } from '@/modules/sla/repositories/sla.repository.js';
 import {
   SLAConfig,
   SLAReport,
   SLAReminderResult,
   RequestSLAInfo,
-} from "../entities/sla.entity.js";
-import { NotificationService } from "../../notification/services/notification.service.js";
-import { STEP_ROLE_MAP } from "../../../shared/policy/request.policy.js";
+} from '@/modules/sla/entities/sla.entity.js';
+import { NotificationService } from '@/modules/notification/services/notification.service.js';
+import { STEP_ROLE_MAP } from '@shared/policy/request.policy.js';
 
 // ─── SLA Config Functions ─────────────────────────────────────────────────────
 

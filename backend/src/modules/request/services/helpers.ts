@@ -4,7 +4,7 @@ import {
   PersonnelType,
   PTSRequest,
   RequestWithDetails,
-} from "../request.types.js";
+} from '@/modules/request/request.types.js';
 
 export const REQUESTER_FIELDS = `
   u.citizen_id as requester_citizen_id,

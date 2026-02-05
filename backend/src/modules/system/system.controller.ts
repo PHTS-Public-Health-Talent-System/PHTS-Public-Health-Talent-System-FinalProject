@@ -1,13 +1,13 @@
 import { Request, Response } from "express";
-import { query } from "../../config/database.js";
-import * as systemService from "./services/system.service.js";
-import { emitAuditEvent, AuditEventType } from "../audit/services/audit.service.js";
+import { query } from '@config/database.js';
+import * as systemService from '@/modules/system/services/system.service.js';
+import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 import type {
   SearchUsersQuery,
   UpdateUserRoleParams,
   UpdateUserRoleBody,
   ToggleMaintenanceModeBody,
-} from "./system.schema.js";
+} from '@/modules/system/system.schema.js';
 
 export const searchUsers = async (req: Request, res: Response) => {
   try {

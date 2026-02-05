@@ -5,15 +5,15 @@
  * Uses special_position from emp_profiles to determine approver scopes.
  */
 
-import { delCache, setJsonCache } from "../../../shared/utils/cache.js";
-import { requestRepository } from "../repositories/request.repository.js";
+import { delCache, setJsonCache } from '@shared/utils/cache.js';
+import { requestRepository } from '@/modules/request/repositories/request.repository.js';
 import {
   ApproverScopes,
   parseSpecialPositionScopes,
   removeOverlaps,
   resolveApproverRole,
   inferScopeType,
-} from "./utils.js";
+} from '@/modules/request/scope/utils.js';
 
 const SCOPE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 

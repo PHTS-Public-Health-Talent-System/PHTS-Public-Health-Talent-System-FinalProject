@@ -6,31 +6,31 @@
  */
 
 import { Request, Response } from "express";
-import { ApiResponse } from "../../../types/auth.js";
+import { ApiResponse } from '@types/auth.js';
 
 // Services
-import { requestQueryService } from "../services/query.service.js";
-import { requestCommandService } from "../services/command.service.js";
-import { requestApprovalService } from "../services/approval.service.js";
-import * as reassignService from "../reassign/reassign.service.js";
-import * as rateService from "../../master-data/services/rate.service.js";
+import { requestQueryService } from '@/modules/request/services/query.service.js';
+import { requestCommandService } from '@/modules/request/services/command.service.js';
+import { requestApprovalService } from '@/modules/request/services/approval.service.js';
+import * as reassignService from '@/modules/request/reassign/reassign.service.js';
+import * as rateService from '@/modules/master-data/services/rate.service.js';
 
-import { getUserScopesForDisplay } from "../scope/scope.service.js";
+import { getUserScopesForDisplay } from '@/modules/request/scope/scope.service.js';
 
-import { requestRepository } from "../repositories/request.repository.js";
+import { requestRepository } from '@/modules/request/repositories/request.repository.js';
 import {
   cleanupUploadSession,
-} from "../helpers/utils.js";
+} from '@/modules/request/helpers/utils.js';
 
 import {
   createRequestSchema,
-} from "../dto/create-request.dto.js";
+} from '@/modules/request/dto/create-request.dto.js';
 
 import {
   catchAsync,
   AuthenticationError,
   ValidationError,
-} from "../../../shared/utils/errors.js";
+} from '@shared/utils/errors.js';
 
 const decodeSignatureBase64 = (payload?: string): Buffer | null => {
   if (!payload || typeof payload !== "string") return null;

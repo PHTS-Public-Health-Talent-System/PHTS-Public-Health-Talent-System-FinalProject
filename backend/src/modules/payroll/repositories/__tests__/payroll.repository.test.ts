@@ -1,9 +1,9 @@
-import { PayrollRepository } from "../payroll.repository.js";
-import { PeriodStatus } from "../../entities/payroll.entity.js";
+import { PayrollRepository } from '@/modules/payroll/repositories/payroll.repository.js';
+import { PeriodStatus } from '@/modules/payroll/entities/payroll.entity.js';
 import {
   resetPayrollSchema,
   getTestConnection,
-} from "../../../../test/test-db.js";
+} from '@/test/test-db.js';
 
 jest.setTimeout(30000);
 

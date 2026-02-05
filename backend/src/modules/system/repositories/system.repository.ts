@@ -5,7 +5,7 @@
  */
 
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
-import db, { getConnection } from "../../../config/database.js";
+import db, { getConnection } from '@config/database.js';
 import {
   UserRow,
   HrUserRow,
@@ -16,7 +16,7 @@ import {
   ViewLeaveQuota,
   ViewLeaveRequest,
   ExistingLeaveRecord,
-} from "../entities/system.entity.js";
+} from '@/modules/system/entities/system.entity.js';
 
 export class SystemRepository {
   // ── User queries ───────────────────────────────────────────────────────────

@@ -5,8 +5,8 @@
  */
 
 import { Request, Response } from "express";
-import { ApiResponse } from "../../types/auth.js";
-import * as financeService from "./services/finance.service.js";
+import { ApiResponse } from '@types/auth.js';
+import * as financeService from '@/modules/finance/services/finance.service.js';
 import type {
   GetSummaryQuery,
   GetYearlySummaryQuery,
@@ -17,7 +17,7 @@ import type {
   BatchMarkAsPaidBody,
   CancelPayoutParams,
   CancelPayoutBody,
-} from "./finance.schema.js";
+} from '@/modules/finance/finance.schema.js';
 
 /**
  * Get finance dashboard overview

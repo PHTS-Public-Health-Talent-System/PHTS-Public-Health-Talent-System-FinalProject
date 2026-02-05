@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ActionType } from "../request.types.js";
+import { ActionType } from '@/modules/request/request.types.js';
 
 export const actionSchema = z.object({
   body: z.object({

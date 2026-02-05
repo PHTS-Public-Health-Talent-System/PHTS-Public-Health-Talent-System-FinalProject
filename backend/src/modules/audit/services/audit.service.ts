@@ -7,19 +7,19 @@
  */
 
 import { PoolConnection } from "mysql2/promise";
-import { AuditRepository } from "../repositories/audit.repository.js";
+import { AuditRepository } from '@/modules/audit/repositories/audit.repository.js';
 import {
   AuditEvent,
   CreateAuditEventInput,
   AuditSearchFilter,
   AuditSearchResult,
   AuditSummaryItem,
-} from "../entities/audit.entity.js";
+} from '@/modules/audit/entities/audit.entity.js';
 
 // Re-export types for backward compatibility
-export { AuditEventType } from "../entities/audit.entity.js";
-export type { CreateAuditEventInput as CreateAuditEventDTO } from "../entities/audit.entity.js";
-export type { AuditEvent, AuditSearchFilter } from "../entities/audit.entity.js";
+export { AuditEventType } from '@/modules/audit/entities/audit.entity.js';
+export type { CreateAuditEventInput as CreateAuditEventDTO } from '@/modules/audit/entities/audit.entity.js';
+export type { AuditEvent, AuditSearchFilter } from '@/modules/audit/entities/audit.entity.js';
 
 /**
  * Log an audit event

@@ -1,4 +1,4 @@
-import { PersonnelType, RequestType, WorkAttributes } from "../request.types.js";
+import { PersonnelType, RequestType, WorkAttributes } from '@/modules/request/request.types.js';
 
 /**
  * DTO for updating an existing request

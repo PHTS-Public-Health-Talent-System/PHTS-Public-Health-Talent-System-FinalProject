@@ -5,8 +5,8 @@
  */
 
 import { Request, Response } from "express";
-import { NotificationService } from "./services/notification.service.js";
-import { NotificationSettingsBody } from "./notification.schema.js";
+import { NotificationService } from '@/modules/notification/services/notification.service.js';
+import { NotificationSettingsBody } from '@/modules/notification/notification.schema.js';
 
 /**
  * Get notifications for current user

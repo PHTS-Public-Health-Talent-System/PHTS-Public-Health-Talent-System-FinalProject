@@ -1,5 +1,5 @@
 import { Request, Response } from "express";
-import * as reportService from "./services/report.service.js";
+import * as reportService from '@/modules/report/services/report.service.js';
 
 export const downloadDetailReport = async (
   req: Request,

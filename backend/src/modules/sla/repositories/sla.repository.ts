@@ -5,8 +5,8 @@
  */
 
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
-import db from "../../../config/database.js";
-import { SLAConfig, ReminderType } from "../entities/sla.entity.js";
+import db from '@config/database.js';
+import { SLAConfig, ReminderType } from '@/modules/sla/entities/sla.entity.js';
 
 export class SLARepository {
   // ── SLA Config queries ──────────────────────────────────────────────────────

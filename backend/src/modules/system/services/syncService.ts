@@ -1,15 +1,15 @@
 import bcrypt from "bcryptjs";
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
-import db from "../../../config/database.js";
-import redis from "../../../config/redis.js";
-import { assignRoles } from "./roleAssignmentService.js";
-import { clearScopeCache } from "../../request/scope/scope.service.js";
-import { requestRepository } from "../../request/repositories/request.repository.js";
+import db from '@config/database.js';
+import redis from '@config/redis.js';
+import { assignRoles } from '@/modules/system/services/roleAssignmentService.js';
+import { clearScopeCache } from '@/modules/request/scope/scope.service.js';
+import { requestRepository } from '@/modules/request/repositories/request.repository.js';
 import {
   parseSpecialPositionScopes,
   removeOverlaps,
   inferScopeType,
-} from "../../request/scope/utils.js";
+} from '@/modules/request/scope/utils.js';
 
 const SALT_ROUNDS = 10;
 const SYNC_LOCK_KEY = "system:sync:lock";

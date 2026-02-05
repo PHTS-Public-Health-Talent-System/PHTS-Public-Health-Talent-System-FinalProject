@@ -3,5 +3,5 @@
  * Facade for finance operations
  */
 
-export * from "./payment.service.js";
-export * from "./dashboard.service.js";
+export * from '@/modules/finance/services/payment.service.js';
+export * from '@/modules/finance/services/dashboard.service.js';

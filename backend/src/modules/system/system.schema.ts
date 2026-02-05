@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { UserRole } from "../../types/auth.js";
+import { UserRole } from '@types/auth.js';
 
 // GET /system/users?q=searchTerm
 export const searchUsersSchema = z.object({

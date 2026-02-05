@@ -1,4 +1,4 @@
-import { calculateDeductions, LeaveRow } from "../deductions.js";
+import { calculateDeductions, LeaveRow } from '@/modules/payroll/core/deductions.js';
 
 describe("payroll core deductions", () => {
   const monthStart = new Date("2026-02-01");

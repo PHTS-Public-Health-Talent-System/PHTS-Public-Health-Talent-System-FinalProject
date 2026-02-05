@@ -4,7 +4,7 @@
  * TypeScript interfaces matching auth-related DB tables
  */
 
-import { UserRole } from "../../../types/auth.js";
+import { UserRole } from '@types/auth.js';
 
 // ─── users table ──────────────────────────────────────────────────────────────
 

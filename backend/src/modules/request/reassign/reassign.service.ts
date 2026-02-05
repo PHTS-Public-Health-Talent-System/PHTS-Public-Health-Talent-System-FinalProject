@@ -1,11 +1,11 @@
 /**
  * src/modules/request/reassign/reassign.service.ts
  */
-import { getConnection } from '../../../config/database.js';
-import { RequestStatus, ActionType, ROLE_STEP_MAP } from '../request.types.js';
-import { NotificationService } from '../../notification/services/notification.service.js';
-import { getRequestLinkForRole } from '../services/helpers.js';
-import { requestRepository } from '../repositories/request.repository.js';
+import { getConnection } from '@config/database.js';
+import { RequestStatus, ActionType, ROLE_STEP_MAP } from '@/modules/request/request.types.js';
+import { NotificationService } from '@/modules/notification/services/notification.service.js';
+import { getRequestLinkForRole } from '@/modules/request/services/helpers.js';
+import { requestRepository } from '@/modules/request/repositories/request.repository.js';
 
 export interface ReassignRequestDTO {
   targetOfficerId: number;

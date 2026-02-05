@@ -2,12 +2,12 @@
  * src/modules/request/repositories/request.repository.ts
  */
 import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
-import pool from "../../../config/database.js";
+import pool from '@config/database.js';
 import {
   RequestSubmissionEntity,
   RequestAttachmentEntity,
   RequestApprovalEntity,
-} from "../entities/request.entity.js";
+} from '@/modules/request/entities/request.entity.js';
 
 export class RequestRepository {
   // Helper to choose between Connection (Transaction) or Pool (Auto-commit)

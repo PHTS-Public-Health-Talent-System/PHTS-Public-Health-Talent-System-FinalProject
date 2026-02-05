@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ReviewResult } from "./services/access-review.service.js";
+import { ReviewResult } from '@/modules/access-review/services/access-review.service.js';
 
 // GET /access-review/cycles?year=
 export const getCyclesSchema = z.object({

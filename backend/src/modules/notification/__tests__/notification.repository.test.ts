@@ -1,8 +1,8 @@
-import { NotificationRepository } from "../repositories/notification.repository.js";
+import { NotificationRepository } from '@/modules/notification/repositories/notification.repository.js';
 import {
   resetNotificationSchema,
   getTestConnection,
-} from "../../../test/test-db.js";
+} from '@/test/test-db.js';
 
 jest.setTimeout(30000);
 

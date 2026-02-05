@@ -1,8 +1,8 @@
-import { NotificationRepository } from "../repositories/notification.repository.js";
-import { NotificationOutboxRepository } from "../repositories/notification-outbox.repository.js";
-import type { NotificationOutboxPayload } from "../entities/notification-outbox.entity.js";
+import { NotificationRepository } from '@/modules/notification/repositories/notification.repository.js';
+import { NotificationOutboxRepository } from '@/modules/notification/repositories/notification-outbox.repository.js';
+import type { NotificationOutboxPayload } from '@/modules/notification/entities/notification-outbox.entity.js';
 import type { PoolConnection } from "mysql2/promise";
-import { NotificationType } from "../entities/notification.entity.js";
+import { NotificationType } from '@/modules/notification/entities/notification.entity.js';
 
 export class NotificationOutboxService {
   static async enqueue(

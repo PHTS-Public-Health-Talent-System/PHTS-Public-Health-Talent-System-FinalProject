@@ -1,13 +1,13 @@
 import { Router } from "express";
-import { protect, restrictTo } from "../../middlewares/authMiddleware.js";
-import { validate } from "../../shared/validate.middleware.js";
-import { UserRole } from "../../types/auth.js";
-import * as systemController from "./system.controller.js";
+import { protect, restrictTo } from '@middlewares/authMiddleware.js';
+import { validate } from '@shared/validate.middleware.js';
+import { UserRole } from '@types/auth.js';
+import * as systemController from '@/modules/system/system.controller.js';
 import {
   searchUsersSchema,
   updateUserRoleSchema,
   toggleMaintenanceModeSchema,
-} from "./system.schema.js";
+} from '@/modules/system/system.schema.js';
 
 const router = Router();
 

@@ -1,22 +1,22 @@
 import { Router } from "express";
-import { protect, restrictTo } from "../../middlewares/authMiddleware.js";
-import { validate } from "../../shared/validate.middleware.js";
-import { UserRole } from "../../types/auth.js";
+import { protect, restrictTo } from '@middlewares/authMiddleware.js';
+import { validate } from '@shared/validate.middleware.js';
+import { UserRole } from '@types/auth.js';
 import {
   getRetirements,
   postRetirement,
   putRetirement,
   removeRetirement,
-} from "./alerts.controller.js";
+} from '@/modules/alerts/alerts.controller.js';
 import {
   getLicenseList,
   getLicenseSummary,
-} from "./license-alerts.controller.js";
+} from '@/modules/alerts/license-alerts.controller.js';
 import {
   retirementCreateSchema,
   retirementIdSchema,
   retirementUpdateSchema,
-} from "./alerts.schema.js";
+} from '@/modules/alerts/alerts.schema.js';
 
 const router = Router();
 

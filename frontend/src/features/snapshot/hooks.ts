@@ -11,7 +11,7 @@ import {
   getSnapshotsForPeriod,
   getSummaryData,
   unfreezePeriod,
-} from '@/features/snapshot/api';
+} from './api';
 
 export function usePeriodWithSnapshot(id: number | string | undefined) {
   return useQuery({

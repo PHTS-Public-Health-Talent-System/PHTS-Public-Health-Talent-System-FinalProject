@@ -9,7 +9,7 @@ import {
   getSlaReport,
   sendSlaReminders,
   updateSlaConfig,
-} from '@/features/sla/api';
+} from './api';
 
 export function useSlaConfigs() {
   return useQuery({

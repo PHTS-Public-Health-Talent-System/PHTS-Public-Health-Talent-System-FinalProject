@@ -8,7 +8,7 @@ import {
   triggerBackup,
   triggerSync,
   updateUserRole,
-} from '@/features/system/api';
+} from './api';
 
 export function useSearchUsers(params: ApiParams) {
   return useQuery({

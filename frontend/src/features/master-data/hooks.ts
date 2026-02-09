@@ -9,9 +9,10 @@ import {
   getMasterRates,
   getProfessions,
   createMasterRate,
+  deleteMasterRate,
   updateMasterRate,
   getRateHierarchy,
-} from '@/features/master-data/api';
+} from './api';
 
 export function useHolidays(params?: ApiParams) {
   return useQuery({
@@ -56,6 +57,12 @@ export function useUpdateMasterRate() {
   return useMutation({
     mutationFn: ({ rateId, payload }: { rateId: number | string; payload: ApiPayload }) =>
       updateMasterRate(rateId, payload),
+  });
+}
+
+export function useDeleteMasterRate() {
+  return useMutation({
+    mutationFn: (rateId: number | string) => deleteMasterRate(rateId),
   });
 }
 

@@ -7,10 +7,13 @@ const api = axios.create({
   },
 });
 
+const TOKEN_KEY = 'phts_token';
+const USER_KEY = 'phts_user';
+
 // Interceptor: Attach Token
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -24,8 +27,8 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
         // Prevent redirect loop if already on login
         if (!window.location.pathname.startsWith('/login')) {
             window.location.href = '/login';

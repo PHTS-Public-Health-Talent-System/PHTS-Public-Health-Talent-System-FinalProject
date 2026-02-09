@@ -8,7 +8,7 @@ import {
   getAuditSummary,
   getEntityAuditTrail,
   searchAuditEvents,
-} from '@/features/audit/api';
+} from './api';
 
 export function useAuditEventTypes() {
   return useQuery({

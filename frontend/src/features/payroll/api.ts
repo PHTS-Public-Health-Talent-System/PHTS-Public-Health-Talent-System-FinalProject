@@ -14,6 +14,8 @@ export type PayPeriod = {
   is_frozen?: number | boolean | null;
   frozen_at?: string | null;
   frozen_by?: number | null;
+  created_by?: number | null;
+  created_by_name?: string | null;
 };
 
 export type PeriodItem = {

@@ -18,6 +18,11 @@ export interface User {
   position?: string;
   subDepartment?: string;
   department?: string;
+  license_no?: string | null;
+  license_name?: string | null;
+  license_valid_from?: string | Date | null;
+  license_valid_until?: string | Date | null;
+  license_status?: 'ACTIVE' | 'EXPIRED' | 'INACTIVE' | 'UNKNOWN' | null;
 }
 
 export interface AuthResponse {

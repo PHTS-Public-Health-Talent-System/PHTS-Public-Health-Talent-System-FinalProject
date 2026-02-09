@@ -2,7 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import type { ApiParams } from '@/shared/api/types';
-import { getLicenseAlertsList, getLicenseAlertsSummary } from '@/features/license-alerts/api';
+import { getLicenseAlertsList, getLicenseAlertsSummary } from './api';
 
 export function useLicenseAlertsSummary() {
   return useQuery({

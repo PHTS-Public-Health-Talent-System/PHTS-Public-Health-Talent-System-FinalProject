@@ -11,7 +11,7 @@ import {
   runAccessReviewAutoDisable,
   sendAccessReviewReminders,
   updateAccessReviewItem,
-} from '@/features/access-review/api';
+} from './api';
 
 export function useAccessReviewCycles(params?: ApiParams) {
   return useQuery({

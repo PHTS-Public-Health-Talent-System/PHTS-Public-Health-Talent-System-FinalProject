@@ -1,14 +1,11 @@
 "use client";
 
-import { useQuery } from '@tanstack/react-query';
-import {
-  checkSignature,
-  getMySignature,
-} from '@/features/signature/api';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { getMySignature, checkSignature, refreshMySignature } from './api';
 
 export function useMySignature() {
   return useQuery({
-    queryKey: ['signature'],
+    queryKey: ['my-signature'],
     queryFn: getMySignature,
   });
 }
@@ -17,5 +14,11 @@ export function useCheckSignature() {
   return useQuery({
     queryKey: ['signature-check'],
     queryFn: checkSignature,
+  });
+}
+
+export function useRefreshSignature() {
+  return useMutation({
+    mutationFn: refreshMySignature,
   });
 }

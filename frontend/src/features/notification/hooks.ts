@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getMyNotifications, markNotificationRead, getNotificationSettings, updateNotificationSettings } from '@/features/notification/api';
+import { getMyNotifications, markNotificationRead, getNotificationSettings, updateNotificationSettings, deleteReadNotifications } from './api';
 
 export function useNotifications() {
   return useQuery({
@@ -15,6 +15,14 @@ export function useMarkNotificationRead() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: number | string) => markNotificationRead(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  });
+}
+
+export function useDeleteReadNotifications() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (payload?: { older_than_days?: number }) => deleteReadNotifications(payload),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   });
 }

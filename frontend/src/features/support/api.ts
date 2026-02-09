@@ -24,6 +24,12 @@ export type SupportTicket = {
   updated_at?: string | null;
 };
 
+type RawSupportTicket = SupportTicket & {
+  ticket_id?: number;
+  createdAt?: string;
+  updatedAt?: string | null;
+};
+
 export async function createSupportTicket(payload: CreateSupportTicketPayload) {
   const res = await api.post<{ success: boolean; data: { id: number } }>(
     "/support/tickets",
@@ -36,7 +42,12 @@ export async function listMySupportTickets() {
   const res = await api.get<{ success: boolean; data: SupportTicket[] }>(
     "/support/tickets/my",
   );
-  return res.data.data;
+  return res.data.data.map((ticket: RawSupportTicket) => ({
+    ...ticket,
+    id: ticket.id ?? ticket.ticket_id ?? 0,
+    created_at: ticket.created_at ?? ticket.createdAt ?? "",
+    updated_at: ticket.updated_at ?? ticket.updatedAt ?? null,
+  })) as SupportTicket[];
 }
 
 export async function listSupportTickets(params?: {
@@ -44,18 +55,30 @@ export async function listSupportTickets(params?: {
   page?: number;
   pageSize?: number;
 }) {
-  const res = await api.get<{ success: boolean; data: SupportTicket[] }>(
+  const res = await api.get<{ success: boolean; data: { rows: SupportTicket[]; total: number } }>(
     "/support/tickets",
     { params },
   );
-  return res.data.data;
+  const rows = res.data.data.rows.map((ticket: RawSupportTicket) => ({
+    ...ticket,
+    id: ticket.id ?? ticket.ticket_id ?? 0,
+    created_at: ticket.created_at ?? ticket.createdAt ?? "",
+    updated_at: ticket.updated_at ?? ticket.updatedAt ?? null,
+  })) as SupportTicket[];
+  return { rows, total: res.data.data.total };
 }
 
 export async function getSupportTicket(ticketId: number | string) {
   const res = await api.get<{ success: boolean; data: SupportTicket }>(
     `/support/tickets/${ticketId}`,
   );
-  return res.data.data;
+  const ticket = res.data.data as RawSupportTicket;
+  return {
+    ...ticket,
+    id: ticket.id ?? ticket.ticket_id ?? 0,
+    created_at: ticket.created_at ?? ticket.createdAt ?? "",
+    updated_at: ticket.updated_at ?? ticket.updatedAt ?? null,
+  } as SupportTicket;
 }
 
 export async function updateSupportTicketStatus(
@@ -72,6 +95,30 @@ export async function updateSupportTicketStatus(
 export async function reopenSupportTicket(ticketId: number | string) {
   const res = await api.post<{ success: boolean; data: SupportTicket }>(
     `/support/tickets/${ticketId}/reopen`,
+  );
+  return res.data.data;
+}
+
+export type SupportTicketMessage = {
+  message_id: number;
+  ticket_id: number;
+  sender_user_id: number;
+  sender_role: string;
+  message: string;
+  created_at: string;
+};
+
+export async function listSupportTicketMessages(ticketId: number | string) {
+  const res = await api.get<{ success: boolean; data: SupportTicketMessage[] }>(
+    `/support/tickets/${ticketId}/messages`,
+  );
+  return res.data.data;
+}
+
+export async function createSupportTicketMessage(ticketId: number | string, payload: { message: string }) {
+  const res = await api.post<{ success: boolean; data: { id: number } }>(
+    `/support/tickets/${ticketId}/messages`,
+    payload,
   );
   return res.data.data;
 }

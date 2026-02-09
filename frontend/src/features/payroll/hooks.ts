@@ -24,7 +24,7 @@ import {
   rejectPeriod,
   searchPayouts,
   submitToHR,
-} from '@/features/payroll/api';
+} from './api';
 
 export function usePeriodPayouts(periodId: number | string | undefined) {
   return useQuery({

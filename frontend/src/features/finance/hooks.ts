@@ -10,7 +10,7 @@ import {
   getFinanceYearlySummary,
   getPayoutsByPeriod,
   markPayoutAsPaid,
-} from '@/features/finance/api';
+} from './api';
 
 export function useFinanceDashboard() {
   return useQuery({

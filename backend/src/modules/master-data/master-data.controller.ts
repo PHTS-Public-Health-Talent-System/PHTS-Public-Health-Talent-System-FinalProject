@@ -93,6 +93,18 @@ export const createMasterRate = async (req: Request, res: Response) => {
   }
 };
 
+export const deleteMasterRate = async (req: Request, res: Response) => {
+  try {
+    const { rateId } = req.params;
+    const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
+
+    await masterDataService.deleteMasterRate(Number(rateId), actorId);
+    res.json({ success: true, message: "Rate deleted successfully" });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
 // Get rates filtered by profession code
 export const getRatesByProfession = async (req: Request, res: Response) => {
   try {
@@ -131,7 +143,13 @@ export const getRateHierarchy = async (req: Request, res: Response) => {
   try {
     if (!req.user) throw new AuthenticationError("Unauthorized access");
     const data = await masterDataService.getRateHierarchy();
-    if (req.user.role === UserRole.PTS_OFFICER) {
+    if (
+      req.user.role === UserRole.PTS_OFFICER ||
+      req.user.role === UserRole.HEAD_HR ||
+      req.user.role === UserRole.HEAD_FINANCE ||
+      req.user.role === UserRole.DIRECTOR ||
+      req.user.role === UserRole.ADMIN
+    ) {
       res.json({ success: true, data });
       return;
     }

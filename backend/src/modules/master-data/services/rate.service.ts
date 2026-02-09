@@ -41,6 +41,27 @@ export const updateMasterRate = async (
   });
 };
 
+export const deleteMasterRate = async (
+  rateId: number,
+  actorId?: number,
+): Promise<void> => {
+  await query<ResultSetHeader>(
+    "UPDATE cfg_payment_rates SET is_active = ? WHERE rate_id = ?",
+    [0, rateId],
+  );
+
+  await emitAuditEvent({
+    eventType: AuditEventType.MASTER_RATE_UPDATE,
+    entityType: "payment_rate",
+    entityId: rateId,
+    actorId: actorId ?? null,
+    actorRole: null,
+    actionDetail: {
+      action: "delete",
+    },
+  });
+};
+
 export const createMasterRate = async (
   profession_code: string,
   group_no: number,

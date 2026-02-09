@@ -4,7 +4,7 @@
  * Handles all database operations for system administration
  */
 
-import { RowDataPacket, PoolConnection } from "mysql2/promise";
+import { RowDataPacket, PoolConnection } from 'mysql2/promise';
 import db, { getConnection } from '@config/database.js';
 import {
   UserRow,
@@ -24,21 +24,9 @@ export class SystemRepository {
   static async findAllUsers(conn?: PoolConnection): Promise<UserRow[]> {
     const executor = conn ?? db;
     const [rows] = await executor.query<RowDataPacket[]>(
-      "SELECT id, citizen_id, role, is_active, password_hash FROM users",
+      'SELECT id, citizen_id, role, is_active, password_hash FROM users',
     );
     return rows as UserRow[];
-  }
-
-  static async updateUserRole(
-    citizenId: string,
-    role: string,
-    conn?: PoolConnection,
-  ): Promise<void> {
-    const executor = conn ?? db;
-    await executor.execute(
-      "UPDATE users SET role = ?, updated_at = NOW() WHERE citizen_id = ?",
-      [role, citizenId],
-    );
   }
 
   // ── HR data queries ────────────────────────────────────────────────────────
@@ -57,47 +45,30 @@ export class SystemRepository {
 
   // ── Sync view queries ──────────────────────────────────────────────────────
 
-  static async findViewUsersSync(
-    conn: PoolConnection,
-  ): Promise<ViewUserSync[]> {
-    const [rows] = await conn.query<RowDataPacket[]>(
-      "SELECT * FROM vw_hrms_users_sync",
-    );
+  static async findViewUsersSync(conn: PoolConnection): Promise<ViewUserSync[]> {
+    const [rows] = await conn.query<RowDataPacket[]>('SELECT * FROM vw_hrms_users_sync');
     return rows as ViewUserSync[];
   }
 
-  static async findViewEmployees(
-    conn: PoolConnection,
-  ): Promise<ViewEmployee[]> {
-    const [rows] = await conn.query<RowDataPacket[]>(
-      "SELECT * FROM vw_hrms_employees",
-    );
+  static async findViewEmployees(conn: PoolConnection): Promise<ViewEmployee[]> {
+    const [rows] = await conn.query<RowDataPacket[]>('SELECT * FROM vw_hrms_employees');
     return rows as ViewEmployee[];
   }
 
-  static async findViewSupportEmployees(
-    conn: PoolConnection,
-  ): Promise<ViewSupportEmployee[]> {
-    const [rows] = await conn.query<RowDataPacket[]>(
-      "SELECT * FROM vw_hrms_support_staff",
-    );
+  static async findViewSupportEmployees(conn: PoolConnection): Promise<ViewSupportEmployee[]> {
+    const [rows] = await conn.query<RowDataPacket[]>('SELECT * FROM vw_hrms_support_staff');
     return rows as ViewSupportEmployee[];
   }
 
-  static async findViewSignatures(
-    conn: PoolConnection,
-  ): Promise<ViewSignature[]> {
+  static async findViewSignatures(conn: PoolConnection): Promise<ViewSignature[]> {
     const [rows] = await conn.query<RowDataPacket[]>(`
-      SELECT u.id as user_id, s.signature_blob
+      SELECT s.citizen_id, s.signature_blob
       FROM vw_hrms_signatures s
-      JOIN users u ON CONVERT(s.citizen_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = u.citizen_id
     `);
     return rows as ViewSignature[];
   }
 
-  static async findViewLeaveQuotas(
-    conn: PoolConnection,
-  ): Promise<ViewLeaveQuota[]> {
+  static async findViewLeaveQuotas(conn: PoolConnection): Promise<ViewLeaveQuota[]> {
     const [rows] = await conn.query<RowDataPacket[]>(`
       SELECT q.citizen_id, q.fiscal_year, q.total_quota
       FROM vw_hrms_leave_quotas q
@@ -106,9 +77,7 @@ export class SystemRepository {
     return rows as ViewLeaveQuota[];
   }
 
-  static async findViewLeaveRequests(
-    conn: PoolConnection,
-  ): Promise<ViewLeaveRequest[]> {
+  static async findViewLeaveRequests(conn: PoolConnection): Promise<ViewLeaveRequest[]> {
     const [rows] = await conn.query<RowDataPacket[]>(`
       SELECT lr.* FROM vw_hrms_leave_requests lr
       JOIN users u ON CONVERT(lr.citizen_id USING utf8mb4) COLLATE utf8mb4_unicode_ci = u.citizen_id
@@ -121,10 +90,13 @@ export class SystemRepository {
   static async findExistingEmployees(
     conn: PoolConnection,
   ): Promise<
-    Map<string, { position_name: string; level: string; department: string; special_position: string }>
+    Map<
+      string,
+      { position_name: string; level: string; department: string; special_position: string }
+    >
   > {
     const [rows] = await conn.query<RowDataPacket[]>(
-      "SELECT citizen_id, position_name, level, department, special_position FROM emp_profiles",
+      'SELECT citizen_id, position_name, level, department, special_position FROM emp_profiles',
     );
     const map = new Map();
     for (const row of rows as any[]) {
@@ -133,9 +105,7 @@ export class SystemRepository {
     return map;
   }
 
-  static async findExistingSupportEmployees(
-    conn: PoolConnection,
-  ): Promise<Map<string, any>> {
+  static async findExistingSupportEmployees(conn: PoolConnection): Promise<Map<string, any>> {
     const [rows] = await conn.query<RowDataPacket[]>(`
       SELECT citizen_id, title, first_name, last_name, position_name,
              level, special_position, emp_type, department, is_currently_active
@@ -148,20 +118,26 @@ export class SystemRepository {
     return map;
   }
 
-  static async findExistingSignatureUserIds(
-    conn: PoolConnection,
-  ): Promise<Set<number>> {
-    const [rows] = await conn.query<RowDataPacket[]>(
-      "SELECT user_id FROM sig_images",
-    );
-    return new Set((rows as any[]).map((s) => s.user_id));
+  static async findExistingSignatureUserIds(conn: PoolConnection): Promise<Set<number>> {
+    const [rows] = await conn.query<RowDataPacket[]>('SELECT citizen_id FROM sig_images');
+    return new Set((rows as any[]).map((s) => s.citizen_id));
   }
 
   static async findExistingLeaveRecords(
     conn: PoolConnection,
   ): Promise<Map<string, ExistingLeaveRecord>> {
+    const [cols] = await conn.query<RowDataPacket[]>(
+      `SELECT COLUMN_NAME
+       FROM information_schema.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'leave_records'
+         AND COLUMN_NAME IN ('status')`,
+    );
+    const columnSet = new Set((cols as RowDataPacket[]).map((row) => row.COLUMN_NAME));
+    const fields = ['ref_id', 'start_date', 'end_date'];
+    if (columnSet.has('status')) fields.push('status');
     const [rows] = await conn.query<RowDataPacket[]>(
-      "SELECT ref_id, status, start_date, end_date, is_no_pay FROM leave_records WHERE ref_id IS NOT NULL",
+      `SELECT ${fields.join(', ')} FROM leave_records WHERE ref_id IS NOT NULL`,
     );
     const map = new Map();
     for (const row of rows as any[]) {
@@ -190,10 +166,7 @@ export class SystemRepository {
     );
   }
 
-  static async upsertEmployee(
-    emp: ViewEmployee,
-    conn: PoolConnection,
-  ): Promise<void> {
+  static async upsertEmployee(emp: ViewEmployee, conn: PoolConnection): Promise<void> {
     await conn.execute(
       `INSERT INTO emp_profiles (
         citizen_id, title, first_name, last_name, sex, birth_date,
@@ -220,7 +193,7 @@ export class SystemRepository {
         emp.position_name,
         emp.position_number,
         emp.level,
-        ((emp.special_position || "") as string).substring(0, 65535),
+        ((emp.special_position || '') as string).substring(0, 65535),
         emp.employee_type,
         emp.department,
         emp.sub_department,
@@ -272,13 +245,13 @@ export class SystemRepository {
   }
 
   static async insertSignature(
-    userId: number,
+    citizenId: string,
     signatureBlob: Buffer,
     conn: PoolConnection,
   ): Promise<void> {
     await conn.execute(
-      "INSERT INTO sig_images (user_id, signature_image, updated_at) VALUES (?, ?, NOW())",
-      [userId, signatureBlob],
+      'INSERT INTO sig_images (citizen_id, signature_image, updated_at) VALUES (?, ?, NOW())',
+      [citizenId, signatureBlob],
     );
   }
 
@@ -296,22 +269,18 @@ export class SystemRepository {
     );
   }
 
-  static async upsertLeaveRecord(
-    leave: ViewLeaveRequest,
-    conn: PoolConnection,
-  ): Promise<void> {
+  static async upsertLeaveRecord(leave: ViewLeaveRequest, conn: PoolConnection): Promise<void> {
     const toNull = (val: any) => (val === undefined ? null : val);
     await conn.execute(
       `INSERT INTO leave_records (
         ref_id, citizen_id, leave_type, start_date, end_date,
-        duration_days, fiscal_year, remark, status, is_no_pay, synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        duration_days, fiscal_year, remark, status, synced_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
       ON DUPLICATE KEY UPDATE
         status = VALUES(status),
         start_date = VALUES(start_date),
         end_date = VALUES(end_date),
         duration_days = VALUES(duration_days),
-        is_no_pay = VALUES(is_no_pay),
         synced_at = NOW()`,
       [
         toNull(leave.ref_id),
@@ -323,7 +292,6 @@ export class SystemRepository {
         toNull(leave.fiscal_year),
         toNull(leave.remark),
         toNull(leave.status),
-        toNull(leave.is_no_pay ?? 0),
       ],
     );
   }
@@ -356,5 +324,66 @@ export class SystemRepository {
 
   static async getConnection(): Promise<PoolConnection> {
     return getConnection();
+  }
+
+  // ── Admin operations ───────────────────────────────────────────────────────
+
+  static async searchUsers(searchTerm: string): Promise<
+    Array<{
+      id: number;
+      citizen_id: string;
+      role: string;
+      is_active: number;
+      last_login_at: Date | null;
+      first_name: string | null;
+      last_name: string | null;
+    }>
+  > {
+    // Escape LIKE wildcards to prevent pattern injection
+    const sanitized = searchTerm.replace(/[%_]/g, '\\$&');
+    const search = `%${sanitized}%`;
+
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT u.id, u.citizen_id, u.role, u.is_active, u.last_login_at,
+              COALESCE(e.first_name, s.first_name) as first_name,
+              COALESCE(e.last_name, s.last_name) as last_name
+       FROM users u
+       LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
+       LEFT JOIN emp_support_staff s ON u.citizen_id = s.citizen_id
+       WHERE u.citizen_id LIKE ? OR e.first_name LIKE ? OR e.last_name LIKE ?
+       LIMIT 20`,
+      [search, search, search],
+    );
+    return rows as any[];
+  }
+
+  static async updateUserRole(
+    userId: number,
+    role: string,
+    isActive: boolean | undefined,
+  ): Promise<void> {
+    const conn = await getConnection();
+    try {
+      await conn.beginTransaction();
+
+      await conn.execute('UPDATE users SET role = ?, updated_at = NOW() WHERE id = ?', [
+        role,
+        userId,
+      ]);
+
+      if (isActive !== undefined) {
+        await conn.execute('UPDATE users SET is_active = ?, updated_at = NOW() WHERE id = ?', [
+          isActive ? 1 : 0,
+          userId,
+        ]);
+      }
+
+      await conn.commit();
+    } catch (error) {
+      await conn.rollback();
+      throw error;
+    } finally {
+      conn.release();
+    }
   }
 }

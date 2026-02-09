@@ -60,4 +60,56 @@ describe("payroll core deductions", () => {
     expect(map.get("2026-02-03")).toBe(1);
     expect(map.size).toBe(3);
   });
+
+  test("uses document dates when provided", () => {
+    const leaves: LeaveRow[] = [
+      {
+        leave_type: "sick",
+        start_date: "2026-02-01",
+        end_date: "2026-02-05",
+        document_start_date: "2026-02-03",
+        document_end_date: "2026-02-03",
+        duration_days: 5,
+      },
+    ];
+    const map = calculateDeductions(
+      leaves,
+      { quota_sick: 0 },
+      [],
+      monthStart,
+      monthEnd,
+    );
+    expect(map.has("2026-02-01")).toBe(false);
+    expect(map.has("2026-02-02")).toBe(false);
+    expect(map.get("2026-02-03")).toBe(1);
+  });
+
+  test("uses precomputed quota decisions when provided", () => {
+    const leaves: LeaveRow[] = [
+      {
+        id: 99,
+        leave_type: "sick",
+        start_date: "2026-02-01",
+        end_date: "2026-02-03",
+        duration_days: 3,
+      },
+    ];
+    const quotaDecisions = new Map<number, { overQuota: boolean; exceedDate: Date | null }>([
+      [99, { overQuota: true, exceedDate: new Date("2026-02-02") }],
+    ]);
+    const map = calculateDeductions(
+      leaves,
+      {},
+      [],
+      monthStart,
+      monthEnd,
+      null,
+      [],
+      new Map(),
+      quotaDecisions,
+    );
+    expect(map.get("2026-02-01")).toBeUndefined();
+    expect(map.get("2026-02-02")).toBe(1);
+    expect(map.get("2026-02-03")).toBe(1);
+  });
 });

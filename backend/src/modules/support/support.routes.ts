@@ -6,6 +6,7 @@ import {
   createSupportTicketSchema,
   listSupportTicketsSchema,
   supportTicketIdParamSchema,
+  supportTicketMessageSchema,
   updateSupportStatusSchema,
 } from '@/modules/support/support.schema.js';
 import * as supportController from '@/modules/support/support.controller.js';
@@ -33,6 +34,18 @@ router.get(
   "/tickets/:ticketId",
   validate(supportTicketIdParamSchema),
   supportController.getTicket,
+);
+
+router.get(
+  "/tickets/:ticketId/messages",
+  validate(supportTicketIdParamSchema),
+  supportController.listMessages,
+);
+
+router.post(
+  "/tickets/:ticketId/messages",
+  validate(supportTicketMessageSchema),
+  supportController.createMessage,
 );
 
 router.put(

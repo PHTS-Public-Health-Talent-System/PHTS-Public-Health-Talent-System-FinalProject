@@ -24,6 +24,30 @@ function ensureDirectoryExists(
   }
 }
 
+function buildSafeFilename(
+  originalName: string,
+  userId: string | number,
+  timestamp: number,
+): string {
+  const ext = path.extname(originalName) || "";
+  const base = path.basename(originalName, ext);
+  const sanitizedBase = base.replaceAll(/[^a-zA-Z0-9.-]/g, "_");
+  const hash = crypto
+    .createHash("sha1")
+    .update(originalName)
+    .digest("hex")
+    .slice(0, 8);
+  const prefix = `${userId}_${timestamp}_`;
+  const suffix = `_${hash}${ext}`;
+  const maxTotalLength = 120;
+  const maxBaseLength = Math.max(
+    8,
+    maxTotalLength - prefix.length - suffix.length,
+  );
+  const trimmedBase = sanitizedBase.slice(0, maxBaseLength);
+  return `${prefix}${trimmedBase}${suffix}`;
+}
+
 /**
  * Allowed MIME types for file uploads
  */
@@ -55,11 +79,7 @@ const documentStorage = multer.diskStorage({
 
     // Generate filename: {userId}_{timestamp}_{originalname}
     const timestamp = Date.now();
-    const sanitizedOriginalName = file.originalname.replaceAll(
-      /[^a-zA-Z0-9.-]/g,
-      "_",
-    );
-    const filename = `${userId}_${timestamp}_${sanitizedOriginalName}`;
+    const filename = buildSafeFilename(file.originalname, userId, timestamp);
 
     cb(null, filename);
   },
@@ -122,11 +142,7 @@ const requestDocumentStorage = multer.diskStorage({
   filename: (req: Request, file: Express.Multer.File, cb) => {
     const userId = req.user?.userId || "anonymous";
     const timestamp = Date.now();
-    const sanitizedOriginalName = file.originalname.replaceAll(
-      /[^a-zA-Z0-9.-]/g,
-      "_",
-    );
-    const filename = `${userId}_${timestamp}_${sanitizedOriginalName}`;
+    const filename = buildSafeFilename(file.originalname, userId, timestamp);
     cb(null, filename);
   },
 });

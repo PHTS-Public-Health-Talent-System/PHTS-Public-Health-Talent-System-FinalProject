@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
+import { NotificationType } from '@/modules/notification/entities/notification.entity.js';
 import { AlertLogsRepository } from '@/modules/alerts/repositories/alert-logs.repository.js';
 import { AlertsRepository } from '@/modules/alerts/repositories/alerts.repository.js';
 import { LicenseAlertsRepository } from '@/modules/alerts/repositories/license-alerts.repository.js';
@@ -84,7 +85,7 @@ export async function runLicenseAutoCutRestore(): Promise<{
         "ใบอนุญาตหมดอายุ",
         `ใบอนุญาตของท่านหมดอายุแล้ว (วันหมดอายุ: ${expiryDate})`,
         "/dashboard/user/requests",
-        "WARNING",
+        "LICENSE",
       );
     }
 
@@ -135,7 +136,7 @@ export async function runLicenseAutoCutRestore(): Promise<{
           "ใบอนุญาตต่ออายุแล้ว",
           "ระบบเปิดสิทธิรับเงินเพิ่มให้ท่านอีกครั้งหลังต่ออายุใบอนุญาต",
           "/dashboard/user/requests",
-          "SUCCESS",
+          "LICENSE",
         );
       }
 
@@ -175,6 +176,7 @@ export async function runRetirementCutoff(): Promise<number> {
       "ตัดสิทธิเนื่องจากเกษียณ",
       `ตัดสิทธิเงินเพิ่ม พ.ต.ส. (เกษียณ) ตั้งแต่ ${row.retire_date} สำหรับ ${row.citizen_id}`,
       "/dashboard/officer",
+      NotificationType.REMINDER,
     );
 
     await logAlert("RETIREMENT_CUTOFF", "citizen", referenceId, null);
@@ -214,6 +216,7 @@ export async function runMovementOutCutoff(): Promise<number> {
       "ตัดสิทธิเนื่องจากย้ายออก",
       `ตัดสิทธิเงินเพิ่ม พ.ต.ส. (ย้ายออก) ตั้งแต่ ${dateStr} สำหรับ ${row.citizen_id}`,
       "/dashboard/officer",
+      NotificationType.REMINDER,
     );
 
     await logAlert("MOVEMENT_OUT", "citizen", referenceId, null);
@@ -236,6 +239,7 @@ export async function runSLADigest(): Promise<{ sent: number }> {
       "สรุปคำขอค้าง (SLA)",
       `มีคำขอค้างทั้งหมด ${step.count} รายการ (เกินกำหนด ${step.overdue})`,
       "/dashboard",
+      NotificationType.REMINDER,
     );
 
     await logAlert("SLA_DIGEST", "role", step.role, null);
@@ -282,7 +286,7 @@ export async function runLeaveReportAlerts(): Promise<{ sent: number }> {
       title,
       message,
       "/dashboard/user/requests",
-      "WARNING",
+      "LEAVE",
     );
 
     await logAlert("LEAVE_REPORT", "leave_record", String(row.leave_record_id), userId);

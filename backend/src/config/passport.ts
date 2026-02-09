@@ -54,9 +54,9 @@ passport.use(
       }
 
       const users = await query<User[]>(
-        `SELECT id AS user_id, citizen_id, role, is_active 
-         FROM users 
-         WHERE id = ? AND citizen_id = ? 
+        `SELECT id AS user_id, citizen_id, role, is_active
+         FROM users
+         WHERE id = ? AND citizen_id = ?
          LIMIT 1`,
         [userId, citizenId],
       );

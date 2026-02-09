@@ -7,17 +7,11 @@ import {
   calculateOnDemand,
   calculatePeriod,
   createPeriod,
-  createLeavePayException,
-  createLeaveReturnReport,
-  deleteLeavePayException,
-  deleteLeaveReturnReport,
   getPeriodDetail,
   getPeriodPayouts,
   getPeriodSummaryByProfession,
   getPeriodReport,
   listPeriods,
-  listLeavePayExceptions,
-  listLeaveReturnReports,
   removePeriodItem,
   rejectPeriod,
   searchPayouts,
@@ -30,12 +24,8 @@ import {
   calculateOnDemandSchema,
   addPeriodItemsSchema,
   rejectPeriodSchema,
-  leavePayExceptionSchema,
-  leaveReturnReportSchema,
   periodIdParamSchema,
   periodItemParamSchema,
-  leavePayExceptionIdSchema,
-  leaveReturnReportIdSchema,
 } from '@/modules/payroll/payroll.schema.js';
 import { UserRole } from '@/types/auth.js';
 
@@ -97,7 +87,12 @@ router.get(
 router.get(
   "/period/:periodId/summary-by-profession",
   protect,
-  restrictTo(UserRole.PTS_OFFICER),
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.HEAD_FINANCE,
+    UserRole.DIRECTOR,
+  ),
   validate(periodIdParamSchema),
   getPeriodSummaryByProfession,
 );
@@ -193,50 +188,6 @@ router.post(
   validate(periodIdParamSchema),
   validate(rejectPeriodSchema),
   rejectPeriod,
-);
-
-// Leave pay exceptions (PTS_OFFICER only)
-router.post(
-  "/leave-pay-exceptions",
-  protect,
-  restrictTo(UserRole.PTS_OFFICER),
-  validate(leavePayExceptionSchema),
-  createLeavePayException,
-);
-router.get(
-  "/leave-pay-exceptions",
-  protect,
-  restrictTo(UserRole.PTS_OFFICER),
-  listLeavePayExceptions,
-);
-router.delete(
-  "/leave-pay-exceptions/:id",
-  protect,
-  restrictTo(UserRole.PTS_OFFICER),
-  validate(leavePayExceptionIdSchema),
-  deleteLeavePayException,
-);
-
-// Leave return reports (education/ordain/military) (PTS_OFFICER only)
-router.post(
-  "/leave-return-reports",
-  protect,
-  restrictTo(UserRole.PTS_OFFICER),
-  validate(leaveReturnReportSchema),
-  createLeaveReturnReport,
-);
-router.get(
-  "/leave-return-reports",
-  protect,
-  restrictTo(UserRole.PTS_OFFICER),
-  listLeaveReturnReports,
-);
-router.delete(
-  "/leave-return-reports/:id",
-  protect,
-  restrictTo(UserRole.PTS_OFFICER),
-  validate(leaveReturnReportIdSchema),
-  deleteLeaveReturnReport,
 );
 
 export default router;

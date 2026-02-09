@@ -27,9 +27,29 @@ import { requestQueryService } from '@/modules/request/services/query.service.js
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 import { requestRepository } from '@/modules/request/repositories/request.repository.js'; // [NEW]
 import { resolveProfessionCode } from '@shared/utils/profession.js';
-import { AuthorizationError, ValidationError } from '@shared/utils/errors.js';
+import {
+  AuthorizationError,
+  ValidationError,
+  NotFoundError,
+  ConflictError,
+} from '@shared/utils/errors.js';
+import path from 'node:path';
 
 export class RequestCommandService {
+  private containsThai(text: string): boolean {
+    return /[\u0E00-\u0E7F]/.test(text);
+  }
+
+  private normalizeFilename(name: string): string {
+    if (!name) return name;
+    const decoded = Buffer.from(name, 'latin1').toString('utf8');
+    const originalHasThai = this.containsThai(name);
+    const decodedHasThai = this.containsThai(decoded);
+    if (!originalHasThai && decodedHasThai) return decoded;
+    if (name.includes('�') && decodedHasThai) return decoded;
+    return name;
+  }
+
   // --- Helpers (Internal) ---
 
   private buildSubmissionDataJson(data: CreateRequestDTO): string | null {
@@ -57,12 +77,17 @@ export class RequestCommandService {
       let fileType: string = FileType.OTHER;
       if (file.fieldname === 'license_file') fileType = FileType.LICENSE;
       if (file.fieldname === 'applicant_signature') fileType = FileType.SIGNATURE;
+      const relativePath = path.isAbsolute(file.path)
+        ? path.relative(process.cwd(), file.path)
+        : file.path;
+      const normalizedPath = relativePath.split(path.sep).join('/');
+      const normalizedName = this.normalizeFilename(file.originalname);
       await requestRepository.insertAttachment(
         {
           request_id: requestId,
           file_type: fileType,
-          file_path: file.path,
-          file_name: file.originalname,
+          file_path: normalizedPath,
+          file_name: normalizedName,
         },
         connection,
       );
@@ -111,7 +136,10 @@ export class RequestCommandService {
         throw new Error('User not found');
       }
 
-      const signatureId = await requestRepository.findSignatureIdByUserId(userId, connection);
+      const signatureId = await requestRepository.findSignatureIdByUserId(
+        userId,
+        connection,
+      );
       if (!signatureId && !_signatureFile) {
         throw new Error('ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนยื่นคำขอ');
       }
@@ -209,6 +237,7 @@ export class RequestCommandService {
       const snapshotId = await requestRepository.insertVerificationSnapshot(
         {
           request_id: requestId,
+          user_id: requestEntity.user_id ?? null,
           citizen_id: requestEntity.citizen_id,
           master_rate_id: payload.master_rate_id,
           effective_date: payload.effective_date,
@@ -273,7 +302,10 @@ export class RequestCommandService {
             : stepNo;
 
       // Capture signature snapshot on submit (sig_images or applicant signature)
-      let signatureSnapshot = await requestRepository.findSignatureSnapshot(userId, connection);
+      const citizenId = requestEntity.citizen_id;
+      let signatureSnapshot = citizenId
+        ? await requestRepository.findSignatureSnapshot(citizenId, connection)
+        : null;
       if (!signatureSnapshot) {
         const signaturePath = await requestRepository.findSignatureAttachmentPath(
           requestId,
@@ -555,16 +587,18 @@ export class RequestCommandService {
 
       const requestEntity = await requestRepository.findById(requestId, connection);
       if (!requestEntity) {
-        throw new Error('ไม่พบคำขอที่ต้องการยกเลิก');
+        throw new NotFoundError('คำขอ', requestId);
       }
 
       if (requestEntity.user_id !== userId) {
-        throw new Error('คุณไม่มีสิทธิ์ยกเลิกคำขอนี้');
+        throw new AuthorizationError('คุณไม่มีสิทธิ์ยกเลิกคำขอนี้');
       }
 
       const nonCancellableStatuses = [RequestStatus.APPROVED, RequestStatus.CANCELLED];
       if (nonCancellableStatuses.includes(requestEntity.status as RequestStatus)) {
-        throw new Error(`ไม่สามารถยกเลิกคำขอที่มีสถานะ ${requestEntity.status} ได้`);
+        throw new ConflictError(
+          `ไม่สามารถยกเลิกคำขอที่มีสถานะ ${requestEntity.status} ได้`,
+        );
       }
 
       // [REFACTOR] Update Status

@@ -42,6 +42,12 @@ export const updateRateSchema = z.object({
   }),
 });
 
+export const deleteRateSchema = z.object({
+  params: z.object({
+    rateId: z.string().transform((val) => Number(val)),
+  }),
+});
+
 // Export inferred types for Controller use
 export type GetHolidaysQuery = z.infer<typeof getHolidaysSchema>["query"];
 export type CreateHolidayDTO = z.infer<typeof createHolidaySchema>["body"];

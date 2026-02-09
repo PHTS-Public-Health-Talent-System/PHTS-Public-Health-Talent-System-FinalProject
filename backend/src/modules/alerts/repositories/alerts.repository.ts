@@ -121,8 +121,10 @@ export class AlertsRepository {
              AND em.effective_date > lr.end_date
          )
          AND NOT EXISTS (
-           SELECT 1 FROM leave_return_reports r
-           WHERE r.leave_record_id = lr.id
+           SELECT 1
+           FROM leave_record_extensions ext
+           WHERE ext.leave_record_id = lr.id
+             AND ext.return_report_status = 'DONE'
          )
        ORDER BY lr.end_date ASC`,
       [asOf, ...leaveTypes, asOf, asOf, maxDays],

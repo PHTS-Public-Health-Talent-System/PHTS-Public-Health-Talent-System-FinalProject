@@ -120,7 +120,7 @@ export async function resetNotificationSchema(): Promise<void> {
         title VARCHAR(255) NOT NULL,
         message TEXT NOT NULL,
         link VARCHAR(255) NOT NULL DEFAULT '#',
-        type VARCHAR(50) NOT NULL DEFAULT 'INFO',
+        type VARCHAR(50) NOT NULL DEFAULT 'SYSTEM',
         is_read TINYINT NOT NULL DEFAULT 0,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
@@ -168,6 +168,7 @@ export async function resetRequestSchema(): Promise<void> {
       CREATE TABLE IF NOT EXISTS req_verification_snapshots (
         snapshot_id INT AUTO_INCREMENT PRIMARY KEY,
         request_id INT NOT NULL,
+        user_id INT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -226,6 +227,7 @@ export async function resetPayrollSchema(): Promise<void> {
         period_item_id INT AUTO_INCREMENT PRIMARY KEY,
         period_id INT NOT NULL,
         request_id INT NOT NULL,
+        user_id INT NULL,
         citizen_id VARCHAR(20) NOT NULL,
         snapshot_id INT NULL
       )
@@ -251,6 +253,7 @@ export async function resetPayrollSchema(): Promise<void> {
       CREATE TABLE IF NOT EXISTS req_verification_snapshots (
         snapshot_id INT AUTO_INCREMENT PRIMARY KEY,
         request_id INT NOT NULL,
+        user_id INT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
@@ -298,7 +301,9 @@ export async function resetFinanceSchema(): Promise<void> {
       CREATE TABLE pay_results (
         payout_id INT AUTO_INCREMENT PRIMARY KEY,
         period_id INT NOT NULL,
+        user_id INT NULL,
         citizen_id VARCHAR(20) NOT NULL,
+        profession_code VARCHAR(50) NULL,
         pts_rate_snapshot DECIMAL(10,2) NULL,
         calculated_amount DECIMAL(12,2) NULL,
         retroactive_amount DECIMAL(12,2) NULL,
@@ -369,7 +374,9 @@ export async function resetSnapshotSchema(): Promise<void> {
       CREATE TABLE pay_results (
         payout_id INT AUTO_INCREMENT PRIMARY KEY,
         period_id INT NOT NULL,
+        user_id INT NULL,
         citizen_id VARCHAR(20) NOT NULL,
+        profession_code VARCHAR(50) NULL,
         master_rate_id INT NULL,
         calculated_amount DECIMAL(12,2) NULL,
         retroactive_amount DECIMAL(12,2) NULL,

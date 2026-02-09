@@ -130,6 +130,27 @@ export class AuthService {
     const employeeProfile = await AuthRepository.findEmployeeProfileByCitizenId(
       user.citizen_id,
     );
+    const licenseProfile = await AuthRepository.findLatestLicenseByCitizenId(
+      user.citizen_id,
+    );
+    const licenseStatusRaw = licenseProfile?.status?.toUpperCase() ?? null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const licenseValidUntil = licenseProfile?.valid_until
+      ? new Date(licenseProfile.valid_until)
+      : null;
+    let license_status: UserProfile['license_status'] = null;
+    if (licenseProfile) {
+      if (licenseStatusRaw && licenseStatusRaw !== 'ACTIVE') {
+        license_status = 'INACTIVE';
+      } else if (licenseValidUntil && licenseValidUntil < today) {
+        license_status = 'EXPIRED';
+      } else if (licenseValidUntil || licenseStatusRaw === 'ACTIVE' || licenseStatusRaw === null) {
+        license_status = 'ACTIVE';
+      } else {
+        license_status = 'UNKNOWN';
+      }
+    }
 
     return {
       id: user.user_id,
@@ -145,6 +166,11 @@ export class AuthService {
       employee_type: employeeProfile?.employee_type ?? null,
       mission_group: employeeProfile?.mission_group ?? null,
       start_current_position: employeeProfile?.start_current_position ?? null,
+      license_no: licenseProfile?.license_no ?? null,
+      license_name: licenseProfile?.license_name ?? null,
+      license_valid_from: licenseProfile?.valid_from ?? null,
+      license_valid_until: licenseProfile?.valid_until ?? null,
+      license_status,
     };
   }
 

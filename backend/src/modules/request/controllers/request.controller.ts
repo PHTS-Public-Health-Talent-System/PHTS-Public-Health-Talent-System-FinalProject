@@ -48,8 +48,17 @@ export class RequestController {
   getRequestById = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
     if (!req.user) throw new AuthenticationError("Unauthorized access");
     assertNotAdmin(req);
-    const requestId = parseInt(req.params.id);
-    if (isNaN(requestId)) throw new ValidationError("Invalid Request ID");
+    const rawId = String(req.params.id || "");
+    let requestId = Number(rawId);
+    if (!Number.isNaN(requestId) && Number.isFinite(requestId)) {
+      // use numeric id
+    } else if (/^PTS-\d+$/i.test(rawId)) {
+      const request = await requestRepository.findByRequestNo(rawId);
+      if (!request) throw new ValidationError("Request not found");
+      requestId = request.request_id;
+    } else {
+      throw new ValidationError("Invalid Request ID");
+    }
 
     const request = await requestQueryService.getRequestById(
       requestId,
@@ -101,7 +110,10 @@ export class RequestController {
       }
 
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
-      const documentFiles = files?.["files"] || [];
+      const documentFiles = [
+        ...(files?.["files"] || []),
+        ...(files?.["files[]"] || []),
+      ];
       const licenseFiles = files?.["license_file"] || [];
       const signatureFiles = files?.["applicant_signature"] || [];
       const allFiles = [...documentFiles, ...licenseFiles, ...signatureFiles];
@@ -131,7 +143,10 @@ export class RequestController {
       const requestId = parseInt(req.params.id);
 
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
-      const documentFiles = files?.["files"] || [];
+      const documentFiles = [
+        ...(files?.["files"] || []),
+        ...(files?.["files[]"] || []),
+      ];
       const licenseFiles = files?.["license_file"] || [];
       const signatureFiles = files?.["applicant_signature"] || [];
       const allFiles = [...documentFiles, ...licenseFiles, ...signatureFiles];

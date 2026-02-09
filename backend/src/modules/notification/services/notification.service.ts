@@ -22,11 +22,11 @@ export class NotificationService {
     title: string,
     message: string,
     link: string = "#",
-    type: string = "INFO",
+    type: string = "SYSTEM",
     connection?: PoolConnection,
   ): Promise<number> {
     const notificationType =
-      (type as NotificationType) || NotificationType.INFO;
+      (type as NotificationType) || NotificationType.SYSTEM;
     return NotificationOutboxService.enqueue(
       {
         kind: "USER",
@@ -48,7 +48,7 @@ export class NotificationService {
     title: string,
     message: string,
     link: string = "#",
-    type: NotificationType = NotificationType.INFO,
+    type: NotificationType = NotificationType.SYSTEM,
     connection?: PoolConnection,
   ): Promise<number> {
     return NotificationOutboxService.enqueue(
@@ -87,6 +87,13 @@ export class NotificationService {
    */
   static async getUnreadCount(userId: number): Promise<number> {
     return NotificationRepository.countUnread(userId);
+  }
+
+  /**
+   * Get unread notification count for today
+   */
+  static async getUnreadCountToday(userId: number): Promise<number> {
+    return NotificationRepository.countUnreadToday(userId);
   }
 
   /**

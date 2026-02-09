@@ -73,6 +73,11 @@ export interface UserProfile {
   employee_type?: string | null;
   mission_group?: string | null;
   start_current_position?: Date | null;
+  license_no?: string | null;
+  license_name?: string | null;
+  license_valid_from?: Date | string | null;
+  license_valid_until?: Date | string | null;
+  license_status?: 'ACTIVE' | 'EXPIRED' | 'INACTIVE' | 'UNKNOWN' | null;
 }
 
 /**

@@ -79,12 +79,14 @@ const finalizeRequest = async (
 
   // Create Eligibility (Deactivate old, Insert new)
   await requestRepository.deactivateEligibility(
+    request.user_id ?? null,
     citizenId,
     effectiveDateStr,
     connection,
   );
 
   await requestRepository.insertEligibility(
+    request.user_id ?? null,
     citizenId,
     rateId,
     requestId,
@@ -161,9 +163,18 @@ export class RequestApprovalService {
         }
       }
 
+      const actorCitizenId =
+        (await requestRepository.findCitizenIdByUserId(actorId)) ??
+        (await requestRepository.findUserCitizenId(actorId));
+
       const signatureFromStore =
         signatureSnapshot ??
-        (await requestRepository.findSignatureSnapshot(actorId, connection));
+        (actorCitizenId
+          ? await requestRepository.findSignatureSnapshot(
+              actorCitizenId,
+              connection,
+            )
+          : null);
       if (!signatureFromStore) {
         throw new Error(
           "Approver signature is required. Please set your signature before approving.",
@@ -291,7 +302,7 @@ export class RequestApprovalService {
         "คำขอถูกปฏิเสธ",
         `คำขอเลขที่ ${request.request_no} ถูกปฏิเสธ: ${comment}`,
         `/dashboard/user/requests/${requestId}`,
-        "ERROR",
+        "APPROVAL",
         connection,
       );
 
@@ -403,7 +414,7 @@ export class RequestApprovalService {
         "คำขอถูกส่งคืน",
         `คำขอเลขที่ ${request.request_no} ถูกส่งคืนแก้ไข: ${comment}`,
         `/dashboard/user/requests/${requestId}`,
-        "WARNING",
+        "APPROVAL",
         connection,
       );
 
@@ -466,10 +477,15 @@ export class RequestApprovalService {
     const connection = await getConnection();
 
     try {
-      const signatureSnapshot = await requestRepository.findSignatureSnapshot(
-        actorId,
-        connection,
-      );
+      const actorCitizenId =
+        (await requestRepository.findCitizenIdByUserId(actorId)) ??
+        (await requestRepository.findUserCitizenId(actorId));
+      const signatureSnapshot = actorCitizenId
+        ? await requestRepository.findSignatureSnapshot(
+            actorCitizenId,
+            connection,
+          )
+        : null;
 
       if (!signatureSnapshot) {
         throw new Error(
@@ -603,7 +619,7 @@ export class RequestApprovalService {
         "คำขออนุมัติแล้ว",
         `คำขอเลขที่ ${request.request_no} ได้รับการอนุมัติครบทุกขั้นตอนแล้ว`,
         `/dashboard/user/requests/${requestId}`,
-        "SUCCESS",
+        "APPROVAL",
         connection,
       );
     } else {

@@ -15,6 +15,7 @@ export class PayrollService {
   static async getOrCreatePeriod(
     year: number,
     month: number,
+    createdBy?: number | null,
   ): Promise<PayPeriod> {
     const existing = await PayrollRepository.findPeriodByMonthYear(month, year);
     if (existing) return existing;
@@ -23,6 +24,7 @@ export class PayrollService {
       month,
       year,
       PeriodStatus.OPEN,
+      createdBy ?? null,
     );
 
     await emitAuditEvent({
@@ -90,6 +92,10 @@ export class PayrollService {
       for (let i = 0; i < eligibleCitizenIds.length; i += CHUNK_SIZE) {
         const citizenIds = eligibleCitizenIds.slice(i, i + CHUNK_SIZE);
         if (citizenIds.length === 0) continue;
+        const userIdMap = await PayrollRepository.findUserIdMapByCitizenIds(
+          citizenIds,
+          conn,
+        );
 
         const startOfMonth = calculator.makeLocalDate(year, month - 1, 1);
         const endOfMonth = calculator.makeLocalDate(year, month, 0);
@@ -168,6 +174,7 @@ export class PayrollService {
             await calculator.savePayout({
               conn,
               periodId,
+              userId: userIdMap.get(cid) ?? null,
               citizenId: cid,
               result: currentResult,
               masterRateId: currentResult.masterRateId,
@@ -354,6 +361,10 @@ export class PayrollService {
           requestId,
           conn,
         );
+        const userId = await PayrollRepository.findRequestUserId(
+          requestId,
+          conn,
+        );
         if (!citizenId) {
           throw new Error(`Request not found: ${requestId}`);
         }
@@ -369,6 +380,7 @@ export class PayrollService {
         await PayrollRepository.insertPeriodItem(
           periodId,
           requestId,
+          userId,
           citizenId,
           snapshotId,
           conn,
@@ -505,70 +517,6 @@ export class PayrollService {
     }
   }
 
-  // ============================================================================
-  // Leave Pay Exceptions & Return Reports (PTS_OFFICER)
-  // ============================================================================
-
-  static async createLeavePayException(
-    citizenId: string,
-    startDate: string,
-    endDate: string,
-    reason: string | null,
-    actorId: number,
-  ) {
-    const insertId = await PayrollRepository.insertLeavePayException(
-      citizenId,
-      startDate,
-      endDate,
-      reason,
-      actorId,
-    );
-    return { exception_id: insertId };
-  }
-
-  static async listLeavePayExceptions(citizenId?: string) {
-    return PayrollRepository.findLeavePayExceptions(citizenId);
-  }
-
-  static async deleteLeavePayException(exceptionId: number) {
-    return PayrollRepository.deleteLeavePayException(exceptionId);
-  }
-
-  static async createLeaveReturnReport(
-    leaveRecordId: number,
-    returnDate: string,
-    remark: string | null,
-    actorId: number,
-  ) {
-    const leaveRecord =
-      await PayrollRepository.findLeaveRecordById(leaveRecordId);
-    if (!leaveRecord) throw new Error("Leave record not found");
-    const allowedTypes = new Set(["education", "ordain", "military"]);
-    if (!allowedTypes.has(String(leaveRecord.leave_type))) {
-      throw new Error("Return report is only allowed for education/ordain/military leave");
-    }
-
-    const citizenId = leaveRecord.citizen_id as string;
-    const insertId = await PayrollRepository.insertLeaveReturnReport(
-      leaveRecordId,
-      citizenId,
-      returnDate,
-      remark,
-      actorId,
-    );
-    return { report_id: insertId };
-  }
-
-  static async listLeaveReturnReports(params: {
-    citizenId?: string;
-    leaveRecordId?: number;
-  }) {
-    return PayrollRepository.findLeaveReturnReports(params);
-  }
-
-  static async deleteLeaveReturnReport(reportId: number) {
-    return PayrollRepository.deleteLeaveReturnReport(reportId);
-  }
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────

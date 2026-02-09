@@ -45,18 +45,6 @@ export const periodItemParamSchema = z.object({
   params: periodIdParam.merge(itemIdParam),
 });
 
-export const leavePayExceptionIdSchema = z.object({
-  params: z.object({
-    id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
-  }),
-});
-
-export const leaveReturnReportIdSchema = z.object({
-  params: z.object({
-    id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
-  }),
-});
-
 export type CalculateOnDemandInput = z.infer<
   typeof calculateOnDemandSchema
 >["body"];
@@ -79,40 +67,4 @@ export const CalculatePayrollSchema = z.object({
 
 export type CalculatePayrollInput = z.infer<
   typeof CalculatePayrollSchema
->["body"];
-
-export const leavePayExceptionSchema = z.object({
-  body: z
-    .object({
-      citizen_id: z.string().min(1),
-      start_date: z.string().min(1),
-      end_date: z.string().min(1),
-      reason: z.string().optional(),
-    })
-    .refine((data) => new Date(data.start_date) <= new Date(data.end_date), {
-      message: "start_date must be before or equal to end_date",
-      path: ["end_date"],
-    }),
-});
-
-export type LeavePayExceptionInput = z.infer<
-  typeof leavePayExceptionSchema
->["body"];
-
-export const leaveReturnReportSchema = z.object({
-  body: z.object({
-    leave_record_id: z.number().int(),
-    return_date: z
-      .string()
-      .min(1)
-      .refine(
-        (value) => /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(new Date(value).getTime()),
-        { message: "Invalid return_date format" },
-      ),
-    remark: z.string().optional(),
-  }),
-});
-
-export type LeaveReturnReportInput = z.infer<
-  typeof leaveReturnReportSchema
 >["body"];

@@ -65,6 +65,7 @@ export interface RequestAttachmentEntity {
 
 export interface RequestEligibilityEntity {
   eligibility_id: number;
+  user_id: number | null;
   citizen_id: string;
   master_rate_id: number;
   request_id: number;
@@ -79,6 +80,7 @@ export interface RequestEligibilityEntity {
 export interface RequestVerificationSnapshotEntity {
   snapshot_id: number;
   request_id: number;
+  user_id: number | null;
   citizen_id: string;
   master_rate_id: number;
   effective_date: Date;

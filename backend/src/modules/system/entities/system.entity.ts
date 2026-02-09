@@ -106,7 +106,7 @@ export interface ViewSupportEmployee {
 }
 
 export interface ViewSignature {
-  user_id: number;
+  citizen_id: string;
   signature_blob: Buffer;
 }
 
@@ -131,8 +131,8 @@ export interface ViewLeaveRequest {
 
 export interface ExistingLeaveRecord {
   ref_id: string;
-  status: string;
+  status?: string;
   start_date: Date;
   end_date: Date;
-  is_no_pay: number;
+  is_no_pay?: number;
 }

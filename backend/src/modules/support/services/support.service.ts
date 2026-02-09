@@ -3,6 +3,7 @@ import type {
   SupportTicket,
   SupportTicketStatus,
 } from "../entities/support-ticket.entity.js";
+import type { SupportTicketMessage } from "../entities/support-ticket-message.entity.js";
 import { NotificationService } from "../../notification/services/notification.service.js";
 
 export class SupportService {
@@ -63,5 +64,25 @@ export class SupportService {
 
   static async reopen(ticketId: number) {
     await supportRepository.reopen(ticketId);
+  }
+
+  static async listMessages(ticketId: number): Promise<SupportTicketMessage[]> {
+    return supportRepository.listMessages(ticketId);
+  }
+
+  static async createMessage(payload: {
+    ticketId: number;
+    senderUserId: number;
+    senderRole: string;
+    message: string;
+  }): Promise<number> {
+    const messageId = await supportRepository.createMessage({
+      ticket_id: payload.ticketId,
+      sender_user_id: payload.senderUserId,
+      sender_role: payload.senderRole,
+      message: payload.message,
+    });
+    await supportRepository.touch(payload.ticketId);
+    return messageId;
   }
 }

@@ -4,6 +4,7 @@ import { validate } from '@shared/validate.middleware.js';
 import {
   createHolidaySchema,
   deleteHolidaySchema,
+  deleteRateSchema,
   getHolidaysSchema,
   updateRateSchema,
 } from '@/modules/master-data/master-data.schema.js';
@@ -53,6 +54,13 @@ router.put(
   officerAuth,
   validate(updateRateSchema),
   masterDataController.updateMasterRate,
+);
+
+router.delete(
+  "/rates/:rateId",
+  officerAuth,
+  validate(deleteRateSchema),
+  masterDataController.deleteMasterRate,
 );
 
 // Public rates endpoints (all authenticated users can access for dropdown selection)

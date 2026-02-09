@@ -9,11 +9,14 @@ import {
   ReturnReportRow,
 } from '@/modules/payroll/core/deductions.js';
 import { formatLocalDate, makeLocalDate } from '@/modules/payroll/core/utils.js';
+import { LEAVE_RULES } from '@/modules/payroll/payroll.constants.js';
+import { calculateLeaveQuotaStatus } from '@/modules/leave-records/services/leave-domain.service.js';
 
 export interface EligibilityRow extends RowDataPacket {
   effective_date: Date | string;
   expiry_date: Date | string | null;
   rate: number;
+  profession_code?: string | null;
   group_no?: number | null;
   item_no?: string | null;
 }
@@ -52,6 +55,7 @@ export interface CalculationResult {
   rateSnapshot: number;
   ptsGroupNo?: number | null;
   ptsItemNo?: string | null;
+  professionCode?: string | null;
   retroactiveTotal?: number;
   retroDetails?: RetroDetail[];
 }
@@ -73,6 +77,7 @@ type EligibilityInfo = Readonly<{
   expiryTs: number;
   rate: number;
   rateId: number | null;
+  professionCode: string | null;
   groupNo: number | null;
   itemNo: string | null;
 }>;
@@ -89,6 +94,7 @@ type PaymentTotals = {
   daysCounted: number;
   lastRateSnapshot: number;
   lastMasterRateId: number | null;
+  lastProfessionCode: string | null;
   lastGroupNo: number | null;
   lastItemNo: string | null;
 };
@@ -102,6 +108,10 @@ const buildEligibilities = (rows: EligibilityRow[]): EligibilityInfo[] =>
         : makeLocalDate(9999, 11, 31).getTime(),
       rate: Number(row.rate),
       rateId: (row as any).rate_id ?? null,
+      professionCode:
+        row.profession_code !== undefined && row.profession_code !== null
+          ? String(row.profession_code)
+          : null,
       groupNo:
         row.group_no !== undefined && row.group_no !== null
           ? Number(row.group_no)
@@ -153,28 +163,24 @@ const applyDailyTotals = (
 
 function createLicenseChecker(
   licenses: LicenseRow[],
-  positionName = "",
+  _positionName = "",
 ): (dateStr: string) => boolean {
-  const normalizedPosition = (positionName || "")
-    .toLowerCase()
-    .normalize("NFC");
-  let requiresLicense =
-    normalizedPosition.includes("พยาบาล") ||
-    normalizedPosition.includes("นักเทคนิคการแพทย์");
-  if (!requiresLicense && !normalizedPosition && licenses.length > 0) {
-    requiresLicense = true;
-  }
-
-  if (!requiresLicense) {
-    return () => true;
+  if (!licenses || licenses.length === 0) {
+    return () => false;
   }
 
   const ranges = licenses
-    .filter((lic) => (lic.status || "").toUpperCase() === "ACTIVE")
+    .filter(
+      (lic) => ((lic.status || "ACTIVE") as string).toUpperCase() === "ACTIVE",
+    )
     .map((lic) => ({
       start: formatLocalDate(lic.valid_from),
       end: formatLocalDate(lic.valid_until),
     }));
+
+  if (ranges.length === 0) {
+    return () => false;
+  }
 
   return (dateStr: string) =>
     ranges.some((range) => dateStr >= range.start && dateStr <= range.end);
@@ -201,6 +207,14 @@ export async function calculateMonthlyWithData(
   const startOfMonth = makeLocalDate(year, month - 1, 1);
   const endOfMonth = makeLocalDate(year, month, 0);
   const daysInMonth = endOfMonth.getDate();
+  const fiscalYearStart =
+    month >= 10
+      ? makeLocalDate(year, 9, 1)
+      : makeLocalDate(year - 1, 9, 1);
+  const fiscalYearEnd =
+    month >= 10
+      ? makeLocalDate(year + 1, 9, 0)
+      : makeLocalDate(year, 9, 0);
 
   const eligibilities = buildEligibilities(
     data.eligibilityRows as EligibilityRow[],
@@ -241,6 +255,26 @@ export async function calculateMonthlyWithData(
     : employee.first_entry_date
       ? new Date(employee.first_entry_date)
       : null;
+
+  const quotaStatus = calculateLeaveQuotaStatus({
+    leaveRows: leaves,
+    holidays,
+    quota,
+    rules: LEAVE_RULES,
+    serviceStartDate,
+    rangeStart: fiscalYearStart,
+    rangeEnd: endOfMonth < fiscalYearEnd ? endOfMonth : fiscalYearEnd,
+  });
+  const quotaDecisions = new Map<number, { overQuota: boolean; exceedDate: Date | null }>();
+  Object.entries(quotaStatus.perLeave).forEach(([leaveId, info]) => {
+    const id = Number(leaveId);
+    if (!Number.isNaN(id)) {
+      quotaDecisions.set(id, {
+        overQuota: info.overQuota,
+        exceedDate: info.exceedDate ? new Date(info.exceedDate) : null,
+      });
+    }
+  });
   const deductionMap = calculateDeductions(
     mergedLeaves,
     quota,
@@ -250,6 +284,7 @@ export async function calculateMonthlyWithData(
     serviceStartDate,
     noSalaryPeriods,
     returnReports,
+    quotaDecisions,
   );
   const totalDeductionDaysInMonth = Array.from(deductionMap.values()).reduce(
     (sum, value) => sum + value,
@@ -267,6 +302,7 @@ export async function calculateMonthlyWithData(
     daysCounted: 0,
     lastRateSnapshot: 0,
     lastMasterRateId: null,
+    lastProfessionCode: null,
     lastGroupNo: null,
     lastItemNo: null,
   };
@@ -294,6 +330,7 @@ export async function calculateMonthlyWithData(
       if (activeEligibility) {
         totals.lastRateSnapshot = currentRate;
         totals.lastMasterRateId = activeEligibility.rateId;
+        totals.lastProfessionCode = activeEligibility.professionCode;
         totals.lastGroupNo = activeEligibility.groupNo;
         totals.lastItemNo = activeEligibility.itemNo;
       }
@@ -322,6 +359,7 @@ export async function calculateMonthlyWithData(
     rateSnapshot: totals.lastRateSnapshot,
     ptsGroupNo: totals.lastGroupNo,
     ptsItemNo: totals.lastItemNo,
+    professionCode: totals.lastProfessionCode,
   };
 }
 
@@ -340,7 +378,7 @@ export async function calculateMonthly(
 
   const [eligibilityRows] = await dbConn.query<RowDataPacket[]>(
     `
-      SELECT e.effective_date, e.expiry_date, m.amount as rate, m.rate_id, m.group_no, m.item_no
+      SELECT e.effective_date, e.expiry_date, m.amount as rate, m.rate_id, m.profession_code, m.group_no, m.item_no
       FROM req_eligibility e
       JOIN cfg_payment_rates m ON e.master_rate_id = m.rate_id
       WHERE e.citizen_id = ?
@@ -372,38 +410,46 @@ export async function calculateMonthly(
 
   const [leaveRows] = await dbConn.query<RowDataPacket[]>(
     `
-      SELECT * FROM leave_records
-      WHERE citizen_id = ? AND fiscal_year = ?
-      ORDER BY start_date ASC
+      SELECT lr.*,
+             ext.document_start_date,
+             ext.document_end_date,
+             ext.document_duration_days,
+             ext.pay_exception,
+             COALESCE(ext.is_no_pay, ext.pay_exception, 0) AS is_no_pay
+      FROM leave_records lr
+      LEFT JOIN leave_record_extensions ext ON ext.leave_record_id = lr.id
+      WHERE lr.citizen_id = ? AND lr.fiscal_year = ?
+      ORDER BY lr.start_date ASC
     `,
     [citizenId, fiscalYear],
   );
 
   const [noSalaryRows] = await dbConn.query<RowDataPacket[]>(
     `
-      SELECT start_date, end_date
-      FROM leave_pay_exceptions
-      WHERE citizen_id = ?
-        AND start_date <= ?
-        AND end_date >= ?
+      SELECT lr.citizen_id,
+             COALESCE(ext.document_start_date, lr.start_date) AS start_date,
+             COALESCE(ext.document_end_date, lr.end_date) AS end_date
+      FROM leave_record_extensions ext
+      JOIN leave_records lr ON lr.id = ext.leave_record_id
+      WHERE lr.citizen_id = ?
+        AND COALESCE(ext.is_no_pay, ext.pay_exception) = 1
+        AND COALESCE(ext.document_start_date, lr.start_date) <= ?
+        AND COALESCE(ext.document_end_date, lr.end_date) >= ?
     `,
     [citizenId, endOfMonthStr, startOfMonthStr],
   );
 
-  const leaveIds = (leaveRows as any[]).map((row) => row.id).filter(Boolean);
-  let returnReportRows: RowDataPacket[] = [];
-  if (leaveIds.length > 0) {
-    const placeholders = leaveIds.map(() => "?").join(",");
-    const [rows] = await dbConn.query<RowDataPacket[]>(
-      `
-        SELECT leave_record_id, return_date
-        FROM leave_return_reports
-        WHERE leave_record_id IN (${placeholders})
-      `,
-      leaveIds,
-    );
-    returnReportRows = rows as RowDataPacket[];
-  }
+  const [returnReportRows] = await dbConn.query<RowDataPacket[]>(
+    `
+      SELECT ext.leave_record_id, ext.return_date
+      FROM leave_record_extensions ext
+      JOIN leave_records lr ON lr.id = ext.leave_record_id
+      WHERE lr.citizen_id = ?
+        AND ext.return_report_status = 'DONE'
+        AND ext.return_date IS NOT NULL
+    `,
+    [citizenId],
+  );
 
   const [quotaRows] = await dbConn.query<RowDataPacket[]>(
     `SELECT * FROM leave_quotas WHERE citizen_id = ? AND fiscal_year = ?`,
@@ -441,6 +487,7 @@ export function checkLicense(
 type SavePayoutInput = {
   conn: PoolConnection;
   periodId: number;
+  userId: number | null;
   citizenId: string;
   result: CalculationResult;
   masterRateId: number | null;
@@ -452,6 +499,7 @@ type SavePayoutInput = {
 export async function savePayout({
   conn,
   periodId,
+  userId,
   citizenId,
   result,
   masterRateId,
@@ -464,13 +512,15 @@ export async function savePayout({
   const [res] = await conn.query<ResultSetHeader>(
     `
       INSERT INTO pay_results
-      (period_id, citizen_id, master_rate_id, pts_rate_snapshot, calculated_amount, total_payable, deducted_days, eligible_days, remark)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (period_id, user_id, citizen_id, master_rate_id, profession_code, pts_rate_snapshot, calculated_amount, total_payable, deducted_days, eligible_days, remark)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       periodId,
+      userId,
       citizenId,
       masterRateId,
+      result.professionCode ?? null,
       baseRateSnapshot,
       result.netPayment,
       totalPayable,

@@ -34,6 +34,22 @@ export class RequestRepository {
     return (rows[0] as RequestSubmissionEntity) || null;
   }
 
+  async findByRequestNo(
+    requestNo: string,
+    connection?: PoolConnection,
+  ): Promise<RequestSubmissionEntity | null> {
+    const db = this.getDb(connection);
+    const sql = `
+      SELECT r.*, e.department as emp_department, e.sub_department as emp_sub_department, e.position_name
+      FROM req_submissions r
+      LEFT JOIN users u ON r.user_id = u.id
+      LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
+      WHERE r.request_no = ? ${connection ? "FOR UPDATE" : ""}
+    `;
+    const [rows] = await db.query<RowDataPacket[]>(sql, [requestNo]);
+    return (rows[0] as RequestSubmissionEntity) || null;
+  }
+
   async findByUserId(userId: number): Promise<RequestSubmissionEntity[]> {
     const [rows] = await pool.query<RowDataPacket[]>(
       `SELECT r.*, u.citizen_id, u.role
@@ -47,6 +63,22 @@ export class RequestRepository {
   }
 
   async getScopeMappings(
+    userId: number,
+    role: string,
+    connection?: PoolConnection,
+  ): Promise<{ scope_type: string; scope_name: string }[]> {
+    const db = this.getDb(connection);
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT scope_type, scope_name
+       FROM special_position_scope_map
+       WHERE user_id = ? AND role = ? AND is_active = 1
+       ORDER BY scope_type, scope_name`,
+      [userId, role],
+    );
+    return rows as { scope_type: string; scope_name: string }[];
+  }
+
+  async getScopeMappingsByCitizenId(
     citizenId: string,
     role: string,
     connection?: PoolConnection,
@@ -61,7 +93,6 @@ export class RequestRepository {
     );
     return rows as { scope_type: string; scope_name: string }[];
   }
-
   async findPeerUserIdsByScope(
     role: string,
     scopeTypes: Array<"UNIT" | "DEPT">,
@@ -76,7 +107,7 @@ export class RequestRepository {
         SELECT DISTINCT u.id
         FROM users u
         JOIN special_position_scope_map m
-          ON u.citizen_id = m.citizen_id
+          ON u.id = m.user_id
         WHERE u.role = ?
           AND m.role = ?
           AND m.is_active = 1
@@ -100,6 +131,20 @@ export class RequestRepository {
   }
 
   async disableScopeMappings(
+    userId: number,
+    role: string,
+    connection?: PoolConnection,
+  ): Promise<void> {
+    const db = this.getDb(connection);
+    await db.query(
+      `UPDATE special_position_scope_map
+       SET is_active = 0, updated_at = NOW()
+       WHERE user_id = ? AND role = ?`,
+      [userId, role],
+    );
+  }
+
+  async disableScopeMappingsByCitizenId(
     citizenId: string,
     role: string,
     connection?: PoolConnection,
@@ -115,6 +160,7 @@ export class RequestRepository {
 
   async insertScopeMappings(
     inputs: Array<{
+      user_id?: number | null;
       citizen_id: string;
       role: string;
       scope_type: "UNIT" | "DEPT";
@@ -127,6 +173,7 @@ export class RequestRepository {
     if (!inputs.length) return;
     const db = this.getDb(connection);
     const values = inputs.map((i) => [
+      i.user_id ?? null,
       i.citizen_id,
       i.role,
       i.scope_type,
@@ -136,7 +183,7 @@ export class RequestRepository {
     ]);
     await db.query(
       `INSERT INTO special_position_scope_map
-       (citizen_id, role, scope_type, scope_name, source, created_by)
+       (user_id, citizen_id, role, scope_type, scope_name, source, created_by)
        VALUES ?
        ON DUPLICATE KEY UPDATE
          is_active = 1,
@@ -317,13 +364,13 @@ export class RequestRepository {
 
   // Fetch Approver Signature (read-only from sig_images)
   async findSignatureSnapshot(
-    userId: number,
+    citizenId: string,
     connection?: PoolConnection,
   ): Promise<Buffer | null> {
     const db = this.getDb(connection);
     const [rows] = await db.query<RowDataPacket[]>(
-      "SELECT signature_image FROM sig_images WHERE user_id = ? LIMIT 1",
-      [userId],
+      "SELECT signature_image FROM sig_images WHERE citizen_id = ? LIMIT 1",
+      [citizenId],
     );
     if (rows.length && rows[0].signature_image) {
       return rows[0].signature_image;
@@ -402,13 +449,21 @@ export class RequestRepository {
   ): Promise<number | null> {
     const db = this.getDb(connection);
     const [rows] = await db.query<RowDataPacket[]>(
-      "SELECT signature_id FROM sig_images WHERE user_id = ? LIMIT 1",
-      [userId],
+      `
+        SELECT s.signature_id
+        FROM sig_images s
+        LEFT JOIN users u ON u.id = ?
+        WHERE s.user_id = ?
+           OR (u.citizen_id IS NOT NULL AND s.citizen_id = u.citizen_id)
+        LIMIT 1
+      `,
+      [userId, userId],
     );
     return rows.length ? (rows[0].signature_id as number) : null;
   }
 
   async deactivateEligibility(
+    userId: number | null,
     citizenId: string,
     effectiveDate: string,
     connection: PoolConnection,
@@ -416,12 +471,15 @@ export class RequestRepository {
     await connection.execute(
       `UPDATE req_eligibility
          SET is_active = 0, expiry_date = DATE_SUB(?, INTERVAL 1 DAY)
-         WHERE citizen_id = ? AND is_active = 1 AND effective_date <= ?`,
-      [effectiveDate, citizenId, effectiveDate],
+         WHERE (user_id = ? OR (user_id IS NULL AND citizen_id = ?))
+           AND is_active = 1
+           AND effective_date <= ?`,
+      [effectiveDate, userId, citizenId, effectiveDate],
     );
   }
 
   async insertEligibility(
+    userId: number | null,
     citizenId: string,
     masterRateId: number,
     requestId: number,
@@ -430,15 +488,16 @@ export class RequestRepository {
   ): Promise<void> {
     await connection.execute(
       `INSERT INTO req_eligibility
-         (citizen_id, master_rate_id, request_id, effective_date, is_active)
-         VALUES (?, ?, ?, ?, 1)`,
-      [citizenId, masterRateId, requestId, effectiveDate],
+         (user_id, citizen_id, master_rate_id, request_id, effective_date, is_active)
+         VALUES (?, ?, ?, ?, ?, 1)`,
+      [userId, citizenId, masterRateId, requestId, effectiveDate],
     );
   }
 
   async insertVerificationSnapshot(
     data: {
       request_id: number;
+      user_id: number | null;
       citizen_id: string;
       master_rate_id: number;
       effective_date: string;
@@ -450,10 +509,11 @@ export class RequestRepository {
   ): Promise<number> {
     const [result] = await connection.execute<ResultSetHeader>(
       `INSERT INTO req_verification_snapshots
-       (request_id, citizen_id, master_rate_id, effective_date, expiry_date, snapshot_data, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+       (request_id, user_id, citizen_id, master_rate_id, effective_date, expiry_date, snapshot_data, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         data.request_id,
+        data.user_id ?? null,
         data.citizen_id,
         data.master_rate_id,
         data.effective_date,
@@ -602,19 +662,21 @@ export class RequestRepository {
   ): Promise<void> {
     const db = this.getDb(connection);
     await db.execute(
-      `UPDATE leave_records
-       SET manual_start_date = ?,
-           manual_end_date = ?,
-           manual_duration_days = ?,
-           is_adjusted = 1,
-           remark = ?
-       WHERE id = ?`,
+      `INSERT INTO leave_record_extensions (
+        leave_record_id,
+        document_start_date,
+        document_end_date,
+        note
+      ) VALUES (?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        document_start_date = VALUES(document_start_date),
+        document_end_date = VALUES(document_end_date),
+        note = VALUES(note)`,
       [
+        leaveRecordId,
         data.manual_start_date,
         data.manual_end_date,
-        data.manual_duration_days,
         data.remark,
-        leaveRecordId,
       ],
     );
   }

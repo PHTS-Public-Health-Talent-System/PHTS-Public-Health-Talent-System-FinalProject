@@ -203,7 +203,7 @@ export async function createReviewCycle(): Promise<ReviewCycle> {
         "รอบตรวจทานสิทธิ์ใหม่",
         `สร้างรอบตรวจทานสิทธิ์ไตรมาส ${quarter}/${year} แล้ว มีผู้ใช้ทั้งหมด ${users.length} คนรอตรวจทาน`,
         `/dashboard/admin/access-review/${cycleId}`,
-        "INFO",
+        "SYSTEM",
       );
     }
 
@@ -323,7 +323,7 @@ export async function updateReviewItem(
         "บัญชีถูกปิดใช้งาน",
         "บัญชีของท่านถูกปิดใช้งานจากการตรวจทานสิทธิ์ประจำไตรมาส กรุณาติดต่อผู้ดูแลระบบ",
         "/login",
-        "ERROR",
+        "OTHER",
       );
 
       // Log audit
@@ -545,7 +545,7 @@ export async function sendReviewReminders(): Promise<number> {
         "เตือน: ครบกำหนดตรวจทานสิทธิ์",
         `รอบตรวจทานสิทธิ์ไตรมาส ${cycle.quarter}/${cycle.year} จะครบกำหนดใน ${daysRemaining} วัน`,
         `/dashboard/admin/access-review/${cycle.cycle_id}`,
-        "WARNING",
+        "REMINDER",
       );
       remindersSent++;
     }

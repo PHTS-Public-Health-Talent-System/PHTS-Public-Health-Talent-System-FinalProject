@@ -18,7 +18,7 @@ export class NotificationRepository {
     title: string,
     message: string,
     link: string = "#",
-    type: NotificationType = NotificationType.INFO,
+    type: NotificationType = NotificationType.SYSTEM,
     conn?: PoolConnection,
   ): Promise<number> {
     const executor = conn ?? db;
@@ -113,6 +113,22 @@ export class NotificationRepository {
       `SELECT COUNT(*) as count
        FROM ntf_messages
        WHERE user_id = ? AND is_read = 0`,
+      [userId],
+    );
+    return Number((rows[0] as any)?.count ?? 0);
+  }
+
+  static async countUnreadToday(
+    userId: number,
+    conn?: PoolConnection,
+  ): Promise<number> {
+    const executor = conn ?? db;
+    const [rows] = await executor.query<RowDataPacket[]>(
+      `SELECT COUNT(*) as count
+       FROM ntf_messages
+       WHERE user_id = ?
+         AND is_read = 0
+         AND DATE(created_at) = CURDATE()`,
       [userId],
     );
     return Number((rows[0] as any)?.count ?? 0);

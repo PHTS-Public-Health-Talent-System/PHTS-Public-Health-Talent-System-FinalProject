@@ -13,7 +13,11 @@ export interface LeaveRow extends RowDataPacket {
   start_date: Date | string;
   end_date: Date | string;
   duration_days: number;
+  document_start_date?: Date | string | null;
+  document_end_date?: Date | string | null;
+  document_duration_days?: number | null;
   is_no_pay?: number | null;
+  pay_exception?: number | null;
 }
 
 type QuotaValue = number | string | null;
@@ -35,6 +39,8 @@ export interface ReturnReportRow extends RowDataPacket {
 }
 
 const isWeekend = (date: Date) => date.getDay() === 0 || date.getDay() === 6;
+const resolveEffectiveDate = (primary: Date | string | null | undefined, fallback: Date | string) =>
+  primary ? new Date(primary) : new Date(fallback);
 
 const applyNoPayLeave = (
   deductionMap: Map<string, number>,
@@ -83,7 +89,8 @@ const calculateLeaveDuration = (
   holidays: string[],
   ruleUnit: string,
 ): { duration: number; isHalfDay: boolean } => {
-  const isHalfDay = leave.duration_days > 0 && leave.duration_days < 1;
+  const durationOverride = leave.document_duration_days ?? leave.duration_days ?? null;
+  const isHalfDay = durationOverride !== null && durationOverride > 0 && durationOverride < 1;
   if (isHalfDay) {
     const dateStr = formatLocalDate(start);
     if (!isHoliday(dateStr, holidays) && !isWeekend(start)) {
@@ -152,6 +159,11 @@ type PenaltyContext = {
   monthEnd: Date;
 };
 
+type QuotaDecision = {
+  overQuota: boolean;
+  exceedDate: Date | null;
+};
+
 const applyPenalty = ({
   deductionMap,
   exceedDate,
@@ -187,6 +199,7 @@ export function calculateDeductions(
   serviceStartDate: Date | null = null,
   noSalaryPeriods: NoSalaryPeriodRow[] = [],
   returnReports: Map<number, Date> = new Map(),
+  quotaDecisions?: Map<number, QuotaDecision>,
 ): Map<string, number> {
   const deductionMap = new Map<string, number>();
   const usage: Record<string, number> = {
@@ -202,8 +215,8 @@ export function calculateDeductions(
   );
 
   for (const leave of sortedLeaves) {
-    const start = new Date(leave.start_date);
-    const end = new Date(leave.end_date);
+    const start = resolveEffectiveDate(leave.document_start_date, leave.start_date);
+    const end = resolveEffectiveDate(leave.document_end_date, leave.end_date);
     applyLeaveDeduction(leave, {
       deductionMap,
       usage,
@@ -215,6 +228,7 @@ export function calculateDeductions(
       end,
       serviceStartDate,
       returnReports,
+      quotaDecisions,
     });
   }
 
@@ -234,6 +248,7 @@ type LeaveDeductionContext = {
   end: Date;
   serviceStartDate: Date | null;
   returnReports: Map<number, Date>;
+  quotaDecisions?: Map<number, QuotaDecision>;
 };
 
 function applyLeaveDeduction(leave: LeaveRow, context: LeaveDeductionContext) {
@@ -250,6 +265,42 @@ function applyLeaveDeduction(leave: LeaveRow, context: LeaveDeductionContext) {
 
   const rule = LEAVE_RULES[leave.leave_type];
   if (!rule) return;
+
+  const decision =
+    leave.id !== undefined
+      ? context.quotaDecisions?.get(Number(leave.id))
+      : undefined;
+
+  const { duration, isHalfDay } = calculateLeaveDuration(
+    leave,
+    context.start,
+    context.end,
+    context.holidays,
+    rule.unit,
+  );
+
+  if (decision) {
+    if (decision.overQuota && decision.exceedDate) {
+      const weight = isHalfDay ? 0.5 : 1;
+      const penaltyEnd = resolvePenaltyEnd(
+        leave,
+        context.end,
+        context.monthEnd,
+        context.returnReports,
+      );
+      applyPenalty({
+        deductionMap: context.deductionMap,
+        exceedDate: decision.exceedDate,
+        end: penaltyEnd,
+        weight,
+        ruleUnit: rule.unit,
+        holidays: context.holidays,
+        monthStart: context.monthStart,
+        monthEnd: context.monthEnd,
+      });
+    }
+    return;
+  }
 
   let limit = resolveLeaveLimit(leave.leave_type, rule.limit, context.quota);
 
@@ -286,14 +337,6 @@ function applyLeaveDeduction(leave: LeaveRow, context: LeaveDeductionContext) {
       limit = 15; // First-year limit
     }
   }
-  const { duration, isHalfDay } = calculateLeaveDuration(
-    leave,
-    context.start,
-    context.end,
-    context.holidays,
-    rule.unit,
-  );
-
   const currentUsage = context.usage[leave.leave_type] || 0;
   if (rule.rule_type === "cumulative") {
     context.usage[leave.leave_type] = currentUsage + duration;

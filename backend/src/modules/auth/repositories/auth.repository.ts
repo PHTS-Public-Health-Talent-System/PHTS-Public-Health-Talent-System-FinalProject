@@ -6,7 +6,7 @@
 
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
 import db from '@config/database.js';
-import { User, EmployeeProfile } from '@/modules/auth/entities/auth.entity.js';
+import { User, EmployeeProfile, LicenseProfile } from '@/modules/auth/entities/auth.entity.js';
 
 export class AuthRepository {
   // ── User queries ────────────────────────────────────────────────────────────
@@ -114,6 +114,36 @@ export class AuthRepository {
     );
 
     return (supportRows[0] as EmployeeProfile) ?? null;
+  }
+
+  static async findLatestLicenseByCitizenId(
+    citizenId: string,
+    conn?: PoolConnection,
+  ): Promise<LicenseProfile | null> {
+    const executor = conn ?? db;
+    const [rows] = await executor.query<RowDataPacket[]>(
+      `SELECT
+        license_no,
+        license_name,
+        valid_from,
+        valid_until,
+        status
+      FROM emp_licenses
+      WHERE citizen_id = ?
+      ORDER BY
+        CASE
+          WHEN (status IS NULL OR UPPER(status) = 'ACTIVE')
+            AND valid_until >= DATE(NOW()) THEN 0
+          WHEN (status IS NULL OR UPPER(status) = 'ACTIVE') THEN 1
+          ELSE 2
+        END,
+        valid_until DESC,
+        valid_from DESC
+      LIMIT 1`,
+      [citizenId],
+    );
+
+    return (rows[0] as LicenseProfile) ?? null;
   }
 
   // ── Password operations ─────────────────────────────────────────────────────

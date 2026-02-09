@@ -5,9 +5,9 @@ import { NotificationService } from "../../notification/services/notification.se
 import { NotificationType } from "../../notification/entities/notification.entity.js";
 
 const priorityToNotificationType: Record<AnnouncementPriority, NotificationType> = {
-  LOW: NotificationType.INFO,
-  NORMAL: NotificationType.INFO,
-  HIGH: NotificationType.WARNING,
+  LOW: NotificationType.SYSTEM,
+  NORMAL: NotificationType.SYSTEM,
+  HIGH: NotificationType.REMINDER,
 };
 
 export class AnnouncementService {
@@ -123,7 +123,7 @@ export class AnnouncementService {
     if (isActive && roles && roles.length > 0) {
       const type = priority
         ? priorityToNotificationType[priority]
-        : NotificationType.INFO;
+        : NotificationType.SYSTEM;
       await Promise.all(
         roles.map((role) =>
           NotificationService.notifyRole(role, "ประกาศใหม่", "มีประกาศใหม่ในระบบ", "/dashboard", type),

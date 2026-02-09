@@ -35,7 +35,7 @@ export class NotificationOutboxService {
           const title = payload.title;
           const message = payload.message;
           const link = payload.link ?? "#";
-          const type = (payload.type as NotificationType) || NotificationType.INFO;
+          const type = (payload.type as NotificationType) || NotificationType.SYSTEM;
 
           if (payload.kind === "USER") {
             if (!payload.userId) {

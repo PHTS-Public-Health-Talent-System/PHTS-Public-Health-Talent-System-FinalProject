@@ -76,3 +76,49 @@ export const reopenTicket = catchAsync(async (req: Request, res: Response<ApiRes
   await SupportService.reopen(ticketId);
   res.json({ success: true, message: "Reopened" });
 });
+
+export const listMessages = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+  if (!req.user) throw new AuthenticationError("Unauthorized access");
+  const ticketId = Number(req.params.ticketId);
+  const ticket = await SupportService.getTicket(ticketId);
+  if (!ticket) {
+    res.status(404).json({ success: false, error: "Ticket not found" });
+    return;
+  }
+  const isOwner = ticket.user_id === req.user.userId;
+  const isAdmin = req.user.role === "ADMIN";
+  if (!isOwner && !isAdmin) {
+    throw new ValidationError("You do not have permission to view this ticket");
+  }
+  const messages = await SupportService.listMessages(ticketId);
+  res.json({ success: true, data: messages });
+});
+
+export const createMessage = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+  if (!req.user) throw new AuthenticationError("Unauthorized access");
+  const ticketId = Number(req.params.ticketId);
+  const ticket = await SupportService.getTicket(ticketId);
+  if (!ticket) {
+    res.status(404).json({ success: false, error: "Ticket not found" });
+    return;
+  }
+  const isOwner = ticket.user_id === req.user.userId;
+  const isAdmin = req.user.role === "ADMIN";
+  if (!isOwner && !isAdmin) {
+    throw new ValidationError("You do not have permission to post on this ticket");
+  }
+  if (!isAdmin && !["OPEN", "IN_PROGRESS", "REOPENED"].includes(ticket.status)) {
+    throw new ValidationError("Ticket is not open for responses");
+  }
+  if (isAdmin && ["CLOSED", "RESOLVED"].includes(ticket.status)) {
+    throw new ValidationError("Reopen ticket before replying");
+  }
+  const { message } = req.body as { message: string };
+  const messageId = await SupportService.createMessage({
+    ticketId,
+    senderUserId: req.user.userId,
+    senderRole: req.user.role,
+    message,
+  });
+  res.status(201).json({ success: true, data: { id: messageId } });
+});

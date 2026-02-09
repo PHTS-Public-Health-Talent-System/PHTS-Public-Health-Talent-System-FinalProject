@@ -4,8 +4,16 @@ const idParam = z.object({
   id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
 });
 
+const idOrNoParam = z.object({
+  id: z.string().regex(/^(\d+|PTS-\d+)$/i, "id ต้องเป็นตัวเลขหรือรูปแบบ PTS-xxxxxx"),
+});
+
 export const requestIdParamSchema = z.object({
   params: idParam,
+});
+
+export const requestIdOrNoParamSchema = z.object({
+  params: idOrNoParam,
 });
 
 export const requestRateMappingSchema = z.object({

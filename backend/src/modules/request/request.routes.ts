@@ -16,6 +16,7 @@ import { verificationSnapshotSchema } from '@/modules/request/dto/verification-s
 import {
   requestAdjustLeaveSchema,
   requestApproveBatchSchema,
+  requestIdOrNoParamSchema,
   requestIdParamSchema,
   requestRateMappingSchema,
   requestReassignSchema,
@@ -70,6 +71,7 @@ router.post(
   "/",
   requestUpload.fields([
     { name: "files", maxCount: 10 },
+    { name: "files[]", maxCount: 10 },
     { name: "license_file", maxCount: 1 },
     { name: "applicant_signature", maxCount: 1 },
   ]),
@@ -123,8 +125,8 @@ router.get(
   requestController.getAvailableOfficers,
 );
 
-// Get request details by ID
-router.get("/:id", validate(requestIdParamSchema), requestController.getRequestById);
+// Get request details by ID or request_no
+router.get("/:id", validate(requestIdOrNoParamSchema), requestController.getRequestById);
 
 // Update a request (Owner only, DRAFT or RETURNED status)
 router.put(
@@ -132,6 +134,7 @@ router.put(
   validate(requestIdParamSchema),
   requestUpload.fields([
     { name: "files", maxCount: 10 },
+    { name: "files[]", maxCount: 10 },
     { name: "license_file", maxCount: 1 },
     { name: "applicant_signature", maxCount: 1 },
   ]),

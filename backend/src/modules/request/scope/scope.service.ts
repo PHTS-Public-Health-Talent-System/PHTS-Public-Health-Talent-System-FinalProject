@@ -68,10 +68,16 @@ export async function getApproverScopes(
     return emptyScopes;
   }
 
-  const mappings = await requestRepository.getScopeMappings(
-    citizenId,
+  let mappings = await requestRepository.getScopeMappings(
+    userId,
     userRole,
   );
+  if (mappings.length === 0 && citizenId) {
+    mappings = await requestRepository.getScopeMappingsByCitizenId(
+      citizenId,
+      userRole,
+    );
+  }
   if (mappings.length > 0) {
     const wardScopes = mappings
       .filter((m) => m.scope_type === "UNIT")

@@ -23,6 +23,13 @@ export const updateSupportStatusSchema = z.object({
   }),
 });
 
+export const supportTicketMessageSchema = z.object({
+  params: supportTicketIdParamSchema.shape.params,
+  body: z.object({
+    message: z.string().trim().min(1).max(2000),
+  }),
+});
+
 export const listSupportTicketsSchema = z.object({
   query: z.object({
     status: z
@@ -38,6 +45,9 @@ export type CreateSupportTicketBody = z.infer<
 >["body"];
 export type UpdateSupportStatusBody = z.infer<
   typeof updateSupportStatusSchema
+>["body"];
+export type SupportTicketMessageBody = z.infer<
+  typeof supportTicketMessageSchema
 >["body"];
 export type SupportTicketIdParams = z.infer<
   typeof supportTicketIdParamSchema

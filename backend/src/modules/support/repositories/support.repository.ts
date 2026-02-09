@@ -4,10 +4,24 @@ import type {
   SupportTicket,
   SupportTicketStatus,
 } from "../entities/support-ticket.entity.js";
+import type { SupportTicketMessage } from "../entities/support-ticket-message.entity.js";
 
 export class SupportRepository {
   private getDb(connection?: PoolConnection) {
     return connection || pool;
+  }
+
+  private parseMetadata(raw: unknown) {
+    if (raw == null) return null;
+    if (typeof raw === "string") {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    }
+    if (typeof raw === "object") return raw;
+    return null;
   }
 
   async createTicket(
@@ -43,7 +57,7 @@ export class SupportRepository {
     );
     if (!rows.length) return null;
     const row = rows[0] as SupportTicket;
-    row.metadata = row.metadata ? JSON.parse(row.metadata as unknown as string) : null;
+    row.metadata = this.parseMetadata(row.metadata);
     return row;
   }
 
@@ -54,7 +68,7 @@ export class SupportRepository {
     );
     return rows.map((row) => ({
       ...(row as SupportTicket),
-      metadata: row.metadata ? JSON.parse(row.metadata as unknown as string) : null,
+      metadata: this.parseMetadata((row as SupportTicket).metadata),
     }));
   }
 
@@ -80,7 +94,7 @@ export class SupportRepository {
     return {
       rows: rows.map((row) => ({
         ...(row as SupportTicket),
-        metadata: row.metadata ? JSON.parse(row.metadata as unknown as string) : null,
+        metadata: this.parseMetadata((row as SupportTicket).metadata),
       })),
       total,
     };
@@ -111,6 +125,35 @@ export class SupportRepository {
        WHERE ticket_id = ?`,
       [ticketId],
     );
+  }
+
+  async touch(ticketId: number, connection?: PoolConnection): Promise<void> {
+    const db = this.getDb(connection);
+    await db.execute(
+      `UPDATE support_tickets SET updated_at = NOW() WHERE ticket_id = ?`,
+      [ticketId],
+    );
+  }
+
+  async listMessages(ticketId: number): Promise<SupportTicketMessage[]> {
+    const [rows] = await pool.query<RowDataPacket[]>(
+      `SELECT * FROM support_ticket_messages WHERE ticket_id = ? ORDER BY created_at ASC`,
+      [ticketId],
+    );
+    return rows as SupportTicketMessage[];
+  }
+
+  async createMessage(
+    payload: Omit<SupportTicketMessage, "message_id" | "created_at">,
+    connection?: PoolConnection,
+  ): Promise<number> {
+    const db = this.getDb(connection);
+    const [result]: any = await db.execute(
+      `INSERT INTO support_ticket_messages (ticket_id, sender_user_id, sender_role, message)
+       VALUES (?, ?, ?, ?)`,
+      [payload.ticket_id, payload.sender_user_id, payload.sender_role, payload.message],
+    );
+    return result.insertId as number;
   }
 }
 

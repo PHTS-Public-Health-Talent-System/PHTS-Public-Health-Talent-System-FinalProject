@@ -19,6 +19,18 @@ export interface BatchEmployeeData {
 
 export class PayrollRepository {
   // ── Period CRUD ──────────────────────────────────────────────────────────
+  static buildListPeriodsQuery(): string {
+    return `
+      SELECT
+        p.*,
+        p.created_by,
+        TRIM(CONCAT(IFNULL(e.first_name, ''), ' ', IFNULL(e.last_name, ''))) AS created_by_name
+      FROM pay_periods p
+      LEFT JOIN users u ON p.created_by = u.id
+      LEFT JOIN emp_profiles e ON u.citizen_id = e.citizen_id
+      ORDER BY p.period_year DESC, p.period_month DESC
+    `;
+  }
 
   static async findPeriodByMonthYear(
     month: number,
@@ -35,10 +47,11 @@ export class PayrollRepository {
     month: number,
     year: number,
     status: PeriodStatus,
+    createdBy?: number | null,
   ): Promise<number> {
     const [res] = await db.execute<ResultSetHeader>(
-      "INSERT INTO pay_periods (period_month, period_year, status) VALUES (?, ?, ?)",
-      [month, year, status],
+      "INSERT INTO pay_periods (period_month, period_year, status, created_by) VALUES (?, ?, ?, ?)",
+      [month, year, status, createdBy ?? null],
     );
     return res.insertId;
   }
@@ -68,7 +81,22 @@ export class PayrollRepository {
 
   static async findAllPeriods(): Promise<PayPeriod[]> {
     const [rows] = await db.query<RowDataPacket[]>(
-      "SELECT * FROM pay_periods ORDER BY period_year DESC, period_month DESC",
+      PayrollRepository.buildListPeriodsQuery(),
+    );
+    return rows as PayPeriod[];
+  }
+
+  static async findPeriodsByStatus(
+    status: PeriodStatus,
+    limit: number = 10,
+  ): Promise<PayPeriod[]> {
+    const safeLimit = Math.max(1, Math.min(limit, 100));
+    const [rows] = await db.query<RowDataPacket[]>(
+      `SELECT * FROM pay_periods
+       WHERE status = ?
+       ORDER BY period_year DESC, period_month DESC
+       LIMIT ${safeLimit}`,
+      [status],
     );
     return rows as PayPeriod[];
   }
@@ -82,6 +110,7 @@ export class PayrollRepository {
         pi.period_item_id,
         pi.period_id,
         pi.request_id,
+        pi.user_id,
         pi.citizen_id,
         pi.snapshot_id,
         r.request_no,
@@ -92,9 +121,10 @@ export class PayrollRepository {
         e.position_name
       FROM pay_period_items pi
       LEFT JOIN req_submissions r ON r.request_id = pi.request_id
-      LEFT JOIN emp_profiles e ON e.citizen_id = pi.citizen_id
+      LEFT JOIN users u ON u.id = pi.user_id
+      LEFT JOIN emp_profiles e ON e.citizen_id = COALESCE(u.citizen_id, pi.citizen_id)
       WHERE pi.period_id = ?
-      ORDER BY e.first_name ASC, e.last_name ASC, pi.citizen_id ASC
+      ORDER BY e.first_name ASC, e.last_name ASC, COALESCE(u.citizen_id, pi.citizen_id) ASC
       `,
       [periodId],
     );
@@ -106,7 +136,12 @@ export class PayrollRepository {
     conn: PoolConnection,
   ): Promise<string[]> {
     const [rows] = await conn.query<RowDataPacket[]>(
-      `SELECT citizen_id FROM pay_period_items WHERE period_id = ?`,
+      `
+        SELECT COALESCE(u.citizen_id, pi.citizen_id) AS citizen_id
+        FROM pay_period_items pi
+        LEFT JOIN users u ON u.id = pi.user_id
+        WHERE pi.period_id = ?
+      `,
       [periodId],
     );
     return rows.map((r: any) => r.citizen_id);
@@ -115,17 +150,18 @@ export class PayrollRepository {
   static async insertPeriodItem(
     periodId: number,
     requestId: number,
+    userId: number | null,
     citizenId: string,
     snapshotId: number | null,
     conn: PoolConnection,
   ): Promise<void> {
     await conn.execute(
       `
-      INSERT INTO pay_period_items (period_id, request_id, citizen_id, snapshot_id)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO pay_period_items (period_id, request_id, user_id, citizen_id, snapshot_id)
+      VALUES (?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE snapshot_id = VALUES(snapshot_id)
       `,
-      [periodId, requestId, citizenId, snapshotId],
+      [periodId, requestId, userId, citizenId, snapshotId],
     );
   }
 
@@ -149,6 +185,36 @@ export class PayrollRepository {
       [requestId],
     );
     return (rows[0] as any)?.citizen_id ?? null;
+  }
+
+  static async findRequestUserId(
+    requestId: number,
+    conn: PoolConnection,
+  ): Promise<number | null> {
+    const [rows] = await conn.query<RowDataPacket[]>(
+      `SELECT user_id FROM req_submissions WHERE request_id = ?`,
+      [requestId],
+    );
+    return (rows[0] as any)?.user_id ?? null;
+  }
+
+  static async findUserIdMapByCitizenIds(
+    citizenIds: string[],
+    conn: PoolConnection,
+  ): Promise<Map<string, number>> {
+    if (!citizenIds.length) return new Map();
+    const placeholders = citizenIds.map(() => "?").join(",");
+    const [rows] = await conn.query<RowDataPacket[]>(
+      `SELECT id, citizen_id FROM users WHERE citizen_id IN (${placeholders})`,
+      citizenIds,
+    );
+    const map = new Map<string, number>();
+    rows.forEach((row: any) => {
+      if (row.citizen_id && row.id) {
+        map.set(String(row.citizen_id), Number(row.id));
+      }
+    });
+    return map;
   }
 
   static async findLatestVerificationSnapshotId(
@@ -231,6 +297,7 @@ export class PayrollRepository {
       SELECT
         p.payout_id,
         p.citizen_id,
+        p.profession_code,
         e.first_name,
         e.last_name,
         e.position_name,
@@ -363,6 +430,8 @@ export class PayrollRepository {
     conn: PoolConnection,
   ): Promise<BatchEmployeeData> {
     const ph = citizenIds.map(() => "?").join(",");
+    const { start: fiscalStart, end: fiscalEnd } =
+      PayrollRepository.getFiscalYearRange(fiscalYear);
 
     const [eligibilityRows] = await conn.query<RowDataPacket[]>(
       `
@@ -398,21 +467,21 @@ export class PayrollRepository {
     );
 
     const [leaveRows] = await conn.query<RowDataPacket[]>(
-      `
-        SELECT * FROM leave_records
-        WHERE citizen_id IN (${ph}) AND fiscal_year = ?
-        ORDER BY start_date ASC
-      `,
-      [...citizenIds, fiscalYear],
+      PayrollRepository.buildLeaveRowsQuery(ph),
+      [...citizenIds, fiscalEnd, fiscalStart],
     );
 
     const [noSalaryRows] = await conn.query<RowDataPacket[]>(
       `
-        SELECT citizen_id, start_date, end_date
-        FROM leave_pay_exceptions
-        WHERE citizen_id IN (${ph})
-          AND start_date <= ?
-          AND end_date >= ?
+        SELECT lr.citizen_id,
+               COALESCE(ext.document_start_date, lr.start_date) AS start_date,
+               COALESCE(ext.document_end_date, lr.end_date) AS end_date
+        FROM leave_record_extensions ext
+        JOIN leave_records lr ON lr.id = ext.leave_record_id
+        WHERE lr.citizen_id IN (${ph})
+          AND COALESCE(ext.is_no_pay, ext.pay_exception) = 1
+          AND COALESCE(ext.document_start_date, lr.start_date) <= ?
+          AND COALESCE(ext.document_end_date, lr.end_date) >= ?
       `,
       [...citizenIds, endOfMonth, startOfMonth],
     );
@@ -422,23 +491,17 @@ export class PayrollRepository {
       [...citizenIds, fiscalYear],
     );
 
-    // Return reports (depends on leaveRows)
-    const leaveIds = (leaveRows as any[])
-      .map((row) => row.id)
-      .filter(Boolean);
-    let returnReportRows: RowDataPacket[] = [];
-    if (leaveIds.length > 0) {
-      const leavePh = leaveIds.map(() => "?").join(",");
-      const [rows] = await conn.query<RowDataPacket[]>(
-        `
-          SELECT leave_record_id, return_date
-          FROM leave_return_reports
-          WHERE leave_record_id IN (${leavePh})
-        `,
-        leaveIds,
-      );
-      returnReportRows = rows;
-    }
+    const [returnReportRows] = await conn.query<RowDataPacket[]>(
+      `
+        SELECT ext.leave_record_id, ext.return_date
+        FROM leave_record_extensions ext
+        JOIN leave_records lr ON lr.id = ext.leave_record_id
+        WHERE lr.citizen_id IN (${ph})
+          AND ext.return_report_status = 'DONE'
+          AND ext.return_date IS NOT NULL
+      `,
+      citizenIds,
+    );
 
     return {
       eligibilityRows,
@@ -452,110 +515,30 @@ export class PayrollRepository {
     };
   }
 
-  // ── Leave Pay Exceptions ────────────────────────────────────────────────
-
-  static async insertLeavePayException(
-    citizenId: string,
-    startDate: string,
-    endDate: string,
-    reason: string | null,
-    createdBy: number,
-  ): Promise<number> {
-    const [res] = await db.execute<ResultSetHeader>(
-      `
-        INSERT INTO leave_pay_exceptions
-        (citizen_id, start_date, end_date, reason, created_by)
-        VALUES (?, ?, ?, ?, ?)
-      `,
-      [citizenId, startDate, endDate, reason, createdBy],
-    );
-    return res.insertId;
+  static buildLeaveRowsQuery(ph: string): string {
+    return `
+        SELECT lr.*,
+               ext.document_start_date,
+               ext.document_end_date,
+               ext.document_duration_days,
+               ext.pay_exception,
+               COALESCE(ext.is_no_pay, ext.pay_exception, 0) AS is_no_pay
+        FROM leave_records lr
+        LEFT JOIN leave_record_extensions ext ON ext.leave_record_id = lr.id
+        WHERE lr.citizen_id IN (${ph})
+          AND COALESCE(ext.document_start_date, lr.start_date) <= ?
+          AND COALESCE(ext.document_end_date, lr.end_date) >= ?
+        ORDER BY lr.start_date ASC
+      `;
   }
 
-  static async findLeavePayExceptions(
-    citizenId?: string,
-  ): Promise<RowDataPacket[]> {
-    if (citizenId) {
-      const [rows] = await db.query<RowDataPacket[]>(
-        `SELECT * FROM leave_pay_exceptions WHERE citizen_id = ? ORDER BY start_date DESC`,
-        [citizenId],
-      );
-      return rows;
-    }
-    const [rows] = await db.query<RowDataPacket[]>(
-      "SELECT * FROM leave_pay_exceptions ORDER BY start_date DESC",
-    );
-    return rows;
-  }
-
-  static async deleteLeavePayException(exceptionId: number): Promise<boolean> {
-    const [res] = await db.execute<ResultSetHeader>(
-      "DELETE FROM leave_pay_exceptions WHERE exception_id = ?",
-      [exceptionId],
-    );
-    return res.affectedRows > 0;
-  }
-
-  // ── Leave Return Reports ────────────────────────────────────────────────
-
-  static async findLeaveRecordById(
-    leaveRecordId: number,
-  ): Promise<RowDataPacket | null> {
-    const [rows] = await db.query<RowDataPacket[]>(
-      "SELECT id, citizen_id, leave_type FROM leave_records WHERE id = ? LIMIT 1",
-      [leaveRecordId],
-    );
-    return (rows[0] as RowDataPacket) ?? null;
-  }
-
-  static async insertLeaveReturnReport(
-    leaveRecordId: number,
-    citizenId: string,
-    returnDate: string,
-    remark: string | null,
-    createdBy: number,
-  ): Promise<number> {
-    const [res] = await db.execute<ResultSetHeader>(
-      `
-        INSERT INTO leave_return_reports
-        (leave_record_id, citizen_id, return_date, remark, created_by)
-        VALUES (?, ?, ?, ?, ?)
-      `,
-      [leaveRecordId, citizenId, returnDate, remark, createdBy],
-    );
-    return res.insertId;
-  }
-
-  static async findLeaveReturnReports(params: {
-    citizenId?: string;
-    leaveRecordId?: number;
-  }): Promise<RowDataPacket[]> {
-    const clauses: string[] = [];
-    const sqlParams: unknown[] = [];
-
-    if (params.citizenId) {
-      clauses.push("citizen_id = ?");
-      sqlParams.push(params.citizenId);
-    }
-    if (params.leaveRecordId) {
-      clauses.push("leave_record_id = ?");
-      sqlParams.push(params.leaveRecordId);
-    }
-
-    const whereClause = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const [rows] = await db.query<RowDataPacket[]>(
-      `SELECT * FROM leave_return_reports ${whereClause} ORDER BY return_date DESC`,
-      sqlParams,
-    );
-    return rows;
-  }
-
-  static async deleteLeaveReturnReport(reportId: number): Promise<boolean> {
-    const [res] = await db.execute<ResultSetHeader>(
-      "DELETE FROM leave_return_reports WHERE report_id = ?",
-      [reportId],
-    );
-    return res.affectedRows > 0;
+  static getFiscalYearRange(fiscalYear: number): { start: string; end: string } {
+    const startYear = fiscalYear - 544;
+    const endYear = fiscalYear - 543;
+    return {
+      start: `${startYear}-10-01`,
+      end: `${endYear}-09-30`,
+    };
   }
 
   // ── Connection helper ───────────────────────────────────────────────────

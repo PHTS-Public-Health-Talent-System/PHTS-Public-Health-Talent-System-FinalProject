@@ -4,8 +4,6 @@ import { ApiResponse } from '@/types/auth.js';
 import type {
   CreatePeriodDto,
   CalculatePeriodDto,
-  CreateLeavePayExceptionDto,
-  CreateLeaveReturnReportDto,
 } from '@/modules/payroll/dto/index.js';
 import { buildPeriodReport } from '@/modules/payroll/report/payroll-report.service.js';
 
@@ -123,7 +121,8 @@ export const createPeriod = async (
     const yearNum = Number(year);
     const monthNum = Number(month);
 
-    const period = await PayrollService.getOrCreatePeriod(yearNum, monthNum);
+    const actorId = (req.user as any)?.userId ?? (req.user as any)?.id ?? null;
+    const period = await PayrollService.getOrCreatePeriod(yearNum, monthNum, actorId);
 
     res.status(201).json({
       success: true,
@@ -371,120 +370,6 @@ export const getPeriodReport = async (req: Request, res: Response) => {
       `attachment; filename="period-${periodId}-report.pdf"`,
     );
     res.send(buffer);
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-// ============================================================================
-// Leave Pay Exceptions & Return Reports (PTS_OFFICER)
-// ============================================================================
-
-export const createLeavePayException = async (
-  req: Request,
-  res: Response<ApiResponse>,
-) => {
-  try {
-    const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
-    const { citizen_id, start_date, end_date, reason } =
-      req.body as CreateLeavePayExceptionDto;
-
-    const result = await PayrollService.createLeavePayException(
-      citizen_id,
-      start_date,
-      end_date,
-      reason ?? null,
-      actorId,
-    );
-
-    res.status(201).json({ success: true, data: result });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-export const listLeavePayExceptions = async (
-  req: Request,
-  res: Response<ApiResponse>,
-) => {
-  try {
-    const citizenId =
-      typeof req.query.citizen_id === "string"
-        ? req.query.citizen_id
-        : undefined;
-    const rows = await PayrollService.listLeavePayExceptions(citizenId);
-    res.json({ success: true, data: rows });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-export const deleteLeavePayException = async (
-  req: Request,
-  res: Response<ApiResponse>,
-) => {
-  try {
-    const id = Number(req.params.id);
-    const deleted = await PayrollService.deleteLeavePayException(id);
-    res.json({ success: true, data: { deleted } });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-export const createLeaveReturnReport = async (
-  req: Request,
-  res: Response<ApiResponse>,
-) => {
-  try {
-    const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
-    const { leave_record_id, return_date, remark } =
-      req.body as CreateLeaveReturnReportDto;
-
-    const result = await PayrollService.createLeaveReturnReport(
-      leave_record_id,
-      return_date,
-      remark ?? null,
-      actorId,
-    );
-
-    res.status(201).json({ success: true, data: result });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-export const listLeaveReturnReports = async (
-  req: Request,
-  res: Response<ApiResponse>,
-) => {
-  try {
-    const citizenId =
-      typeof req.query.citizen_id === "string"
-        ? req.query.citizen_id
-        : undefined;
-    const leaveRecordId = req.query.leave_record_id
-      ? Number(req.query.leave_record_id)
-      : undefined;
-
-    const rows = await PayrollService.listLeaveReturnReports({
-      citizenId,
-      leaveRecordId,
-    });
-    res.json({ success: true, data: rows });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-export const deleteLeaveReturnReport = async (
-  req: Request,
-  res: Response<ApiResponse>,
-) => {
-  try {
-    const id = Number(req.params.id);
-    const deleted = await PayrollService.deleteLeaveReturnReport(id);
-    res.json({ success: true, data: { deleted } });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

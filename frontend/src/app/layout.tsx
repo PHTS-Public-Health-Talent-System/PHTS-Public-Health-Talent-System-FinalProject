@@ -1,45 +1,44 @@
-import type { Metadata } from "next";
-import { Sarabun, Inter } from "next/font/google";
-import "./globals.css";
-import { ReactQueryProvider } from "@/components/providers/query-provider";
-import { AuthProvider } from "@/components/providers/auth-provider";
-import { Toaster } from "@/components/ui/sonner";
+import React from "react"
+import type { Metadata } from 'next'
+import { Sarabun } from 'next/font/google'
+import { ThemeProvider } from "@/components/theme-provider"
+import { AuthProvider } from "@/components/providers/auth-provider"
+import { ReactQueryProvider } from "@/components/providers/query-provider"
 
-// ตั้งค่าฟอนต์ไทย (Sarabun)
+import './globals.css'
+
 const sarabun = Sarabun({
-  subsets: ["thai", "latin"],
-  weight: ["300", "400", "500", "600", "700"],
-  variable: "--font-sarabun",
-  display: "swap",
-});
-
-// ตั้งค่าฟอนต์ตัวเลข (Inter)
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
+  subsets: ['thai', 'latin'],
+  weight: ['300', '400', '500', '600', '700'],
+  variable: '--font-sarabun'
+})
 
 export const metadata: Metadata = {
-  title: "PHTS - ระบบบริหารจัดการเงิน พ.ต.ส.",
-  description: "Public Health Talent System",
-};
+  title: 'ระบบจัดการเงิน พ.ต.ส. | PTS Officer',
+  description: 'ระบบจัดการเงินเพิ่มสำหรับตำแหน่งที่มีเหตุพิเศษ'
+}
 
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode;
+  children: React.ReactNode
 }>) {
   return (
-    <html lang="th">
-      <body className={`${sarabun.variable} ${inter.variable} font-sans antialiased bg-background text-slate-900`}>
+    <html lang="th" suppressHydrationWarning>
+      <body className={`${sarabun.variable} font-sans antialiased`}>
         <ReactQueryProvider>
           <AuthProvider>
-            {children}
-            <Toaster position="top-center" richColors />
+            <ThemeProvider
+              attribute="class"
+              defaultTheme="system"
+              enableSystem
+              disableTransitionOnChange
+            >
+              {children}
+            </ThemeProvider>
           </AuthProvider>
         </ReactQueryProvider>
       </body>
     </html>
-  );
+  )
 }

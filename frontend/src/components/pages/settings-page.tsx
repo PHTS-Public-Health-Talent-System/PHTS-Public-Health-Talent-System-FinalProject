@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Skeleton } from "@/components/ui/skeleton"
 import { CheckCircle2 } from "lucide-react"
 import { toast } from "sonner"
-import { useCurrentUser } from "@/features/auth/hooks"
+import { useCurrentUser, useUpdateCurrentUserProfile } from "@/features/auth/hooks"
 import { useNotificationSettings, useUpdateNotificationSettings } from "@/features/notification/hooks"
 import type { ApiResponse } from "@/shared/api/types"
 import type { User as AuthUser } from "@/types/auth"
@@ -28,16 +28,31 @@ type UserProfile = AuthUser & {
   phone?: string
 }
 
+type ProfileForm = {
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+}
+
 export function SettingsPage() {
   const { data: response, isLoading: userLoading } = useCurrentUser()
   const user = (response as ApiResponse<UserProfile> | undefined)?.data ?? null
   const { data: notifSettings, isLoading: settingsLoading } = useNotificationSettings()
   const updateSettings = useUpdateNotificationSettings()
+  const updateProfile = useUpdateCurrentUserProfile()
   const [showSuccessDialog, setShowSuccessDialog] = useState(false)
+  const [successMessage, setSuccessMessage] = useState("ข้อมูลของคุณถูกบันทึกเรียบร้อยแล้ว")
   const [notifications, setNotifications] = useState<NotificationSettings>({
     in_app: true,
     sms: false,
     email: false,
+  })
+  const [profileForm, setProfileForm] = useState<ProfileForm>({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
   })
 
   // Update local state when settings load
@@ -47,10 +62,21 @@ export function SettingsPage() {
     }
   }, [notifSettings])
 
+  React.useEffect(() => {
+    if (!user) return
+    setProfileForm({
+      firstName: user.firstName || user.first_name || "",
+      lastName: user.lastName || user.last_name || "",
+      email: user.email || "",
+      phone: user.phone || "",
+    })
+  }, [user])
+
   const handleSaveNotifications = () => {
     updateSettings.mutate(notifications, {
       onSuccess: () => {
         toast.success("บันทึกการตั้งค่าสำเร็จ")
+        setSuccessMessage("บันทึกการตั้งค่าการแจ้งเตือนเรียบร้อยแล้ว")
         setShowSuccessDialog(true)
       },
       onError: (error: unknown) => {
@@ -58,6 +84,59 @@ export function SettingsPage() {
         toast.error(message)
       },
     })
+  }
+
+  const handleProfileChange = (key: keyof ProfileForm, value: string) => {
+    setProfileForm((prev) => ({ ...prev, [key]: value }))
+  }
+
+  const handleSaveProfile = () => {
+    updateProfile.mutate(
+      {
+        first_name: profileForm.firstName.trim(),
+        last_name: profileForm.lastName.trim(),
+        email: profileForm.email.trim(),
+        phone: profileForm.phone.trim(),
+      },
+      {
+        onSuccess: () => {
+          toast.success("บันทึกข้อมูลส่วนตัวสำเร็จ")
+          setSuccessMessage("บันทึกข้อมูลส่วนตัวเรียบร้อยแล้ว")
+          setShowSuccessDialog(true)
+        },
+        onError: (error: unknown) => {
+          const message = error instanceof Error ? error.message : "ไม่สามารถบันทึกข้อมูลได้"
+          toast.error(message)
+        },
+      },
+    )
+  }
+
+  const isProfileChanged = React.useMemo(() => {
+    if (!user) return false
+    const base: ProfileForm = {
+      firstName: user.firstName || user.first_name || "",
+      lastName: user.lastName || user.last_name || "",
+      email: user.email || "",
+      phone: user.phone || "",
+    }
+    return (
+      profileForm.firstName !== base.firstName ||
+      profileForm.lastName !== base.lastName ||
+      profileForm.email !== base.email ||
+      profileForm.phone !== base.phone
+    )
+  }, [profileForm, user])
+
+  const handleResetProfile = () => {
+    if (!user) return
+    setProfileForm({
+      firstName: user.firstName || user.first_name || "",
+      lastName: user.lastName || user.last_name || "",
+      email: user.email || "",
+      phone: user.phone || "",
+    })
+    toast.success("รีเซ็ตข้อมูลกลับค่าเริ่มต้นแล้ว")
   }
 
   return (
@@ -116,18 +195,16 @@ export function SettingsPage() {
                       <Label htmlFor="firstName">ชื่อ</Label>
                       <Input
                         id="firstName"
-                        value={user?.firstName || user?.first_name || ""}
-                        disabled
-                        className="bg-muted border-border"
+                        value={profileForm.firstName}
+                        onChange={(e) => handleProfileChange("firstName", e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="lastName">นามสกุล</Label>
                       <Input
                         id="lastName"
-                        value={user?.lastName || user?.last_name || ""}
-                        disabled
-                        className="bg-muted border-border"
+                        value={profileForm.lastName}
+                        onChange={(e) => handleProfileChange("lastName", e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
@@ -135,27 +212,44 @@ export function SettingsPage() {
                       <Input
                         id="email"
                         type="email"
-                        value={user?.email || ""}
-                        disabled
-                        className="bg-muted border-border"
+                        value={profileForm.email}
+                        onChange={(e) => handleProfileChange("email", e.target.value)}
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone">เบอร์โทรศัพท์</Label>
                       <Input
                         id="phone"
-                        value={user?.phone || ""}
-                        disabled
-                        className="bg-muted border-border"
+                        value={profileForm.phone}
+                        onChange={(e) => handleProfileChange("phone", e.target.value)}
                       />
                     </div>
                   </div>
 
-                  <div className="rounded-lg bg-amber-500/10 p-4 border border-amber-500/20">
-                    <p className="flex items-center gap-2 text-sm text-amber-700">
+                  <div className="rounded-lg border border-amber-500/20 bg-amber-500/10 p-4">
+                    <p className="flex items-start gap-2 text-sm text-amber-700">
                       <Info className="h-4 w-4" />
-                      ต้องการแก้ไขข้อมูล กรุณาติดต่อ HR เพื่ออัปเดตข้อมูลในระบบ HRMS
+                      การบันทึกจะอัปเดตข้อมูลในฐานข้อมูลระบบทันที
                     </p>
+                  </div>
+
+                  <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleResetProfile}
+                      disabled={userLoading}
+                    >
+                      รีเซ็ต
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={handleSaveProfile}
+                      disabled={!isProfileChanged || userLoading || updateProfile.isPending}
+                    >
+                      <Save className="mr-2 h-4 w-4" />
+                      {updateProfile.isPending ? "กำลังบันทึก..." : "บันทึกข้อมูลส่วนตัว"}
+                    </Button>
                   </div>
                 </>
               )}
@@ -250,7 +344,7 @@ export function SettingsPage() {
             </div>
             <DialogTitle className="text-center">บันทึกสำเร็จ</DialogTitle>
             <DialogDescription className="text-center">
-              ข้อมูลของคุณถูกบันทึกเรียบร้อยแล้ว
+              {successMessage}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

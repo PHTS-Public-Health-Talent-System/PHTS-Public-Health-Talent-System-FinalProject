@@ -1,7 +1,7 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
 import {
   Table,
@@ -23,117 +23,69 @@ import {
   Clock,
   AlertTriangle,
   XCircle,
-  Download,
-  TrendingUp,
   TrendingDown,
   BarChart3,
 } from "lucide-react"
+import { usePendingWithSla, useSlaConfigs } from "@/features/sla/hooks"
 
-const slaSteps = [
-  {
-    step: 1,
-    name: "HEAD_WARD",
-    label: "หัวหน้าตึก/หัวหน้างาน",
-    targetDays: 3,
-    avgDays: 1.8,
-    onTime: 92,
-    total: 156,
-    pending: 5,
-  },
-  {
-    step: 2,
-    name: "HEAD_DEPT",
-    label: "หัวหน้ากลุ่มงาน",
-    targetDays: 3,
-    avgDays: 2.1,
-    onTime: 88,
-    total: 151,
-    pending: 8,
-  },
-  {
-    step: 3,
-    name: "PTS_OFFICER",
-    label: "เจ้าหน้าที่ พ.ต.ส.",
-    targetDays: 5,
-    avgDays: 3.5,
-    onTime: 85,
-    total: 143,
-    pending: 12,
-  },
-  {
-    step: 4,
-    name: "HEAD_HR",
-    label: "หัวหน้ากลุ่มงานทรัพยากรบุคคล",
-    targetDays: 3,
-    avgDays: 2.2,
-    onTime: 90,
-    total: 131,
-    pending: 8,
-  },
-  {
-    step: 5,
-    name: "HEAD_FINANCE",
-    label: "หัวหน้าการเงิน",
-    targetDays: 3,
-    avgDays: 1.5,
-    onTime: 95,
-    total: 123,
-    pending: 3,
-  },
-  {
-    step: 6,
-    name: "DIRECTOR",
-    label: "ผู้อำนวยการ",
-    targetDays: 5,
-    avgDays: 2.8,
-    onTime: 91,
-    total: 120,
-    pending: 2,
-  },
-]
+type SlaConfig = {
+  step_no: number
+  role_name: string
+  sla_days: number
+  reminder_before_days: number
+  reminder_after_days: number
+}
 
-const pendingItems = [
-  {
-    id: "REQ-2568-047",
-    name: "นางสาว มณีรัตน์ ดวงใจ",
-    step: "HEAD_HR",
-    stepLabel: "รอ HR อนุมัติ",
-    submittedDate: "28 ม.ค. 2569",
-    daysInStep: 8,
-    targetDays: 3,
-    status: "danger",
-  },
-  {
-    id: "REQ-2568-046",
-    name: "นาย วิชัย สมบูรณ์",
-    step: "HEAD_HR",
-    stepLabel: "รอ HR อนุมัติ",
-    submittedDate: "31 ม.ค. 2569",
-    daysInStep: 5,
-    targetDays: 3,
-    status: "warning",
-  },
-  {
-    id: "REQ-2568-039",
-    name: "นางสาว กัญญา ใจเย็น",
-    step: "PTS_OFFICER",
-    stepLabel: "รอเจ้าหน้าที่ตรวจสอบ",
-    submittedDate: "25 ม.ค. 2569",
-    daysInStep: 11,
-    targetDays: 5,
-    status: "danger",
-  },
-  {
-    id: "REQ-2568-041",
-    name: "นาย สมชาย มีสุข",
-    step: "PTS_OFFICER",
-    stepLabel: "รอเจ้าหน้าที่ตรวจสอบ",
-    submittedDate: "30 ม.ค. 2569",
-    daysInStep: 6,
-    targetDays: 5,
-    status: "warning",
-  },
-]
+type PendingSlaItem = {
+  request_id: number
+  request_no: string
+  citizen_id: string
+  first_name?: string | null
+  last_name?: string | null
+  current_step: number
+  step_started_at: string
+  business_days_elapsed: number
+  sla_days: number
+  is_approaching_sla: boolean
+  is_overdue: boolean
+  days_until_sla: number
+  days_overdue: number
+}
+
+type StepStat = {
+  step: number
+  label: string
+  targetDays: number
+  avgDays: number
+  onTime: number
+  total: number
+  pending: number
+}
+
+const stepLabels: Record<number, string> = {
+  1: "หัวหน้าตึก/หัวหน้างาน",
+  2: "หัวหน้ากลุ่มงาน",
+  3: "เจ้าหน้าที่ พ.ต.ส.",
+  4: "หัวหน้ากลุ่มงานทรัพยากรบุคคล",
+  5: "หัวหน้าการเงิน",
+  6: "ผู้อำนวยการ",
+}
+
+const stepStatusLabels: Record<number, string> = {
+  1: "รอหัวหน้าตึก/หัวหน้างาน",
+  2: "รอหัวหน้ากลุ่มงาน",
+  3: "รอเจ้าหน้าที่ตรวจสอบ",
+  4: "รอ HR อนุมัติ",
+  5: "รอการเงินอนุมัติ",
+  6: "รอผู้อำนวยการอนุมัติ",
+}
+
+const formatDate = (value?: string | null) => {
+  if (!value) return "-"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "-"
+  return date.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })
+}
 
 function getStatusColor(onTime: number) {
   if (onTime >= 90) return "text-[hsl(var(--success))]"
@@ -148,11 +100,92 @@ function getProgressColor(onTime: number) {
 }
 
 export default function HeadHRSLAReportPage() {
-  const overallOnTime = Math.round(
-    slaSteps.reduce((sum, step) => sum + step.onTime, 0) / slaSteps.length
-  )
-  const totalPending = slaSteps.reduce((sum, step) => sum + step.pending, 0)
-  const overdueCount = pendingItems.filter(item => item.status === "danger").length
+  const [range, setRange] = useState("current")
+  const rangeDates = useMemo(() => {
+    const now = new Date()
+    let start = new Date(now.getFullYear(), now.getMonth(), 1)
+    if (range === "last30") {
+      start = new Date(now)
+      start.setDate(start.getDate() - 30)
+    } else if (range === "last90") {
+      start = new Date(now)
+      start.setDate(start.getDate() - 90)
+    } else if (range === "year") {
+      start = new Date(now.getFullYear(), 0, 1)
+    }
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const toDateStr = (value: Date) => value.toISOString().slice(0, 10)
+    return { start: toDateStr(start), end: toDateStr(end) }
+  }, [range])
+
+  const pendingQuery = usePendingWithSla(rangeDates)
+  const configsQuery = useSlaConfigs()
+
+  const configMap = useMemo(() => {
+    const configs = (configsQuery.data ?? []) as SlaConfig[]
+    const map = new Map<number, SlaConfig>()
+    configs.forEach((config) => map.set(config.step_no, config))
+    return map
+  }, [configsQuery.data])
+
+  const pendingItems = (pendingQuery.data ?? []) as PendingSlaItem[]
+
+  const filteredPending = pendingItems
+
+  const stepStats = useMemo(() => {
+    const map = new Map<number, {
+      count: number
+      overdue: number
+      approaching: number
+      totalDays: number
+    }>()
+    filteredPending.forEach((item) => {
+      const current = map.get(item.current_step) ?? {
+        count: 0,
+        overdue: 0,
+        approaching: 0,
+        totalDays: 0,
+      }
+      current.count += 1
+      current.totalDays += item.business_days_elapsed ?? 0
+      if (item.is_overdue) current.overdue += 1
+      if (item.is_approaching_sla) current.approaching += 1
+      map.set(item.current_step, current)
+    })
+    return map
+  }, [filteredPending])
+
+  const slaSteps = useMemo<StepStat[]>(() => {
+    return Object.entries(stepLabels).map(([stepKey, label]) => {
+      const step = Number(stepKey)
+      const stats = stepStats.get(step)
+      const config = configMap.get(step)
+      const count = stats?.count ?? 0
+      const overdue = stats?.overdue ?? 0
+      const approaching = stats?.approaching ?? 0
+      const onTimeCount = Math.max(0, count - overdue - approaching)
+      const onTime = count > 0 ? Math.round((onTimeCount / count) * 100) : 0
+      const avgDays = count > 0 ? Number((stats?.totalDays ?? 0) / count) : 0
+      return {
+        step,
+        label,
+        targetDays: config?.sla_days ?? 0,
+        avgDays,
+        onTime,
+        total: count,
+        pending: count,
+      }
+    })
+  }, [configMap, stepStats])
+
+  const totalPending = filteredPending.length
+  const overdueCount = filteredPending.filter((item) => item.is_overdue).length
+  const withinCount = filteredPending.filter(
+    (item) => !item.is_overdue && !item.is_approaching_sla,
+  ).length
+  const overallOnTime = totalPending > 0
+    ? Math.round((withinCount / totalPending) * 100)
+    : 0
 
   return (
     <div className="p-8">
@@ -165,7 +198,7 @@ export default function HeadHRSLAReportPage() {
           </p>
         </div>
         <div className="flex gap-3">
-          <Select defaultValue="current">
+          <Select value={range} onValueChange={setRange}>
             <SelectTrigger className="w-[180px] bg-background">
               <SelectValue placeholder="เลือกช่วงเวลา" />
             </SelectTrigger>
@@ -176,10 +209,6 @@ export default function HeadHRSLAReportPage() {
               <SelectItem value="year">ทั้งปี</SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" className="bg-transparent">
-            <Download className="mr-2 h-4 w-4" />
-            ดาวน์โหลด
-          </Button>
         </div>
       </div>
 
@@ -196,9 +225,8 @@ export default function HeadHRSLAReportPage() {
                 <BarChart3 className={`h-5 w-5 ${getStatusColor(overallOnTime)}`} />
               </div>
             </div>
-            <div className="mt-2 flex items-center text-xs text-[hsl(var(--success))]">
-              <TrendingUp className="mr-1 h-3 w-3" />
-              +2.3% จากเดือนก่อน
+            <div className="mt-2 flex items-center text-xs text-muted-foreground">
+              อัปเดตจากรายการค้างล่าสุด
             </div>
           </CardContent>
         </Card>
@@ -240,7 +268,7 @@ export default function HeadHRSLAReportPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">ดำเนินการแล้ว</p>
-                <p className="text-2xl font-bold text-[hsl(var(--success))]">120</p>
+                <p className="text-2xl font-bold text-[hsl(var(--success))]">{withinCount}</p>
               </div>
               <div className="rounded-lg bg-[hsl(var(--success))]/10 p-3">
                 <CheckCircle2 className="h-5 w-5 text-[hsl(var(--success))]" />
@@ -269,7 +297,9 @@ export default function HeadHRSLAReportPage() {
                     </div>
                     <div>
                       <p className="font-medium text-foreground">{step.label}</p>
-                      <p className="text-xs text-muted-foreground">เป้าหมาย: {step.targetDays} วัน | เฉลี่ย: {step.avgDays} วัน</p>
+                      <p className="text-xs text-muted-foreground">
+                        เป้าหมาย: {step.targetDays} วัน | เฉลี่ย: {step.avgDays.toFixed(1)} วัน
+                      </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-4">
@@ -285,7 +315,7 @@ export default function HeadHRSLAReportPage() {
                 </div>
                 <div className="relative">
                   <Progress value={step.onTime} className="h-2" />
-                  <div 
+                  <div
                     className={`absolute top-0 h-2 rounded-full ${getProgressColor(step.onTime)}`}
                     style={{ width: `${step.onTime}%` }}
                   />
@@ -315,42 +345,55 @@ export default function HeadHRSLAReportPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {pendingItems.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-mono text-sm">{item.id}</TableCell>
-                  <TableCell className="font-medium">{item.name}</TableCell>
+              {filteredPending.map((item) => {
+                const name = [item.first_name, item.last_name].filter(Boolean).join(" ").trim() || "-"
+                const status = item.is_overdue ? "danger" : item.is_approaching_sla ? "warning" : "normal"
+                return (
+                <TableRow key={item.request_id}>
+                  <TableCell className="font-mono text-sm">{item.request_no}</TableCell>
+                  <TableCell className="font-medium">{name}</TableCell>
                   <TableCell>
                     <div className="text-sm">
-                      <p className="font-medium">{item.step}</p>
-                      <p className="text-xs text-muted-foreground">{item.stepLabel}</p>
+                      <p className="font-medium">{item.current_step}</p>
+                      <p className="text-xs text-muted-foreground">{stepStatusLabels[item.current_step] ?? "-"}</p>
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{item.submittedDate}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{formatDate(item.step_started_at)}</TableCell>
                   <TableCell className="text-center">
-                    <span className={`font-semibold ${item.status === "danger" ? "text-destructive" : "text-[hsl(var(--warning))]"}`}>
-                      {item.daysInStep} วัน
+                    <span className={`font-semibold ${status === "danger" ? "text-destructive" : status === "warning" ? "text-[hsl(var(--warning))]" : "text-muted-foreground"}`}>
+                      {item.business_days_elapsed} วัน
                     </span>
                   </TableCell>
                   <TableCell className="text-center text-sm text-muted-foreground">
-                    {item.targetDays} วัน
+                    {item.sla_days} วัน
                   </TableCell>
                   <TableCell className="text-center">
-                    {item.status === "danger" ? (
+                    {status === "danger" ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive">
                         <XCircle className="h-3 w-3" />
                         เกินกำหนด
                       </span>
-                    ) : (
+                    ) : status === "warning" ? (
                       <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--warning))]/10 px-2.5 py-1 text-xs font-medium text-[hsl(var(--warning))]">
                         <AlertTriangle className="h-3 w-3" />
                         ใกล้เกิน
                       </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--success))]/10 px-2.5 py-1 text-xs font-medium text-[hsl(var(--success))]">
+                        <CheckCircle2 className="h-3 w-3" />
+                        อยู่ใน SLA
+                      </span>
                     )}
                   </TableCell>
                 </TableRow>
-              ))}
+              )})}
             </TableBody>
           </Table>
+          {filteredPending.length === 0 && (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              ไม่พบรายการที่เข้าเงื่อนไขช่วงเวลานี้
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

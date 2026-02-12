@@ -32,4 +32,17 @@ export const retirementIdSchema = z.object({
   }),
 });
 
+export const licenseNotifySchema = z.object({
+  body: z.object({
+    items: z
+      .array(
+        z.object({
+          citizen_id: z.string().min(1),
+          bucket: z.enum(["expired", "30", "60", "90"]),
+        }),
+      )
+      .min(1),
+  }),
+});
+
 export type RetirementInput = z.infer<typeof retirementCreateSchema>["body"];

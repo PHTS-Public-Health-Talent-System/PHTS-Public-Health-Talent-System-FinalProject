@@ -10,9 +10,11 @@ import {
 } from '@/modules/alerts/alerts.controller.js';
 import {
   getLicenseList,
+  postLicenseNotify,
   getLicenseSummary,
 } from '@/modules/alerts/license-alerts.controller.js';
 import {
+  licenseNotifySchema,
   retirementCreateSchema,
   retirementIdSchema,
   retirementUpdateSchema,
@@ -63,6 +65,14 @@ router.get(
   protect,
   restrictTo(UserRole.PTS_OFFICER),
   getLicenseList,
+);
+
+router.post(
+  "/license/notify",
+  protect,
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(licenseNotifySchema),
+  postLicenseNotify,
 );
 
 export default router;

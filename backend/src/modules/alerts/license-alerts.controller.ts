@@ -3,6 +3,7 @@ import { ApiResponse } from '@/types/auth.js';
 import {
   AlertBucket,
   getLicenseAlertList,
+  notifyLicenseAlerts,
   getLicenseAlertSummary,
 } from '@/modules/alerts/services/license-alerts.service.js';
 
@@ -26,5 +27,14 @@ export const getLicenseList = async (
     return;
   }
   const data = await getLicenseAlertList(bucket);
+  res.json({ success: true, data });
+};
+
+export const postLicenseNotify = async (
+  req: Request,
+  res: Response<ApiResponse>,
+) => {
+  const body = req.body as { items: Array<{ citizen_id: string; bucket: AlertBucket }> };
+  const data = await notifyLicenseAlerts(body.items ?? []);
   res.json({ success: true, data });
 };

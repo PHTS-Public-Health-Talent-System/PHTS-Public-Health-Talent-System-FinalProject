@@ -14,6 +14,7 @@ export interface LicenseAlertRow {
   citizen_id: string;
   full_name: string;
   position_name: string;
+  profession_code?: string | null;
   license_expiry: string | null;
   days_left: number | null;
   bucket: AlertBucket;
@@ -33,6 +34,7 @@ export interface LicenseExpiryRow {
   citizen_id: string;
   full_name: string;
   position_name: string;
+  profession_code?: string | null;
   effective_expiry: string | null;
   days_left: number | null;
 }

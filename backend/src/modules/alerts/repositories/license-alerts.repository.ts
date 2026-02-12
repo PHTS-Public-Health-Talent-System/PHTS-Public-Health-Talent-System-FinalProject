@@ -31,19 +31,47 @@ const baseSubquerySql = `
     p.first_name,
     p.last_name,
     p.position_name,
-    COALESCE(l.next_valid, l.last_valid) AS effective_expiry
+    COALESCE(
+      CASE
+        WHEN p.position_name LIKE '%แพทย์%' THEN 'DOCTOR'
+        WHEN p.position_name LIKE '%ทันต%' THEN 'DENTIST'
+        WHEN p.position_name LIKE '%เภสัช%' THEN 'PHARMACIST'
+        WHEN p.position_name LIKE '%พยาบาล%' THEN 'NURSE'
+        WHEN p.position_name LIKE '%เทคนิคการแพทย์%' THEN 'MED_TECH'
+        WHEN p.position_name LIKE '%รังสี%' THEN 'RAD_TECH'
+        WHEN p.position_name LIKE '%กายภาพบำบัด%' THEN 'PHYSIO'
+        WHEN p.position_name LIKE '%กิจกรรมบำบัด%' THEN 'OCC_THERAPY'
+        WHEN p.position_name LIKE '%จิตวิทยาคลินิก%' THEN 'CLIN_PSY'
+        WHEN p.position_name LIKE '%หัวใจและทรวงอก%' THEN 'CARDIO_TECH'
+        WHEN p.position_name LIKE '%แก้ไขการพูด%' THEN 'SPEECH_THERAPIST'
+        ELSE NULL
+      END,
+      (
+        SELECT r.profession_code
+        FROM req_eligibility re
+        JOIN cfg_payment_rates r ON r.rate_id = re.master_rate_id
+        WHERE re.citizen_id = p.citizen_id
+        ORDER BY re.is_active DESC, re.effective_date DESC, re.eligibility_id DESC
+        LIMIT 1
+      )
+    ) AS profession_code,
+    (
+      SELECT l.valid_until
+      FROM emp_licenses l
+      WHERE l.citizen_id = p.citizen_id
+      ORDER BY
+        l.valid_until DESC,
+        l.valid_from DESC,
+        l.license_id DESC
+      LIMIT 1
+    ) AS effective_expiry
   FROM emp_profiles p
-  LEFT JOIN (
-    SELECT
-      citizen_id,
-      MIN(CASE WHEN valid_until >= DATE(?) THEN valid_until END) AS next_valid,
-      MAX(valid_until) AS last_valid
-    FROM emp_licenses
-    WHERE status IS NULL OR UPPER(status) = 'ACTIVE'
-    GROUP BY citizen_id
-  ) l ON p.citizen_id = l.citizen_id
-  WHERE p.position_name LIKE '%พยาบาล%'
-     OR p.position_name LIKE '%นักเทคนิคการแพทย์%'
+  WHERE EXISTS (
+    SELECT 1
+    FROM req_eligibility re
+    WHERE re.citizen_id = p.citizen_id
+      AND re.is_active = 1
+  )
 `;
 
 export class LicenseAlertsRepository {
@@ -70,7 +98,6 @@ export class LicenseAlertsRepository {
 
     const params = [
       asOf, asOf, asOf, asOf, // bucketCase
-      asOf, // subquery (next_valid)
     ];
 
     const [rows] = await executor.query<RowDataPacket[]>(sql, params);
@@ -103,6 +130,7 @@ export class LicenseAlertsRepository {
         citizen_id,
         TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) AS full_name,
         position_name,
+        profession_code,
         DATE(effective_expiry) AS license_expiry,
         DATEDIFF(effective_expiry, DATE(?)) AS days_left,
         ${bucketCaseSql} AS bucket
@@ -116,7 +144,6 @@ export class LicenseAlertsRepository {
     const params = [
       asOf,
       asOf, asOf, asOf, asOf, // first bucketCase
-      asOf, // subquery
       asOf, asOf, asOf, asOf, // where bucketCase
       bucket,
     ];
@@ -143,6 +170,7 @@ export class LicenseAlertsRepository {
         citizen_id,
         TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) AS full_name,
         position_name,
+        profession_code,
         DATE(effective_expiry) AS effective_expiry,
         DATEDIFF(effective_expiry, DATE(?)) AS days_left
       FROM (
@@ -152,7 +180,6 @@ export class LicenseAlertsRepository {
     `;
 
     const params = [
-      asOf, // subquery (next_valid)
       asOf,
     ];
 

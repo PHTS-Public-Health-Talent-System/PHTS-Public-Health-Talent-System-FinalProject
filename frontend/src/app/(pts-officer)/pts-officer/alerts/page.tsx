@@ -48,6 +48,7 @@ import {
   useNotifyLicenseAlerts,
 } from "@/features/license-alerts/hooks"
 import type { LicenseAlertListItem } from "@/features/license-alerts/api"
+import { resolveProfessionLabel } from "@/shared/constants/profession"
 
 type AlertBucket = "expired" | "30" | "60" | "90"
 
@@ -65,26 +66,6 @@ interface LicenseAlert {
   notified: boolean
   notifiedDate?: string
   bucket: AlertBucket
-}
-
-const PROFESSION_LABELS: Record<string, string> = {
-  DOCTOR: "แพทย์",
-  PHYSICIAN: "แพทย์",
-  DENTIST: "ทันตแพทย์",
-  PHARMACIST: "เภสัชกร",
-  NURSE: "พยาบาลวิชาชีพ",
-  MED_TECH: "นักเทคนิคการแพทย์",
-  RAD_TECH: "นักรังสีการแพทย์",
-  PHYSIO: "นักกายภาพบำบัด",
-  OCC_THERAPY: "นักกิจกรรมบำบัด",
-  CLIN_PSY: "นักจิตวิทยาคลินิก",
-  CARDIO_TECH: "นักเทคโนโลยีหัวใจและทรวงอก",
-  SPEECH_THERAPIST: "นักแก้ไขการพูด",
-  RADIOLOGIST: "นักรังสีการแพทย์",
-  PHYSICAL_THERAPY: "นักกายภาพบำบัด",
-  OCCUPATIONAL_THERAPY: "นักกิจกรรมบำบัด",
-  CLINICAL_PSYCHOLOGIST: "นักจิตวิทยาคลินิก",
-  CARDIO_THORACIC_TECH: "นักเทคโนโลยีหัวใจและทรวงอก",
 }
 
 function formatThaiDate(dateStr: string | null): string {
@@ -113,11 +94,6 @@ function deriveStatus(bucket: AlertBucket, daysLeft: number): LicenseAlert["stat
   if (daysLeft < 30 || bucket === "30") return "critical"
   if (daysLeft < 90 || bucket === "60" || bucket === "90") return "warning"
   return "normal"
-}
-
-function resolveProfessionLabel(code?: string | null, positionName?: string): string {
-  if (!code) return positionName ?? "-"
-  return PROFESSION_LABELS[code.toUpperCase()] ?? code
 }
 
 function getStatusBadge(status: LicenseAlert["status"]) {
@@ -161,7 +137,7 @@ function mapAlertRow(row: LicenseAlertListItem): LicenseAlert {
     name: row.full_name ?? "-",
     position: row.position_name ?? "-",
     department: row.department ?? "-",
-    profession: resolveProfessionLabel(row.profession_code, row.position_name ?? undefined),
+    profession: resolveProfessionLabel(row.profession_code, row.position_name ?? "-"),
     licenseNumber: row.license_no ?? "-",
     licenseExpiry: formatThaiDate(row.license_expiry),
     daysLeft,

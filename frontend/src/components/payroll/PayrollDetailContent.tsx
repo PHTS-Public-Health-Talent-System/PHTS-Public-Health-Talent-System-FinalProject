@@ -60,6 +60,7 @@ import type { ProfessionHierarchy } from "@/features/master-data/api"
 import { useRequestDetail } from "@/features/request/hooks"
 import { normalizeRateMapping, resolveRateMappingDisplay } from "@/app/(user)/user/request-detail-rate-mapping"
 import { buildAttachmentUrl } from "@/app/(user)/user/request-detail-attachments"
+import { normalizeProfessionCode, resolveProfessionLabel } from "@/shared/constants/profession"
 
 type PeriodStatus = "OPEN" | "WAITING_HR" | "WAITING_HEAD_FINANCE" | "WAITING_DIRECTOR" | "CLOSED"
 
@@ -101,19 +102,6 @@ type PayrollDetailContentProps = {
   onAvailableProfessionsChange?: (professions: { code: string; label: string }[]) => void
 }
 
-const backendProfessionMap: Record<string, string> = {
-  DOCTOR: "PHYSICIAN",
-  DENTIST: "DENTIST",
-  PHARMACIST: "PHARMACIST",
-  NURSE: "NURSE",
-  MED_TECH: "MED_TECH",
-  RAD_TECH: "RADIOLOGIST",
-  PHYSIO: "PHYSICAL_THERAPY",
-  OCC_THERAPY: "OCCUPATIONAL_THERAPY",
-  CLIN_PSY: "CLINICAL_PSYCHOLOGIST",
-  CARDIO_TECH: "CARDIO_THORACIC_TECH",
-}
-
 const professionDescriptions: Record<string, string> = {
   NURSE: "ผู้ประกอบวิชาชีพการพยาบาลและการผดุงครรภ์",
   PHYSICIAN: "แพทย์/ผู้อำนวยการโรงพยาบาล",
@@ -125,19 +113,6 @@ const professionDescriptions: Record<string, string> = {
   DENTIST: "ผู้ประกอบวิชาชีพทันตกรรม",
   CLINICAL_PSYCHOLOGIST: "ผู้ประกอบวิชาชีพจิตวิทยาคลินิก",
   CARDIO_THORACIC_TECH: "ผู้ประกอบวิชาชีพเทคโนโลยีหัวใจและทรวงอก",
-}
-
-const professionLabels: Record<string, string> = {
-  NURSE: "พยาบาลวิชาชีพ",
-  PHYSICIAN: "แพทย์",
-  MED_TECH: "นักเทคนิคการแพทย์",
-  PHYSICAL_THERAPY: "นักกายภาพบำบัด",
-  OCCUPATIONAL_THERAPY: "นักกิจกรรมบำบัด",
-  RADIOLOGIST: "นักรังสีการแพทย์",
-  PHARMACIST: "เภสัชกร",
-  DENTIST: "ทันตแพทย์",
-  CLINICAL_PSYCHOLOGIST: "นักจิตวิทยาคลินิก",
-  CARDIO_THORACIC_TECH: "นักเทคโนโลยีหัวใจและทรวงอก",
 }
 
 const parseGroupNumber = (value?: string) => {
@@ -209,7 +184,7 @@ export function PayrollDetailContent({
     if (hierarchy.length) {
       const cards = hierarchy
         .map((profession) => {
-          const internalCode = backendProfessionMap[profession.id] ?? profession.id
+          const internalCode = normalizeProfessionCode(profession.id)
           const rates = Array.from(
             new Set(
               profession.groups
@@ -228,7 +203,7 @@ export function PayrollDetailContent({
 
       const groups: Record<string, { group: number; rate: number }[]> = {}
       hierarchy.forEach((profession) => {
-        const internalCode = backendProfessionMap[profession.id] ?? profession.id
+        const internalCode = normalizeProfessionCode(profession.id)
         groups[internalCode] = profession.groups.map((group, index) => ({
           group: parseGroupNumber(group.name) ?? index + 1,
           rate: Number(group.rate),
@@ -246,8 +221,7 @@ export function PayrollDetailContent({
     const groupsMap = new Map<string, Map<string, { group: number; rate: number }>>()
 
     rawRows.forEach((row) => {
-      const rawCode = String(row.profession_code ?? "").toUpperCase()
-      const mappedCode = backendProfessionMap[rawCode] ?? rawCode
+      const mappedCode = normalizeProfessionCode(row.profession_code)
       if (!mappedCode) return
       const rate = Number(row.rate ?? 0)
       if (!Number.isFinite(rate) || rate <= 0) return
@@ -270,7 +244,7 @@ export function PayrollDetailContent({
         groups[code] = groupList
         return {
           code,
-          label: professionLabels[code] ?? code,
+          label: resolveProfessionLabel(code, code),
           description: professionDescriptions[code] ?? "",
           rates: groupList.map((item) => item.rate),
         }
@@ -311,8 +285,7 @@ export function PayrollDetailContent({
       const department = row.department ?? item?.current_department ?? "-"
       const fullName = [firstName, lastName].filter(Boolean).join(" ").trim() || "-"
 
-      const rawCode = String(row.profession_code ?? "").toUpperCase()
-      const professionCode = backendProfessionMap[rawCode] ?? (rawCode || "UNKNOWN")
+      const professionCode = normalizeProfessionCode(row.profession_code)
 
       const baseRate = Number(row.rate ?? 0)
       const groupNoFromRow =

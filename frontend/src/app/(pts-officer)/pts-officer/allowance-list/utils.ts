@@ -1,4 +1,8 @@
 import type { EligibilityRecord } from "@/features/request/api"
+import {
+  normalizeProfessionCode,
+  resolveProfessionLabel,
+} from "@/shared/constants/profession"
 
 export interface AllowancePerson {
   id: number
@@ -16,41 +20,7 @@ export interface AllowancePerson {
   note?: string
 }
 
-const backendProfessionMap: Record<string, string> = {
-  DOCTOR: "PHYSICIAN",
-  DENTIST: "DENTIST",
-  PHARMACIST: "PHARMACIST",
-  NURSE: "NURSE",
-  MED_TECH: "MED_TECH",
-  RAD_TECH: "RADIOLOGIST",
-  PHYSIO: "PHYSICAL_THERAPY",
-  OCC_THERAPY: "OCCUPATIONAL_THERAPY",
-  CLIN_PSY: "CLINICAL_PSYCHOLOGIST",
-  CARDIO_TECH: "CARDIO_THORACIC_TECH",
-}
-
-export const professionLabels: Record<string, string> = {
-  NURSE: "พยาบาลวิชาชีพ",
-  PHYSICIAN: "แพทย์",
-  MED_TECH: "นักเทคนิคการแพทย์",
-  PHYSICAL_THERAPY: "นักกายภาพบำบัด",
-  OCCUPATIONAL_THERAPY: "นักกิจกรรมบำบัด",
-  RADIOLOGIST: "นักรังสีการแพทย์",
-  PHARMACIST: "เภสัชกร",
-  DENTIST: "ทันตแพทย์",
-  CLINICAL_PSYCHOLOGIST: "นักจิตวิทยาคลินิก",
-  CARDIO_THORACIC_TECH: "นักเทคโนโลยีหัวใจและทรวงอก",
-}
-
-export function normalizeProfessionCode(value?: string | null): string {
-  if (!value) return "UNKNOWN"
-  const upper = value.toUpperCase()
-  return backendProfessionMap[upper] ?? upper
-}
-
-export function resolveProfessionLabel(code: string): string {
-  return professionLabels[code] ?? code
-}
+export { normalizeProfessionCode, resolveProfessionLabel }
 
 function formatDate(value?: string | null): string {
   if (!value) return "-"
@@ -74,7 +44,7 @@ export function mapEligibility(row: EligibilityRecord): AllowancePerson {
     lastName: row.last_name ?? "",
     position: row.position_name ?? "-",
     professionCode,
-    professionLabel: resolveProfessionLabel(professionCode),
+    professionLabel: resolveProfessionLabel(professionCode, professionCode),
     licenseExpiry: formatDate(row.expiry_date ?? null),
     rateGroup: groupNo,
     rateItem: subItemNo && subItemNo !== "-" ? `${itemNo}.${subItemNo}` : itemNo,

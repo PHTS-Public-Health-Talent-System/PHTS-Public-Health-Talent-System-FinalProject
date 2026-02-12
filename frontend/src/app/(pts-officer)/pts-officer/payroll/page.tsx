@@ -55,6 +55,7 @@ import {
 } from "@/features/payroll/hooks"
 import type { PayPeriod, PeriodPayoutRow } from "@/features/payroll/api"
 import { usePayrollReviewProgress } from "@/features/payroll/usePayrollReviewProgress"
+import { normalizeProfessionCode, resolveProfessionLabel } from "@/shared/constants/profession"
 
 const thaiMonths = [
   "มกราคม",
@@ -70,32 +71,6 @@ const thaiMonths = [
   "พฤศจิกายน",
   "ธันวาคม",
 ]
-
-const backendProfessionMap: Record<string, string> = {
-  DOCTOR: "PHYSICIAN",
-  DENTIST: "DENTIST",
-  PHARMACIST: "PHARMACIST",
-  NURSE: "NURSE",
-  MED_TECH: "MED_TECH",
-  RAD_TECH: "RADIOLOGIST",
-  PHYSIO: "PHYSICAL_THERAPY",
-  OCC_THERAPY: "OCCUPATIONAL_THERAPY",
-  CLIN_PSY: "CLINICAL_PSYCHOLOGIST",
-  CARDIO_TECH: "CARDIO_THORACIC_TECH",
-}
-
-const professionLabels: Record<string, string> = {
-  NURSE: "พยาบาลวิชาชีพ",
-  PHYSICIAN: "แพทย์",
-  MED_TECH: "นักเทคนิคการแพทย์",
-  PHYSICAL_THERAPY: "นักกายภาพบำบัด",
-  OCCUPATIONAL_THERAPY: "นักกิจกรรมบำบัด",
-  RADIOLOGIST: "นักรังสีการแพทย์",
-  PHARMACIST: "เภสัชกร",
-  DENTIST: "ทันตแพทย์",
-  CLINICAL_PSYCHOLOGIST: "นักจิตวิทยาคลินิก",
-  CARDIO_THORACIC_TECH: "นักเทคโนโลยีหัวใจและทรวงอก",
-}
 
 type PeriodStatus = "draft" | "pending_hr" | "approved_hr" | "approved_director" | "paid"
 
@@ -202,11 +177,10 @@ export default function PayrollPage() {
     const rows = (payoutsData ?? []) as PeriodPayoutRow[]
     const totals = new Map<string, { label: string; count: number; amount: number }>()
     rows.forEach((row) => {
-      const raw = String(row.profession_code ?? "").toUpperCase()
-      const code = backendProfessionMap[raw] ?? raw
+      const code = normalizeProfessionCode(row.profession_code)
       if (!code) return
       const current = totals.get(code) ?? {
-        label: professionLabels[code] ?? code,
+        label: resolveProfessionLabel(code, code),
         count: 0,
         amount: 0,
       }
@@ -215,14 +189,14 @@ export default function PayrollPage() {
       totals.set(code, current)
     })
 
-    const reviewedSet = new Set((reviewedCodes ?? []).map((item) => item.toUpperCase()))
+    const reviewedSet = new Set((reviewedCodes ?? []).map((item) => normalizeProfessionCode(item)))
     const items = Array.from(totals.entries())
       .map(([code, data]) => ({
         code,
         label: data.label,
         count: data.count,
         amount: data.amount,
-        reviewed: reviewedSet.has(code.toUpperCase()),
+        reviewed: reviewedSet.has(code),
       }))
       .sort((a, b) => a.label.localeCompare(b.label, "th"))
 

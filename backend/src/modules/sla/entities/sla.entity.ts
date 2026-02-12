@@ -21,6 +21,9 @@ export interface SLAConfig {
 export interface RequestSLAInfo {
   request_id: number;
   request_no: string;
+  citizen_id: string;
+  first_name?: string | null;
+  last_name?: string | null;
   current_step: number;
   step_started_at: Date;
   assigned_officer_id: number | null;

@@ -97,24 +97,37 @@ export class SLARepository {
   // ── Pending request queries ─────────────────────────────────────────────────
 
   static async findPendingRequestsWithSLA(
-    conn?: PoolConnection,
+    params?: { startDate?: Date | null; endDate?: Date | null; conn?: PoolConnection },
   ): Promise<any[]> {
-    const executor = conn ?? db;
-    const sql = `
+    const executor = params?.conn ?? db;
+    let sql = `
       SELECT
         r.request_id,
         r.request_no,
+        r.citizen_id,
         r.current_step,
-        r.updated_at as step_started_at,
+        COALESCE(r.step_started_at, r.updated_at) as step_started_at,
         r.status,
-        sla.sla_days
+        sla.sla_days,
+        e.first_name,
+        e.last_name
       FROM req_submissions r
       JOIN cfg_sla_rules sla ON r.current_step = sla.step_no
+      LEFT JOIN emp_profiles e ON e.citizen_id = r.citizen_id
       WHERE r.status = 'PENDING'
       AND sla.is_active = 1
     `;
+    const values: any[] = [];
+    if (params?.startDate) {
+      sql += " AND COALESCE(r.step_started_at, r.updated_at) >= ?";
+      values.push(params.startDate.toISOString().slice(0, 10));
+    }
+    if (params?.endDate) {
+      sql += " AND COALESCE(r.step_started_at, r.updated_at) <= ?";
+      values.push(`${params.endDate.toISOString().slice(0, 10)} 23:59:59`);
+    }
 
-    const [rows] = await executor.query<RowDataPacket[]>(sql);
+    const [rows] = await executor.query<RowDataPacket[]>(sql, values);
     return rows as any[];
   }
 

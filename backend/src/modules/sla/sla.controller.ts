@@ -76,11 +76,25 @@ export async function getSLAReport(
  * GET /api/sla/pending
  */
 export async function getPendingRequestsWithSLA(
-  _req: Request,
+  req: Request,
   res: Response<ApiResponse>,
 ): Promise<void> {
   try {
-    const requests = await slaService.getPendingRequestsWithSLA();
+    const { start, end } = req.query;
+    const startDate = typeof start === "string" ? new Date(start) : null;
+    const endDate = typeof end === "string" ? new Date(end) : null;
+    if (startDate && Number.isNaN(startDate.getTime())) {
+      res.status(400).json({ success: false, error: "Invalid start date" });
+      return;
+    }
+    if (endDate && Number.isNaN(endDate.getTime())) {
+      res.status(400).json({ success: false, error: "Invalid end date" });
+      return;
+    }
+    const requests = await slaService.getPendingRequestsWithSLA({
+      startDate,
+      endDate,
+    });
     res.json({ success: true, data: requests });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });

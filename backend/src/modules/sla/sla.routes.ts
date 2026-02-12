@@ -24,7 +24,7 @@ router.use(protect);
 // Get SLA configurations (PTS_OFFICER, ADMIN)
 router.get(
   "/config",
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN, UserRole.HEAD_HR, UserRole.DIRECTOR),
   slaController.getSLAConfigs,
 );
 
@@ -51,7 +51,7 @@ router.get(
 // Get pending requests with SLA info (PTS_OFFICER, ADMIN)
 router.get(
   "/pending",
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN, UserRole.HEAD_HR, UserRole.DIRECTOR),
   slaController.getPendingRequestsWithSLA,
 );
 

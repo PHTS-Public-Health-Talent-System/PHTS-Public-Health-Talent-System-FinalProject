@@ -123,8 +123,14 @@ export async function getSLAReport(): Promise<SLAReport> {
 
 // ─── Pending Requests with SLA Info ───────────────────────────────────────────
 
-export async function getPendingRequestsWithSLA(): Promise<RequestSLAInfo[]> {
-  const pendingRequests = await SLARepository.findPendingRequestsWithSLA();
+export async function getPendingRequestsWithSLA(params?: {
+  startDate?: Date | null;
+  endDate?: Date | null;
+}): Promise<RequestSLAInfo[]> {
+  const pendingRequests = await SLARepository.findPendingRequestsWithSLA({
+    startDate: params?.startDate ?? null,
+    endDate: params?.endDate ?? null,
+  });
   const configs = await SLARepository.findAllConfigs();
 
   const configMap = new Map(configs.map((c) => [c.step_no, c]));
@@ -150,6 +156,9 @@ export async function getPendingRequestsWithSLA(): Promise<RequestSLAInfo[]> {
     results.push({
       request_id: req.request_id,
       request_no: req.request_no,
+      citizen_id: req.citizen_id,
+      first_name: req.first_name ?? null,
+      last_name: req.last_name ?? null,
       current_step: req.current_step,
       step_started_at: req.step_started_at,
       assigned_officer_id: req.assigned_officer_id ?? null,

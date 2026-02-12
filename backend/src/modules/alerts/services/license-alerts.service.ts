@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import { AlertLogsRepository } from '@/modules/alerts/repositories/alert-logs.repository.js';
 import { AlertsRepository } from '@/modules/alerts/repositories/alerts.repository.js';
+import { positionProfessionCaseSql } from '@/modules/alerts/constants/profession.constants.js';
 
 type AlertBucket = "expired" | "30" | "60" | "90";
 
@@ -39,20 +40,7 @@ const baseSubquerySql = `
     p.position_name,
     p.department,
     COALESCE(
-      CASE
-        WHEN p.position_name LIKE '%แพทย์%' THEN 'DOCTOR'
-        WHEN p.position_name LIKE '%ทันต%' THEN 'DENTIST'
-        WHEN p.position_name LIKE '%เภสัช%' THEN 'PHARMACIST'
-        WHEN p.position_name LIKE '%พยาบาล%' THEN 'NURSE'
-        WHEN p.position_name LIKE '%เทคนิคการแพทย์%' THEN 'MED_TECH'
-        WHEN p.position_name LIKE '%รังสี%' THEN 'RAD_TECH'
-        WHEN p.position_name LIKE '%กายภาพบำบัด%' THEN 'PHYSIO'
-        WHEN p.position_name LIKE '%กิจกรรมบำบัด%' THEN 'OCC_THERAPY'
-        WHEN p.position_name LIKE '%จิตวิทยาคลินิก%' THEN 'CLIN_PSY'
-        WHEN p.position_name LIKE '%หัวใจและทรวงอก%' THEN 'CARDIO_TECH'
-        WHEN p.position_name LIKE '%แก้ไขการพูด%' THEN 'SPEECH_THERAPIST'
-        ELSE NULL
-      END,
+      ${positionProfessionCaseSql},
       (
       SELECT r.profession_code
       FROM req_eligibility re

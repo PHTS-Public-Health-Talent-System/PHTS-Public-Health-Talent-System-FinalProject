@@ -3,11 +3,13 @@ export const dynamic = 'force-dynamic'
 
 import { use } from "react"
 import { useMemo } from "react"
+import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { PayrollDetailContent } from "@/components/payroll/PayrollDetailContent"
 import { usePayrollReviewProgress } from "@/features/payroll/usePayrollReviewProgress"
 import { usePeriods } from "@/features/payroll/hooks"
 import type { PayPeriod } from "@/features/payroll/api"
+import { Button } from "@/components/ui/button"
 import {
   Select,
   SelectContent,
@@ -15,6 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Users } from "lucide-react"
 
 export default function PTSOfficerPayrollDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -39,24 +42,32 @@ export default function PTSOfficerPayrollDetailPage({ params }: { params: Promis
   return (
     <div className="space-y-4">
       <div className="px-8 pt-8">
-        <div className="w-full md:w-[320px]">
-          <Select
-            value={id}
-            onValueChange={(value) => {
-              if (value !== id) router.push(`/pts-officer/payroll/${value}`)
-            }}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="เลือกงวดที่ต้องการดูรายละเอียด" />
-            </SelectTrigger>
-            <SelectContent>
-              {periods.map((period) => (
-                <SelectItem key={period.id} value={period.id}>
-                  รอบ {period.label} (#{period.id})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="w-full md:w-[320px]">
+            <Select
+              value={id}
+              onValueChange={(value) => {
+                if (value !== id) router.push(`/pts-officer/payroll/${value}`)
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="เลือกงวดที่ต้องการดูรายละเอียด" />
+              </SelectTrigger>
+              <SelectContent>
+                {periods.map((period) => (
+                  <SelectItem key={period.id} value={period.id}>
+                    รอบ {period.label} (#{period.id})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button asChild variant="outline" className="w-full md:w-auto">
+            <Link href="/pts-officer/allowance-list">
+              <Users className="mr-2 h-4 w-4" />
+              เข้าหน้ารายชื่อผู้มีสิทธิ
+            </Link>
+          </Button>
         </div>
       </div>
 

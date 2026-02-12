@@ -42,6 +42,33 @@ export interface PrefillProfile {
   first_entry_date?: string;
 }
 
+export interface EligibilityRecord {
+  eligibility_id: number;
+  user_id: number | null;
+  citizen_id: string;
+  master_rate_id: number;
+  request_id: number | null;
+  effective_date: string;
+  expiry_date?: string | null;
+  is_active?: boolean | number | null;
+  created_at?: string | null;
+  request_no?: string | null;
+  title?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  position_name?: string | null;
+  position_number?: string | null;
+  department?: string | null;
+  sub_department?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  profession_code?: string | null;
+  group_no?: number | null;
+  item_no?: string | number | null;
+  sub_item_no?: string | number | null;
+  rate_amount?: number | null;
+}
+
 export async function getMyRequests(): Promise<RequestWithDetails[]> {
   const res = await api.get<ApiResponse<RequestWithDetails[]>>('/requests');
   return res.data.data;
@@ -86,6 +113,18 @@ export async function getPrefill() {
 
 export async function getMyScopes(): Promise<DisplayScope[]> {
   const res = await api.get<ApiResponse<DisplayScope[]>>('/requests/my-scopes');
+  return res.data.data;
+}
+
+export async function getEligibilityList(activeOnly = true): Promise<EligibilityRecord[]> {
+  const res = await api.get<ApiResponse<EligibilityRecord[]>>('/requests/eligibility', {
+    params: { active_only: activeOnly ? "1" : "0" },
+  });
+  return res.data.data;
+}
+
+export async function getEligibilityById(id: number | string): Promise<EligibilityRecord> {
+  const res = await api.get<ApiResponse<EligibilityRecord>>(`/requests/eligibility/${id}`);
   return res.data.data;
 }
 

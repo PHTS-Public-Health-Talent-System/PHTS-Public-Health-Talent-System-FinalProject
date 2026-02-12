@@ -9,6 +9,8 @@ import {
   submitRequest,
   cancelRequest,
   getMasterRates,
+  getEligibilityById,
+  getEligibilityList,
   getPrefill,
   getMyScopes,
   getPendingApprovals,
@@ -27,7 +29,13 @@ import {
   getReassignHistory,
   adjustLeaveRequest,
 } from './api';
-import type { MasterRate, OfficerOption, PrefillProfile, ReassignHistoryItem } from './api';
+import type {
+  EligibilityRecord,
+  MasterRate,
+  OfficerOption,
+  PrefillProfile,
+  ReassignHistoryItem,
+} from './api';
 import type { RequestWithDetails } from '@/types/request.types';
 import type { DisplayScope } from './utils';
 
@@ -67,6 +75,23 @@ export function useMyScopes() {
     queryKey: ['my-scopes'],
     queryFn: getMyScopes,
     select: (data) => data as DisplayScope[],
+  });
+}
+
+export function useEligibilityList(activeOnly = true) {
+  return useQuery({
+    queryKey: ['eligibility-list', activeOnly ? 'active' : 'all'],
+    queryFn: () => getEligibilityList(activeOnly),
+    select: (data) => data as EligibilityRecord[],
+  });
+}
+
+export function useEligibilityDetail(id: number | string | undefined) {
+  return useQuery({
+    queryKey: ['eligibility-detail', id !== undefined ? String(id) : undefined],
+    queryFn: () => getEligibilityById(id!),
+    enabled: !!id,
+    select: (data) => data as EligibilityRecord,
   });
 }
 

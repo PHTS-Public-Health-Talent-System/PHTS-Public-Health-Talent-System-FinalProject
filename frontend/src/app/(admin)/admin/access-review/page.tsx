@@ -1,10 +1,10 @@
-"use client"
+'use client';
 
-import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
+import { useMemo, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import {
   Table,
   TableBody,
@@ -12,401 +12,397 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from '@/components/ui/table';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from '@/components/ui/select';
+import { Play, Send, RefreshCw, CheckCircle2, XCircle, ShieldCheck } from 'lucide-react';
+import { toast } from 'sonner';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import {
-  Clock,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Play,
-  Send,
-  RefreshCw,
-  Calendar,
-  Users,
-} from "lucide-react"
+  useAccessReviewCycles,
+  useAccessReviewItems,
+  useCompleteAccessReviewCycle,
+  useCreateAccessReviewCycle,
+  useRunAccessReviewAutoDisable,
+  useSendAccessReviewReminders,
+  useUpdateAccessReviewItem,
+} from '@/features/access-review/hooks';
+import { formatThaiDate, formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
+import { ConfirmActionDialog } from '@/components/common/confirm-action-dialog';
 
-// TODO: add icon when access review actions are finalized: Shield
+// --- Types ---
+type ReviewCycle = {
+  cycle_id: number;
+  quarter: number;
+  year: number;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'OVERDUE';
+  start_date: string;
+  due_date: string;
+  total_users: number;
+  reviewed_users: number;
+  disabled_users: number;
+};
 
-const mockCycles = [
-  {
-    id: 1,
-    name: "Q2/2568",
-    startDate: "1 เม.ย. 2568",
-    endDate: "15 เม.ย. 2568",
-    status: "active",
-    totalItems: 45,
-    reviewed: 17,
-    pending: 28,
-  },
-  {
-    id: 2,
-    name: "Q1/2568",
-    startDate: "1 ม.ค. 2568",
-    endDate: "15 ม.ค. 2568",
-    status: "completed",
-    totalItems: 52,
-    reviewed: 52,
-    pending: 0,
-  },
-]
+type ReviewItem = {
+  item_id: number;
+  user_name: string;
+  citizen_id: string;
+  current_role: string;
+  review_result: 'KEEP' | 'DISABLE' | 'PENDING';
+  last_login_at: string | null;
+  reviewer_comment?: string;
+};
 
-const mockReviewItems = [
-  {
-    id: 1,
-    user: "สุภาพร ดีงาม",
-    citizenId: "1-xxxx-xxxxx-02-0",
-    department: "กลุ่มงานอายุรกรรม",
-    role: "HEAD_WARD",
-    lastActivity: "2 ชั่วโมงที่แล้ว",
-    status: "pending",
-    daysRemaining: 3,
-  },
-  {
-    id: 2,
-    user: "ประสิทธิ์ มั่นคง",
-    citizenId: "1-xxxx-xxxxx-04-0",
-    department: "กลุ่มงานทรัพยากรบุคคล",
-    role: "PTS_OFFICER",
-    lastActivity: "30 นาทีที่แล้ว",
-    status: "pending",
-    daysRemaining: 5,
-  },
-  {
-    id: 3,
-    user: "วิชัย สมบูรณ์",
-    citizenId: "1-xxxx-xxxxx-03-0",
-    department: "กลุ่มงานศัลยกรรม",
-    role: "HEAD_DEPT",
-    lastActivity: "1 วันที่แล้ว",
-    status: "pending",
-    daysRemaining: 5,
-  },
-  {
-    id: 4,
-    user: "พรทิพย์ สุขใจ",
-    citizenId: "1-xxxx-xxxxx-05-0",
-    department: "กลุ่มงานทรัพยากรบุคคล",
-    role: "HEAD_HR",
-    lastActivity: "15 นาทีที่แล้ว",
-    status: "approved",
-    daysRemaining: 0,
-  },
-  {
-    id: 5,
-    user: "สมหมาย หยุดงาน",
-    citizenId: "1-xxxx-xxxxx-09-0",
-    department: "กลุ่มงานอายุรกรรม",
-    role: "HEAD_WARD",
-    lastActivity: "45 วันที่แล้ว",
-    status: "flagged",
-    daysRemaining: 2,
-  },
-]
-
-function getRoleBadgeColor(role: string) {
-  switch (role) {
-    case "ADMIN":
-      return "bg-destructive/10 text-destructive border-destructive/30"
-    case "DIRECTOR":
-      return "bg-purple-500/10 text-purple-600 border-purple-500/30"
-    case "HEAD_HR":
-    case "HEAD_FINANCE":
-      return "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/30"
-    case "PTS_OFFICER":
-    case "FINANCE_OFFICER":
-      return "bg-primary/10 text-primary border-primary/30"
-    case "HEAD_WARD":
-    case "HEAD_DEPT":
-      return "bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/30"
+// --- Helpers ---
+const getResultBadge = (result: string) => {
+  switch (result) {
+    case 'KEEP':
+      return (
+        <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+          อนุมัติคงสิทธิ์
+        </Badge>
+      );
+    case 'DISABLE':
+      return <Badge variant="destructive">ระงับสิทธิ์</Badge>;
     default:
-      return "bg-muted text-muted-foreground border-border"
+      return (
+        <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200">
+          รอตรวจสอบ
+        </Badge>
+      );
   }
-}
+};
 
 export default function AccessReviewPage() {
-  const [selectedCycle, setSelectedCycle] = useState("1")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [isCreateCycleOpen, setIsCreateCycleOpen] = useState(false)
+  // --- State ---
+  const [resultFilter, setResultFilter] = useState<'all' | 'PENDING' | 'KEEP' | 'DISABLE'>('all');
+  const [selectedCycle, setSelectedCycle] = useState<string>('');
 
-  const activeCycle = mockCycles.find((c) => c.id === parseInt(selectedCycle))
-  const progress = activeCycle ? (activeCycle.reviewed / activeCycle.totalItems) * 100 : 0
+  // --- Hooks ---
+  const cyclesQuery = useAccessReviewCycles();
 
-  const filteredItems = mockReviewItems.filter((item) => {
-    if (statusFilter === "all") return true
-    return item.status === statusFilter
-  })
+  // Mutations
+  const createCycleMutation = useCreateAccessReviewCycle();
+  const completeCycleMutation = useCompleteAccessReviewCycle();
+  const sendRemindersMutation = useSendAccessReviewReminders();
+  const autoDisableMutation = useRunAccessReviewAutoDisable();
+  const updateItemMutation = useUpdateAccessReviewItem();
+
+  // --- Data Processing ---
+  const cycles = useMemo(() => {
+    const data = (cyclesQuery.data ?? []) as ReviewCycle[];
+    return data.sort((a, b) => {
+      if (b.year !== a.year) return b.year - a.year;
+      return b.quarter - a.quarter;
+    });
+  }, [cyclesQuery.data]);
+
+  const activeCycleId = useMemo(() => {
+    if (selectedCycle) return Number(selectedCycle);
+    return cycles[0]?.cycle_id;
+  }, [cycles, selectedCycle]);
+
+  const itemsQuery = useAccessReviewItems(activeCycleId, {
+    result: resultFilter === 'all' ? undefined : resultFilter,
+  });
+
+  const items = (itemsQuery.data ?? []) as ReviewItem[];
+  const activeCycle = cycles.find((c) => c.cycle_id === activeCycleId) ?? null;
+
+  const pendingCount = Math.max(
+    0,
+    Number(activeCycle?.total_users ?? 0) - Number(activeCycle?.reviewed_users ?? 0),
+  );
+
+  const progress = activeCycle
+    ? activeCycle.total_users > 0
+      ? (activeCycle.reviewed_users / activeCycle.total_users) * 100
+      : 0
+    : 0;
+
+  // --- Handlers ---
+  const handleCreateCycle = async () => {
+    try {
+      await createCycleMutation.mutateAsync({});
+      toast.success('สร้างรอบตรวจสอบสิทธิ์ประจำไตรมาสสำเร็จ');
+      cyclesQuery.refetch();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'ไม่สามารถสร้างรอบใหม่ได้';
+      toast.error(message);
+    }
+  };
+
+  const handleReview = async (itemId: number, result: 'KEEP' | 'DISABLE') => {
+    try {
+      await updateItemMutation.mutateAsync({
+        id: itemId,
+        payload: { result },
+      });
+      toast.success(`บันทึกสถานะ ${result} สำเร็จ`);
+      itemsQuery.refetch();
+      cyclesQuery.refetch(); // Update progress
+    } catch {
+      toast.error('บันทึกผลตรวจสอบไม่สำเร็จ');
+    }
+  };
+
+  const handleCompleteCycle = async (autoKeep: boolean = false) => {
+    if (!activeCycleId) return;
+    try {
+      await completeCycleMutation.mutateAsync({
+        id: activeCycleId,
+        payload: {
+          autoKeepPending: autoKeep,
+          note: autoKeep ? 'อนุมัติคงสิทธิ์รายการที่เหลืออัตโนมัติ' : undefined,
+        },
+      });
+      toast.success('ปิดรอบการตรวจสอบสำเร็จ');
+      cyclesQuery.refetch();
+      itemsQuery.refetch();
+    } catch {
+      toast.error('ปิดรอบไม่สำเร็จ');
+    }
+  };
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-6 lg:p-8 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">ตรวจสอบสิทธิ์ (Access Review)</h1>
-          <p className="text-muted-foreground">
-            ตรวจสอบและยืนยันสิทธิ์การเข้าถึงของผู้ใช้ตามรอบ
+          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <ShieldCheck className="h-6 w-6 text-primary" /> ตรวจสอบสิทธิ์
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            บริหารจัดการรอบการตรวจสอบสิทธิ์ผู้ใช้งานประจำไตรมาส
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm">
-            <Send className="mr-2 h-4 w-4" />
-            ส่ง Reminder
-          </Button>
-          <Button size="sm" onClick={() => setIsCreateCycleOpen(true)}>
-            <Play className="mr-2 h-4 w-4" />
-            สร้าง Cycle ใหม่
-          </Button>
+        <div className="flex gap-2">
+          <ConfirmActionDialog
+            trigger={
+              <Button size="sm" className="gap-2">
+                <Play className="h-4 w-4" /> สร้างรอบใหม่
+              </Button>
+            }
+            title="สร้างรอบตรวจสอบสิทธิ์ใหม่?"
+            description="ระบบจะสร้างรอบตรวจสอบสำหรับไตรมาสปัจจุบัน และแจ้งเตือนหัวหน้างานให้เริ่มตรวจสอบลูกทีม"
+            confirmText="สร้างรอบ"
+            onConfirm={handleCreateCycle}
+            disabled={createCycleMutation.isPending}
+          />
         </div>
       </div>
 
-      {/* Cycle Selector & Progress */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        <Card className="bg-card lg:col-span-2">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Review Cycle</CardTitle>
-              <Select value={selectedCycle} onValueChange={setSelectedCycle}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue />
+      {/* Cycle Management Card */}
+      <Card className="border-border shadow-sm bg-card">
+        <CardHeader className="pb-4 border-b">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <CardTitle className="text-lg">สถานะรอบปัจจุบัน</CardTitle>
+              <CardDescription>
+                {activeCycle
+                  ? `ไตรมาส ${activeCycle.quarter}/${activeCycle.year} (${formatThaiDate(activeCycle.start_date)} - ${formatThaiDate(activeCycle.due_date)})`
+                  : 'กรุณาเลือกหรือสร้างรอบการตรวจสอบ'}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">เลือกรอบ:</span>
+              <Select value={String(activeCycleId ?? '')} onValueChange={setSelectedCycle}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="เลือกรายการ" />
                 </SelectTrigger>
                 <SelectContent>
-                  {mockCycles.map((cycle) => (
-                    <SelectItem key={cycle.id} value={cycle.id.toString()}>
-                      {cycle.name} {cycle.status === "active" && "(Active)"}
+                  {cycles.map((cycle) => (
+                    <SelectItem key={cycle.cycle_id} value={String(cycle.cycle_id)}>
+                      Q{cycle.quarter}/{cycle.year} ({cycle.status})
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {activeCycle && (
-              <>
-                <div className="flex items-center justify-between text-sm">
-                  <div className="flex items-center gap-2 text-muted-foreground">
-                    <Calendar className="h-4 w-4" />
-                    {activeCycle.startDate} - {activeCycle.endDate}
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={
-                      activeCycle.status === "active"
-                        ? "bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/30"
-                        : "bg-muted text-muted-foreground border-border"
-                    }
-                  >
-                    {activeCycle.status === "active" ? "Active" : "Completed"}
-                  </Badge>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">ความคืบหน้า</span>
-                    <span className="font-medium text-foreground">
-                      {activeCycle.reviewed}/{activeCycle.totalItems} ({Math.round(progress)}%)
-                    </span>
-                  </div>
-                  <Progress value={progress} className="h-2" />
-                </div>
-
-                <div className="grid grid-cols-3 gap-4 pt-2">
-                  <div className="rounded-lg border border-border p-3 text-center">
-                    <p className="text-2xl font-bold text-foreground">{activeCycle.totalItems}</p>
-                    <p className="text-xs text-muted-foreground">ทั้งหมด</p>
-                  </div>
-                  <div className="rounded-lg border border-border p-3 text-center">
-                    <p className="text-2xl font-bold text-[hsl(var(--success))]">{activeCycle.reviewed}</p>
-                    <p className="text-xs text-muted-foreground">ตรวจสอบแล้ว</p>
-                  </div>
-                  <div className="rounded-lg border border-border p-3 text-center">
-                    <p className="text-2xl font-bold text-[hsl(var(--warning))]">{activeCycle.pending}</p>
-                    <p className="text-xs text-muted-foreground">รอตรวจสอบ</p>
-                  </div>
-                </div>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Quick Stats */}
-        <Card className="bg-card">
-          <CardHeader>
-            <CardTitle className="text-lg">สรุปสถานะ</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded-full bg-[hsl(var(--warning))]" />
-                <span className="text-sm text-muted-foreground">รอตรวจสอบ</span>
-              </div>
-              <span className="font-medium text-foreground">3</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded-full bg-[hsl(var(--success))]" />
-                <span className="text-sm text-muted-foreground">อนุมัติแล้ว</span>
-              </div>
-              <span className="font-medium text-foreground">1</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="h-3 w-3 rounded-full bg-destructive" />
-                <span className="text-sm text-muted-foreground">ต้องตรวจสอบ</span>
-              </div>
-              <span className="font-medium text-foreground">1</span>
-            </div>
-
-            <div className="pt-4 border-t border-border">
-              <Button variant="outline" size="sm" className="w-full">
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Auto-disable ผู้ไม่ใช้งาน
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Review Items */}
-      <Card className="bg-card">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="text-lg">รายการตรวจสอบ</CardTitle>
-              <CardDescription>ผู้ใช้ที่มี Role พิเศษต้องได้รับการตรวจสอบ</CardDescription>
-            </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="สถานะ" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">ทั้งหมด</SelectItem>
-                <SelectItem value="pending">รอตรวจสอบ</SelectItem>
-                <SelectItem value="approved">อนุมัติแล้ว</SelectItem>
-                <SelectItem value="flagged">ต้องตรวจสอบ</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </CardHeader>
-        <CardContent>
+
+        {activeCycle && (
+          <CardContent className="pt-6 space-y-6">
+            {/* Progress Bar */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">
+                  ความคืบหน้าการตรวจสอบ ({Math.round(progress)}%)
+                </span>
+                <span className="font-medium">
+                  {formatThaiNumber(activeCycle.reviewed_users)} /{' '}
+                  {formatThaiNumber(activeCycle.total_users)} คน
+                </span>
+              </div>
+              <Progress value={progress} className="h-2" />
+              <div className="flex justify-between text-xs text-muted-foreground pt-1">
+                <span>คงเหลือ: {formatThaiNumber(pendingCount)} คน</span>
+                <span>ระงับสิทธิ์ไปแล้ว: {formatThaiNumber(activeCycle.disabled_users)} คน</span>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex flex-wrap gap-3 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => sendRemindersMutation.mutateAsync()}
+                disabled={sendRemindersMutation.isPending || activeCycle.status === 'COMPLETED'}
+                className="gap-2"
+              >
+                <Send className="h-4 w-4" /> ส่งแจ้งเตือน
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => autoDisableMutation.mutateAsync()}
+                disabled={autoDisableMutation.isPending}
+                className="gap-2"
+              >
+                <RefreshCw className="h-4 w-4" /> ระงับสิทธิ์อัตโนมัติ
+              </Button>
+
+              <div className="flex-1" />
+
+              {activeCycle.status !== 'COMPLETED' && (
+                <>
+                  <ConfirmActionDialog
+                    trigger={
+                      <Button variant="secondary" size="sm">
+                        ปิดรอบ + อนุมัติที่เหลือ
+                      </Button>
+                    }
+                    title="ยืนยันการปิดรอบแบบอนุมัติอัตโนมัติ?"
+                    description={`ระบบจะอนุมัติคงสิทธิ์ผู้ใช้ที่ยังรอการตรวจสอบทั้งหมด ${formatThaiNumber(pendingCount)} คน และปิดรอบทันที`}
+                    confirmText="ยืนยันปิดรอบ"
+                    onConfirm={() => handleCompleteCycle(true)}
+                    disabled={completeCycleMutation.isPending}
+                  />
+
+                  <ConfirmActionDialog
+                    trigger={
+                      <Button variant="default" size="sm">
+                        ปิดรอบ
+                      </Button>
+                    }
+                    title="ยืนยันการปิดรอบ?"
+                    description="การปิดรอบจะหยุดรับการตรวจสอบเพิ่มเติม คุณแน่ใจหรือไม่?"
+                    confirmText="ยืนยัน"
+                    onConfirm={() => handleCompleteCycle(false)}
+                    disabled={completeCycleMutation.isPending}
+                  />
+                </>
+              )}
+            </div>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Review Items Table */}
+      <Card className="border-border shadow-sm">
+        <CardHeader className="border-b bg-muted/10 py-4 px-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <CardTitle className="text-base font-semibold">รายชื่อผู้ใช้ในรอบนี้</CardTitle>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">สถานะ:</span>
+              <Select
+                value={resultFilter}
+                onValueChange={(v: 'all' | 'PENDING' | 'KEEP' | 'DISABLE') => setResultFilter(v)}
+              >
+                <SelectTrigger className="w-[150px] h-9 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทั้งหมด</SelectItem>
+                  <SelectItem value="PENDING">รอตรวจสอบ</SelectItem>
+                  <SelectItem value="KEEP">อนุมัติแล้ว</SelectItem>
+                  <SelectItem value="DISABLE">ระงับสิทธิ์</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="p-0">
           <Table>
-            <TableHeader>
+            <TableHeader className="bg-muted/30">
               <TableRow>
-                <TableHead>ผู้ใช้</TableHead>
-                <TableHead>หน่วยงาน</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>ใช้งานล่าสุด</TableHead>
-                <TableHead>สถานะ</TableHead>
-                <TableHead className="text-right">จัดการ</TableHead>
+                <TableHead>ผู้ใช้งาน</TableHead>
+                <TableHead>บทบาทปัจจุบัน</TableHead>
+                <TableHead>เข้าใช้ล่าสุด</TableHead>
+                <TableHead>ผลการตรวจสอบ</TableHead>
+                <TableHead className="text-right">สิทธิ์ผู้ดูแลระบบ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredItems.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium text-foreground">{item.user}</p>
-                      <p className="text-xs text-muted-foreground">{item.citizenId}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {item.department}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className={getRoleBadgeColor(item.role)}>
-                      {item.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {item.lastActivity}
-                  </TableCell>
-                  <TableCell>
-                    {item.status === "pending" && (
-                      <Badge variant="outline" className="bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/30">
-                        <Clock className="mr-1 h-3 w-3" />
-                        รอตรวจสอบ
-                      </Badge>
-                    )}
-                    {item.status === "approved" && (
-                      <Badge variant="outline" className="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/30">
-                        <CheckCircle2 className="mr-1 h-3 w-3" />
-                        อนุมัติแล้ว
-                      </Badge>
-                    )}
-                    {item.status === "flagged" && (
-                      <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/30">
-                        <AlertTriangle className="mr-1 h-3 w-3" />
-                        ต้องตรวจสอบ
-                      </Badge>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {item.status !== "approved" && (
-                        <>
-                          <Button size="sm" variant="outline" className="text-[hsl(var(--success))]">
-                            <CheckCircle2 className="mr-1 h-4 w-4" />
-                            อนุมัติ
-                          </Button>
-                          <Button size="sm" variant="outline" className="text-destructive">
-                            <XCircle className="mr-1 h-4 w-4" />
-                            Revoke
-                          </Button>
-                        </>
-                      )}
-                    </div>
+              {itemsQuery.isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-24 text-center">
+                    กำลังโหลดข้อมูล...
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : items.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                    ไม่พบรายการ
+                  </TableCell>
+                </TableRow>
+              ) : (
+                items.map((item) => (
+                  <TableRow key={item.item_id} className="hover:bg-muted/20">
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{item.user_name}</span>
+                        <span className="text-xs text-muted-foreground font-mono">
+                          {item.citizen_id}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="secondary" className="font-normal">
+                        {item.current_role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-muted-foreground">
+                      {item.last_login_at
+                        ? formatThaiDateTime(item.last_login_at)
+                        : 'ไม่เคยเข้าใช้งาน'}
+                    </TableCell>
+                    <TableCell>{getResultBadge(item.review_result)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:text-emerald-600"
+                          onClick={() => handleReview(item.item_id, 'KEEP')}
+                          title="อนุมัติคงสิทธิ์"
+                        >
+                          <CheckCircle2 className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 hover:text-destructive"
+                          onClick={() => handleReview(item.item_id, 'DISABLE')}
+                          title="ระงับสิทธิ์"
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
-
-      {/* Create Cycle Dialog */}
-      <Dialog open={isCreateCycleOpen} onOpenChange={setIsCreateCycleOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>สร้าง Review Cycle ใหม่</DialogTitle>
-            <DialogDescription>
-              สร้างรอบตรวจสอบสิทธิ์ใหม่สำหรับผู้ใช้ที่มี Role พิเศษ
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <p className="text-sm text-muted-foreground">
-              ระบบจะสร้างรายการตรวจสอบสำหรับผู้ใช้ทุกคนที่มี Role สูงกว่า USER โดยอัตโนมัติ
-            </p>
-            <div className="rounded-lg border border-border bg-muted/50 p-4">
-              <div className="flex items-center gap-2 text-sm">
-                <Users className="h-4 w-4 text-muted-foreground" />
-                <span className="text-muted-foreground">จะสร้างรายการตรวจสอบ:</span>
-                <span className="font-medium text-foreground">48 รายการ</span>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateCycleOpen(false)}>
-              ยกเลิก
-            </Button>
-            <Button onClick={() => setIsCreateCycleOpen(false)}>
-              สร้าง Cycle
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
-  )
+  );
 }

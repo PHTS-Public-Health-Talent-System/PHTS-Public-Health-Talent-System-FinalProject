@@ -1,5 +1,4 @@
 import React from "react"
-import { AppSidebar } from "@/components/app-sidebar"
 
 export default function DashboardLayout({
   children,
@@ -8,10 +7,7 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="min-h-screen bg-background">
-      <AppSidebar />
-      <main className="ml-64 min-h-screen">
-        {children}
-      </main>
+      <main className="min-h-screen">{children}</main>
     </div>
   )
 }

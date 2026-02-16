@@ -45,7 +45,7 @@ export interface PrefillProfile {
 export interface EligibilityRecord {
   eligibility_id: number;
   user_id: number | null;
-  citizen_id: string;
+  citizen_id?: string | null;
   master_rate_id: number;
   request_id: number | null;
   effective_date: string;
@@ -60,6 +60,8 @@ export interface EligibilityRecord {
   position_number?: string | null;
   department?: string | null;
   sub_department?: string | null;
+  emp_type?: string | null;
+  original_status?: string | null;
   email?: string | null;
   phone?: string | null;
   profession_code?: string | null;
@@ -67,6 +69,65 @@ export interface EligibilityRecord {
   item_no?: string | number | null;
   sub_item_no?: string | number | null;
   rate_amount?: number | null;
+  attachments?: Array<{
+    attachment_id: number;
+    request_id: number;
+    file_type?: string | null;
+    file_path: string;
+    file_name: string;
+    uploaded_at?: string | null;
+  }>;
+  license?: {
+    license_id: number;
+    citizen_id: string;
+    license_name?: string | null;
+    license_no?: string | null;
+    valid_from: string;
+    valid_until: string;
+    status?: string | null;
+    synced_at?: string | null;
+  } | null;
+}
+
+export interface EligibilitySummaryRow {
+  profession_code: string;
+  people_count: number;
+  total_rate_amount: number;
+}
+
+export interface EligibilitySummary {
+  updated_at: string | null;
+  total_people: number;
+  total_rate_amount: number;
+  by_profession: EligibilitySummaryRow[];
+}
+
+export interface EligibilityPagedMeta {
+  page: number;
+  limit: number;
+  total: number;
+  updated_at: string | null;
+  total_rate_amount: number;
+}
+
+export interface EligibilityPagedResult {
+  items: EligibilityRecord[];
+  meta: EligibilityPagedMeta;
+}
+
+export interface ScopeMember {
+  citizenId: string;
+  fullName: string;
+  position: string;
+  department: string | null;
+  subDepartment: string | null;
+  userRole: string | null;
+  userRoleLabel: string;
+}
+
+export interface ScopeWithMembers extends DisplayScope {
+  memberCount: number;
+  members: ScopeMember[];
 }
 
 export async function getMyRequests(): Promise<RequestWithDetails[]> {
@@ -116,9 +177,38 @@ export async function getMyScopes(): Promise<DisplayScope[]> {
   return res.data.data;
 }
 
+export async function getMyScopeMembers(): Promise<ScopeWithMembers[]> {
+  const res = await api.get<ApiResponse<ScopeWithMembers[]>>('/requests/my-scopes/members');
+  return res.data.data;
+}
+
 export async function getEligibilityList(activeOnly = true): Promise<EligibilityRecord[]> {
   const res = await api.get<ApiResponse<EligibilityRecord[]>>('/requests/eligibility', {
     params: { active_only: activeOnly ? "1" : "0" },
+  });
+  return res.data.data;
+}
+
+export async function getEligibilitySummary(activeOnly = true): Promise<EligibilitySummary> {
+  const res = await api.get<ApiResponse<EligibilitySummary>>('/requests/eligibility/summary', {
+    params: { active_only: activeOnly ? "1" : "0" },
+  });
+  return res.data.data;
+}
+
+export async function getEligibilityPaged(params: {
+  active_only?: "0" | "1";
+  page?: number;
+  limit?: number;
+  profession_code?: string;
+  search?: string;
+  rate_group?: string;
+  department?: string;
+  sub_department?: string;
+  license_status?: "all" | "active" | "expiring" | "expired";
+}): Promise<EligibilityPagedResult> {
+  const res = await api.get<ApiResponse<EligibilityPagedResult>>('/requests/eligibility', {
+    params,
   });
   return res.data.data;
 }
@@ -128,6 +218,22 @@ export async function getEligibilityById(id: number | string): Promise<Eligibili
   return res.data.data;
 }
 
+export async function exportEligibilityCsv(params: {
+  active_only?: "0" | "1";
+  profession_code?: string;
+  search?: string;
+  rate_group?: string;
+  department?: string;
+  sub_department?: string;
+  license_status?: "all" | "active" | "expiring" | "expired";
+}): Promise<Blob> {
+  const res = await api.get('/requests/eligibility/export', {
+    params,
+    responseType: 'blob',
+  });
+  return res.data as Blob;
+}
+
 export async function getPendingApprovals(scope?: string) {
   const res = await api.get<ApiResponse<RequestWithDetails[]>>('/requests/pending', {
     params: scope ? { scope } : undefined,
@@ -135,8 +241,13 @@ export async function getPendingApprovals(scope?: string) {
   return res.data.data;
 }
 
-export async function getApprovalHistory(): Promise<RequestWithDetails[]> {
-  const res = await api.get<ApiResponse<RequestWithDetails[]>>('/requests/history');
+export async function getApprovalHistory(params?: {
+  view?: 'mine' | 'team';
+  actions?: 'important' | 'all';
+}): Promise<RequestWithDetails[]> {
+  const res = await api.get<ApiResponse<RequestWithDetails[]>>('/requests/history', {
+    params,
+  });
   return res.data.data;
 }
 

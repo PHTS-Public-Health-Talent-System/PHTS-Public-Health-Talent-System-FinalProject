@@ -1,12 +1,16 @@
-"use client"
-export const dynamic = 'force-dynamic'
+'use client';
 
+export const dynamic = 'force-dynamic';
 
-import { use } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { use, useMemo, useState } from 'react';
+import Link from 'next/link';
+import { toast } from 'sonner';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Dialog,
   DialogContent,
@@ -14,399 +18,609 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import {
   ArrowLeft,
-  User,
-  CreditCard,
-  Calendar,
-  FileText,
   CheckCircle2,
-  XCircle,
-  Clock,
-  DollarSign,
+  Download,
+  Search,
   Wallet,
+  XCircle,
+  DollarSign,
+  Users,
+  Clock,
   AlertTriangle,
-  Printer,
-} from "lucide-react"
-import Link from "next/link"
+  AlertCircle,
+} from 'lucide-react';
+import {
+  useBatchMarkAsPaid,
+  useCancelPayout,
+  useFinanceSummary,
+  useMarkPayoutAsPaid,
+  usePayoutsByPeriod,
+} from '@/features/finance/hooks';
+import {
+  formatThaiCurrency,
+  formatThaiDateTime,
+  formatThaiMonthYear,
+  toBuddhistYear,
+} from '@/shared/utils/thai-locale';
 
-// TODO: add icon when department view is added: Building2
+type PaymentStatus = 'PENDING' | 'PAID' | 'CANCELLED';
 
-const payoutData = {
-  id: "PAY-2568-001",
-  employeeId: "EMP001",
-  employeeName: "นางสาวสมหญิง ดีมาก",
-  citizenId: "1-1001-00001-XX-X",
-  position: "พยาบาลวิชาชีพชำนาญการ",
-  profession: "พยาบาลวิชาชีพ",
-  department: "อายุรกรรม",
-  ward: "อายุรกรรมชาย 1",
-  period: "ส.ค. 2568",
-  periodId: "PERIOD-2568-08",
-  amount: 15000,
-  bankAccount: "123-4-56789-0",
-  bankName: "ธนาคารกรุงไทย",
-  bankBranch: "สาขาอุตรดิตถ์",
-  status: "pending",
-  requestId: "REQ-2568-00123",
-  
-  // Calculation details
-  workingDays: 22,
-  holidayDays: 2,
-  leaveDays: 1,
-  baseRate: 600,
-  holidayRate: 1200,
-  
-  // Timeline
-  timeline: [
-    { step: "ส่งคำขอ", date: "1 ก.ย. 2568", by: "นางสาวสมหญิง ดีมาก", status: "completed" },
-    { step: "หัวหน้าหอผู้ป่วยอนุมัติ", date: "2 ก.ย. 2568", by: "นางสาวพิมพ์ใจ รักงาน", status: "completed" },
-    { step: "หัวหน้ากลุ่มงานอนุมัติ", date: "3 ก.ย. 2568", by: "นายสมศักดิ์ ดีใจ", status: "completed" },
-    { step: "เจ้าหน้าที่ พ.ต.ส. ตรวจสอบ", date: "4 ก.ย. 2568", by: "นางสาวจิราภา คำนวณดี", status: "completed" },
-    { step: "หัวหน้าบุคคลอนุมัติ", date: "5 ก.ย. 2568", by: "นางอรุณี บุคคลดี", status: "completed" },
-    { step: "หัวหน้าการเงินอนุมัติ", date: "5 ก.ย. 2568", by: "นายวิชัย การเงินดี", status: "completed" },
-    { step: "ผู้อำนวยการอนุมัติ", date: "6 ก.ย. 2568", by: "นพ.สมชาย รักษาดี", status: "completed" },
-    { step: "รอจ่ายเงิน", date: "-", by: "-", status: "pending" },
-  ],
-  
-  approvedDate: "6 ก.ย. 2568",
-  approvedBy: "นพ.สมชาย รักษาดี",
-}
+type PayoutRow = {
+  payout_id: number;
+  period_id: number;
+  period_month: number;
+  period_year: number;
+  citizen_id: string;
+  employee_name: string;
+  department: string | null;
+  pts_rate_snapshot: number;
+  calculated_amount: number;
+  retroactive_amount: number;
+  total_payable: number;
+  payment_status: PaymentStatus;
+  paid_at: string | null;
+  paid_by: number | null;
+};
 
-export default function PayoutDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params)
-  void id
-  const payout = payoutData
+type FinanceSummaryRow = {
+  period_id: number;
+  period_month: number;
+  period_year: number;
+  total_employees: number;
+  total_amount: number;
+  paid_amount: number;
+  pending_amount: number;
+  paid_count: number;
+  pending_count: number;
+};
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("th-TH").format(amount)
-  }
+const toPeriodCode = (month: number, year: number) => {
+  return `PAY-${String(month).padStart(2, '0')}/${toBuddhistYear(year)}`;
+};
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "pending":
-        return (
-          <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50">
-            <Clock className="mr-1 h-3 w-3" />
-            รอจ่ายเงิน
-          </Badge>
-        )
-      case "paid":
-        return (
-          <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">
-            <CheckCircle2 className="mr-1 h-3 w-3" />
-            จ่ายแล้ว
-          </Badge>
-        )
-      case "cancelled":
-        return (
-          <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50">
-            <XCircle className="mr-1 h-3 w-3" />
-            ยกเลิก
-          </Badge>
-        )
-      default:
-        return <Badge variant="outline">{status}</Badge>
+const formatDateTime = (value?: string | null) => {
+  return formatThaiDateTime(value);
+};
+
+const escapeCsv = (value: string | number) => {
+  const text = String(value ?? '');
+  if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+};
+
+export default function PayoutPeriodDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const periodId = Number(id);
+
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | PaymentStatus>('all');
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [targetPayout, setTargetPayout] = useState<PayoutRow | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const summaryQuery = useFinanceSummary();
+  const payoutsQuery = usePayoutsByPeriod(
+    periodId,
+    statusFilter === 'all'
+      ? { search: search.trim() || undefined }
+      : { status: statusFilter, search: search.trim() || undefined },
+  );
+  const markPaidMutation = useMarkPayoutAsPaid();
+  const batchMarkPaidMutation = useBatchMarkAsPaid();
+  const cancelPayoutMutation = useCancelPayout();
+
+  const payouts = useMemo<PayoutRow[]>(() => {
+    if (!Array.isArray(payoutsQuery.data)) return [];
+    return (payoutsQuery.data as PayoutRow[]).map((item) => ({
+      ...item,
+      pts_rate_snapshot: Number(item.pts_rate_snapshot ?? 0),
+      calculated_amount: Number(item.calculated_amount ?? 0),
+      retroactive_amount: Number(item.retroactive_amount ?? 0),
+      total_payable: Number(item.total_payable ?? 0),
+    }));
+  }, [payoutsQuery.data]);
+
+  const periodSummary = useMemo(() => {
+    if (!Array.isArray(summaryQuery.data)) return null;
+    return ((summaryQuery.data as FinanceSummaryRow[]).find((row) => row.period_id === periodId) ??
+      null) as FinanceSummaryRow | null;
+  }, [summaryQuery.data, periodId]);
+
+  const pendingRows = useMemo(
+    () => payouts.filter((item) => item.payment_status === 'PENDING'),
+    [payouts],
+  );
+
+  const totalAmount = payouts.reduce((sum, item) => sum + item.total_payable, 0);
+  const paidAmount = payouts
+    .filter((item) => item.payment_status === 'PAID')
+    .reduce((sum, item) => sum + item.total_payable, 0);
+  const pendingAmount = payouts
+    .filter((item) => item.payment_status === 'PENDING')
+    .reduce((sum, item) => sum + item.total_payable, 0);
+
+  const selectedTotal = payouts
+    .filter((item) => selectedIds.includes(item.payout_id))
+    .reduce((sum, item) => sum + item.total_payable, 0);
+
+  const allPendingSelected =
+    pendingRows.length > 0 && pendingRows.every((item) => selectedIds.includes(item.payout_id));
+
+  const handleSelectAllPending = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(pendingRows.map((item) => item.payout_id));
+      return;
     }
+    setSelectedIds([]);
+  };
+
+  const handleSelectRow = (payoutId: number, checked: boolean) => {
+    if (checked) {
+      setSelectedIds((prev) => (prev.includes(payoutId) ? prev : [...prev, payoutId]));
+      return;
+    }
+    setSelectedIds((prev) => prev.filter((idValue) => idValue !== payoutId));
+  };
+
+  const getStatusBadge = (status: PaymentStatus) => {
+    if (status === 'PENDING') {
+      return (
+        <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-700">
+          <Clock className="mr-1 h-3 w-3" />
+          รอจ่ายเงิน
+        </Badge>
+      );
+    }
+    if (status === 'PAID') {
+      return (
+        <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+          <CheckCircle2 className="mr-1 h-3 w-3" />
+          จ่ายแล้ว
+        </Badge>
+      );
+    }
+    return (
+      <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">
+        <XCircle className="mr-1 h-3 w-3" />
+        ยกเลิก
+      </Badge>
+    );
+  };
+
+  const handleMarkSinglePaid = async (row: PayoutRow) => {
+    setActionError(null);
+    try {
+      await markPaidMutation.mutateAsync({
+        payoutId: row.payout_id,
+        payload: { comment: 'จ่ายเงินเรียบร้อย' },
+      });
+      toast.success(`จ่ายเงินเรียบร้อย: ${row.employee_name}`);
+      setSelectedIds((prev) => prev.filter((idValue) => idValue !== row.payout_id));
+      await payoutsQuery.refetch();
+      await summaryQuery.refetch();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'ไม่สามารถจ่ายเงินได้';
+      setActionError(message);
+      toast.error(message);
+    }
+  };
+
+  const handleBatchMarkPaid = async () => {
+    setActionError(null);
+    if (selectedIds.length === 0) {
+      setActionError('กรุณาเลือกรายการอย่างน้อย 1 รายการ');
+      toast.error('กรุณาเลือกรายการอย่างน้อย 1 รายการ');
+      return;
+    }
+    try {
+      const result = (await batchMarkPaidMutation.mutateAsync({
+        payoutIds: selectedIds,
+      })) as { success?: number[]; failed?: Array<{ id: number; reason: string }> };
+      const successCount = result.success?.length ?? selectedIds.length;
+      const failedCount = result.failed?.length ?? 0;
+      toast.success(`จ่ายเงินสำเร็จ ${successCount} รายการ`);
+      if (failedCount > 0) {
+        setActionError(`มีรายการไม่สำเร็จ ${failedCount} รายการ`);
+        toast.error(`มีรายการไม่สำเร็จ ${failedCount} รายการ`);
+      }
+      setSelectedIds([]);
+      setMarkPaidDialogOpen(false);
+      await payoutsQuery.refetch();
+      await summaryQuery.refetch();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'ไม่สามารถจ่ายเงินแบบกลุ่มได้';
+      setActionError(message);
+      toast.error(message);
+    }
+  };
+
+  const handleCancelPayout = async () => {
+    if (!targetPayout) return;
+    setActionError(null);
+    if (!cancelReason.trim()) {
+      setActionError('กรุณาระบุเหตุผลการยกเลิก');
+      toast.error('กรุณาระบุเหตุผลการยกเลิก');
+      return;
+    }
+    try {
+      await cancelPayoutMutation.mutateAsync({
+        payoutId: targetPayout.payout_id,
+        payload: { reason: cancelReason.trim() },
+      });
+      toast.success(`ยกเลิกรายการ ${targetPayout.employee_name} แล้ว`);
+      setCancelDialogOpen(false);
+      setTargetPayout(null);
+      setCancelReason('');
+      setSelectedIds((prev) => prev.filter((idValue) => idValue !== targetPayout.payout_id));
+      await payoutsQuery.refetch();
+      await summaryQuery.refetch();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'ไม่สามารถยกเลิกรายการได้';
+      setActionError(message);
+      toast.error(message);
+    }
+  };
+
+  const handleExport = () => {
+    setActionError(null);
+    if (payouts.length === 0) {
+      setActionError('ไม่พบข้อมูลสำหรับส่งออก');
+      toast.error('ไม่พบข้อมูลสำหรับส่งออก');
+      return;
+    }
+    const headers = [
+      'Payout ID',
+      'Citizen ID',
+      'ชื่อผู้รับเงิน',
+      'หน่วยงาน',
+      'อัตรา',
+      'ยอดปรับย้อนหลัง',
+      'ยอดจ่ายสุทธิ',
+      'สถานะ',
+      'วันที่จ่าย',
+    ];
+    const rows = payouts.map((row) => [
+      row.payout_id,
+      row.citizen_id,
+      row.employee_name,
+      row.department || '-',
+      row.pts_rate_snapshot,
+      row.retroactive_amount,
+      row.total_payable,
+      row.payment_status,
+      row.paid_at || '',
+    ]);
+    const csv =
+      '\uFEFF' + [headers, ...rows].map((line) => line.map(escapeCsv).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `finance-payout-period-${periodId}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+    toast.success('ส่งออกรายการจ่ายเงินสำเร็จ');
+  };
+
+  const isLoading = payoutsQuery.isLoading || summaryQuery.isLoading;
+  const periodTitle = periodSummary
+    ? `${toPeriodCode(periodSummary.period_month, periodSummary.period_year)} • ${formatThaiMonthYear(
+        periodSummary.period_month,
+        periodSummary.period_year,
+      )}`
+    : `Period #${periodId}`;
+
+  if (isLoading) {
+    return (
+      <div className="p-8">
+        <Card>
+          <CardContent className="pt-6 text-muted-foreground">กำลังโหลดข้อมูลรอบจ่าย...</CardContent>
+        </Card>
+      </div>
+    );
   }
 
   return (
     <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
+      <div className="mb-6">
         <Link
           href="/finance-officer/payouts"
-          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4"
+          className="mb-3 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          กลับไปรายการจ่ายเงิน
+          กลับไปหน้ารายการรอบจ่าย
         </Link>
-        <div className="flex items-start justify-between">
+        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-bold text-foreground">{payout.id}</h1>
-              {getStatusBadge(payout.status)}
-            </div>
-            <p className="mt-2 text-muted-foreground">
-              รายละเอียดการจ่ายเงินและข้อมูลผู้รับ
-            </p>
+            <h1 className="text-3xl font-bold text-foreground">{periodTitle}</h1>
+            <p className="mt-1 text-muted-foreground">จัดการการจ่ายเงินรายบุคคลในรอบนี้</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline">
-              <Printer className="mr-2 h-4 w-4" />
-              พิมพ์เอกสาร
+            <Button variant="outline" onClick={handleExport}>
+              <Download className="mr-2 h-4 w-4" />
+              ส่งออก CSV
             </Button>
-            {payout.status === "pending" && (
-              <>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="destructive">
-                      <XCircle className="mr-2 h-4 w-4" />
-                      ยกเลิก
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle className="flex items-center gap-2 text-red-600">
-                        <AlertTriangle className="h-5 w-5" />
-                        ยกเลิกการจ่ายเงิน
-                      </DialogTitle>
-                      <DialogDescription>
-                        คุณกำลังจะยกเลิกการจ่ายเงินให้ {payout.employeeName}
-                        <br />
-                        จำนวนเงิน: {formatCurrency(payout.amount)} บาท
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4">
-                      <label className="text-sm font-medium">เหตุผลในการยกเลิก</label>
-                      <Input placeholder="กรุณาระบุเหตุผล..." className="mt-2" />
-                    </div>
-                    <DialogFooter>
-                      <Button variant="outline">ปิด</Button>
-                      <Button variant="destructive">ยืนยันยกเลิก</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button className="bg-green-600 hover:bg-green-700">
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
-                      จ่ายเงิน
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>ยืนยันการจ่ายเงิน</DialogTitle>
-                      <DialogDescription>
-                        คุณกำลังจะทำเครื่องหมายจ่ายเงินแล้วให้ {payout.employeeName}
-                        <br />
-                        จำนวนเงิน:{" "}
-                        <span className="font-semibold text-green-600">
-                          {formatCurrency(payout.amount)} บาท
-                        </span>
-                      </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                      <Button variant="outline">ปิด</Button>
-                      <Button className="bg-green-600 hover:bg-green-700">ยืนยันจ่ายเงิน</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              </>
-            )}
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => setMarkPaidDialogOpen(true)}
+              disabled={selectedIds.length === 0}
+            >
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+              จ่ายเงินที่เลือก ({selectedIds.length})
+            </Button>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Main Info */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Amount Card */}
-          <Card className="border-green-200 bg-green-50/50">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">จำนวนเงินที่ต้องจ่าย</p>
-                  <p className="text-4xl font-bold text-green-600">
-                    {formatCurrency(payout.amount)} <span className="text-lg">บาท</span>
-                  </p>
-                </div>
-                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100">
-                  <DollarSign className="h-8 w-8 text-green-600" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      {actionError && (
+        <Alert variant="destructive" className="mb-6 border-destructive/40 bg-destructive/10">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{actionError}</AlertDescription>
+        </Alert>
+      )}
 
-          {/* Employee Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5 text-primary" />
-                ข้อมูลผู้รับเงิน
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <p className="text-sm text-muted-foreground">ชื่อ-นามสกุล</p>
-                  <p className="font-medium">{payout.employeeName}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">รหัสพนักงาน</p>
-                  <p className="font-medium">{payout.employeeId}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">เลขบัตรประชาชน</p>
-                  <p className="font-medium">{payout.citizenId}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">ตำแหน่ง</p>
-                  <p className="font-medium">{payout.position}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">วิชาชีพ</p>
-                  <p className="font-medium">{payout.profession}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">หน่วยงาน</p>
-                  <p className="font-medium">{payout.department}</p>
-                </div>
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">จำนวนรายการ</p>
+                <p className="text-2xl font-bold">{payouts.length}</p>
               </div>
-            </CardContent>
-          </Card>
+              <Users className="h-8 w-8 text-muted-foreground" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">ยอดรวมทั้งรอบ</p>
+                <p className="text-2xl font-bold">{formatThaiCurrency(totalAmount)}</p>
+              </div>
+              <DollarSign className="h-8 w-8 text-primary" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">ยอดคงค้าง</p>
+                <p className="text-2xl font-bold text-amber-600">{formatThaiCurrency(pendingAmount)}</p>
+              </div>
+              <Wallet className="h-8 w-8 text-amber-600" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">ยอดจ่ายแล้ว</p>
+                <p className="text-2xl font-bold text-emerald-600">{formatThaiCurrency(paidAmount)}</p>
+              </div>
+              <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-          {/* Bank Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CreditCard className="h-5 w-5 text-primary" />
-                ข้อมูลบัญชีธนาคาร
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <p className="text-sm text-muted-foreground">ธนาคาร</p>
-                  <p className="font-medium">{payout.bankName}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">สาขา</p>
-                  <p className="font-medium">{payout.bankBranch}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">เลขบัญชี</p>
-                  <p className="font-medium font-mono">{payout.bankAccount}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">ชื่อบัญชี</p>
-                  <p className="font-medium">{payout.employeeName}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+      <Card className="mb-6">
+        <CardContent className="pt-6">
+          <div className="flex flex-col gap-4 md:flex-row md:items-center">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="ค้นหาด้วยชื่อ หรือเลขบัตรประชาชน..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as 'all' | PaymentStatus)}>
+              <SelectTrigger className="w-[180px] bg-background border-input">
+                <SelectValue placeholder="สถานะ" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">ทั้งหมด</SelectItem>
+                <SelectItem value="PENDING">รอจ่ายเงิน</SelectItem>
+                <SelectItem value="PAID">จ่ายแล้ว</SelectItem>
+                <SelectItem value="CANCELLED">ยกเลิก</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </CardContent>
+      </Card>
 
-          {/* Calculation Details */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Wallet className="h-5 w-5 text-primary" />
-                รายละเอียดการคำนวณ
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex justify-between py-2 border-b border-border">
-                  <span className="text-muted-foreground">วันทำงานปกติ</span>
-                  <span className="font-medium">{payout.workingDays} วัน x {formatCurrency(payout.baseRate)} = {formatCurrency(payout.workingDays * payout.baseRate)} บาท</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-border">
-                  <span className="text-muted-foreground">วันหยุดราชการ</span>
-                  <span className="font-medium">{payout.holidayDays} วัน x {formatCurrency(payout.holidayRate)} = {formatCurrency(payout.holidayDays * payout.holidayRate)} บาท</span>
-                </div>
-                <div className="flex justify-between py-2 border-b border-border">
-                  <span className="text-muted-foreground">วันลา (หักออก)</span>
-                  <span className="font-medium text-red-600">-{payout.leaveDays} วัน x {formatCurrency(payout.baseRate)} = -{formatCurrency(payout.leaveDays * payout.baseRate)} บาท</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between py-2">
-                  <span className="font-semibold">รวมสุทธิ</span>
-                  <span className="font-bold text-green-600 text-lg">{formatCurrency(payout.amount)} บาท</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Period Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Calendar className="h-5 w-5 text-primary" />
-                ข้อมูลรอบจ่าย
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div>
-                <p className="text-sm text-muted-foreground">รอบจ่ายเงิน</p>
-                <p className="font-medium">{payout.period}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">รหัสรอบจ่าย</p>
-                <p className="font-medium font-mono">{payout.periodId}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">คำขอที่เกี่ยวข้อง</p>
-                <Link href={`/finance-officer/payouts`} className="font-medium text-primary hover:underline">
-                  {payout.requestId}
-                </Link>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">อนุมัติโดย</p>
-                <p className="font-medium">{payout.approvedBy}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">วันที่อนุมัติ</p>
-                <p className="font-medium">{payout.approvedDate}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Timeline */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5 text-primary" />
-                ประวัติการดำเนินการ
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {payout.timeline.map((item, index) => (
-                  <div key={index} className="flex gap-3">
-                    <div className="flex flex-col items-center">
-                      <div
-                        className={`flex h-8 w-8 items-center justify-center rounded-full ${
-                          item.status === "completed"
-                            ? "bg-green-100 text-green-600"
-                            : item.status === "pending"
-                            ? "bg-amber-100 text-amber-600"
-                            : "bg-muted text-muted-foreground"
-                        }`}
-                      >
-                        {item.status === "completed" ? (
-                          <CheckCircle2 className="h-4 w-4" />
-                        ) : item.status === "pending" ? (
-                          <Clock className="h-4 w-4" />
-                        ) : (
-                          <span className="text-xs">{index + 1}</span>
+      <Card>
+        <CardHeader>
+          <CardTitle>รายการจ่ายเงินในรอบนี้</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[52px]">
+                  <Checkbox
+                    checked={allPendingSelected}
+                    onCheckedChange={(checked) => handleSelectAllPending(Boolean(checked))}
+                    disabled={pendingRows.length === 0}
+                  />
+                </TableHead>
+                <TableHead>รหัสจ่ายเงิน</TableHead>
+                <TableHead>ผู้รับเงิน</TableHead>
+                <TableHead>หน่วยงาน</TableHead>
+                <TableHead className="text-right">อัตรา</TableHead>
+                <TableHead className="text-right">ย้อนหลัง</TableHead>
+                <TableHead className="text-right">ยอดจ่าย</TableHead>
+                <TableHead>สถานะ</TableHead>
+                <TableHead className="w-[120px]">ดำเนินการ</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {payouts.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="h-20 text-center text-muted-foreground">
+                    ไม่พบรายการจ่ายเงิน
+                  </TableCell>
+                </TableRow>
+              ) : (
+                payouts.map((row) => (
+                  <TableRow key={row.payout_id}>
+                    <TableCell>
+                      {row.payment_status === 'PENDING' && (
+                        <Checkbox
+                          checked={selectedIds.includes(row.payout_id)}
+                          onCheckedChange={(checked) =>
+                            handleSelectRow(row.payout_id, Boolean(checked))
+                          }
+                        />
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono">{row.payout_id}</TableCell>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{row.employee_name || '-'}</p>
+                        <p className="text-xs text-muted-foreground">{row.citizen_id}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>{row.department || '-'}</TableCell>
+                    <TableCell className="text-right">{formatThaiCurrency(row.pts_rate_snapshot)}</TableCell>
+                    <TableCell className="text-right">{formatThaiCurrency(row.retroactive_amount)}</TableCell>
+                    <TableCell className="text-right font-semibold text-emerald-600">
+                      {formatThaiCurrency(row.total_payable)}
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        {getStatusBadge(row.payment_status)}
+                        {row.payment_status === 'PAID' && (
+                          <p className="text-xs text-muted-foreground">{formatDateTime(row.paid_at)}</p>
                         )}
                       </div>
-                      {index < payout.timeline.length - 1 && (
-                        <div className="h-full w-px bg-border my-1" />
+                    </TableCell>
+                    <TableCell>
+                      {row.payment_status === 'PENDING' && (
+                        <div className="flex gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700"
+                            onClick={() => handleMarkSinglePaid(row)}
+                            disabled={markPaidMutation.isPending}
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-red-600 hover:bg-red-50 hover:text-red-700"
+                            onClick={() => {
+                              setTargetPayout(row);
+                              setCancelReason('');
+                              setCancelDialogOpen(true);
+                            }}
+                            disabled={cancelPayoutMutation.isPending}
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
                       )}
-                    </div>
-                    <div className="flex-1 pb-4">
-                      <p className="font-medium text-sm">{item.step}</p>
-                      {item.date !== "-" && (
-                        <>
-                          <p className="text-xs text-muted-foreground">{item.date}</p>
-                          <p className="text-xs text-muted-foreground">{item.by}</p>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Dialog open={markPaidDialogOpen} onOpenChange={setMarkPaidDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>ยืนยันการจ่ายเงินแบบกลุ่ม</DialogTitle>
+            <DialogDescription>
+              คุณกำลังจะจ่ายเงิน {selectedIds.length} รายการ
+              <br />
+              ยอดรวม <span className="font-semibold text-emerald-600">{formatThaiCurrency(selectedTotal)}</span>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMarkPaidDialogOpen(false)}>
+              ยกเลิก
+            </Button>
+            <Button
+              className="bg-emerald-600 hover:bg-emerald-700"
+              onClick={handleBatchMarkPaid}
+              disabled={batchMarkPaidMutation.isPending || selectedIds.length === 0}
+            >
+              ยืนยันจ่ายเงิน
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              ยืนยันการยกเลิกรายการ
+            </DialogTitle>
+            <DialogDescription>
+              {targetPayout
+                ? `คุณกำลังจะยกเลิกรายการของ ${targetPayout.employee_name}`
+                : 'กรุณาตรวจสอบรายการก่อนยืนยัน'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="cancel-reason">เหตุผลการยกเลิก</Label>
+            <Input
+              id="cancel-reason"
+              value={cancelReason}
+              onChange={(e) => {
+                setCancelReason(e.target.value);
+                setActionError(null);
+              }}
+              placeholder="ระบุเหตุผล..."
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelDialogOpen(false)}>
+              ปิด
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCancelPayout}
+              disabled={cancelPayoutMutation.isPending}
+            >
+              ยืนยันยกเลิก
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
-  )
+  );
 }

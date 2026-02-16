@@ -1,7 +1,6 @@
-"use client"
+'use client';
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { useMemo } from 'react';
 import {
   Users,
   Shield,
@@ -10,216 +9,338 @@ import {
   Activity,
   RefreshCw,
   Settings,
+  Server,
+  AlertTriangle,
   CheckCircle2,
-} from "lucide-react"
-// TODO: add Link usage when admin dashboard needs inline navigation
-import { PageHeader } from "@/components/page-header"
-import { StatCards, type StatItem } from "@/components/stat-cards"
-import { DataTableCard } from "@/components/data-table-card"
-import { QuickActions } from "@/components/quick-actions"
+  Clock,
+} from 'lucide-react';
+import { PageHeader } from '@/components/page-header';
+import { StatCards, type StatItem } from '@/components/stat-cards';
+import { DataTableCard } from '@/components/data-table-card';
+import { QuickActions } from '@/components/quick-actions';
+import { useMaintenanceStatus, useSearchUsers, useSystemJobStatus } from '@/features/system/hooks';
+import { useAccessReviewCycles } from '@/features/access-review/hooks';
+import { useAuditSummary } from '@/features/audit/hooks';
+import { useAllAnnouncements } from '@/features/announcement/hooks';
+import { Progress } from '@/components/ui/progress';
+import { Badge } from '@/components/ui/badge';
+import { formatThaiDate, formatThaiNumber } from '@/shared/utils/thai-locale';
 
-const stats: StatItem[] = [
-  {
-    title: "ผู้ใช้ทั้งหมด",
-    value: "1,234",
-    description: "active 1,180",
-    icon: Users,
-    href: "/admin/users",
-    trend: "+12 เดือนนี้",
-    trendUp: true,
-  },
-  {
-    title: "รอตรวจสอบสิทธิ์",
-    value: "28",
-    description: "review cycle ปัจจุบัน",
-    icon: Shield,
-    href: "/admin/access-review",
-    trend: "เหลือ 5 วัน",
-    trendUp: false,
-  },
-  {
-    title: "Audit Logs",
-    value: "45.2K",
-    description: "30 วันล่าสุด",
-    icon: FileText,
-    href: "/admin/audit-logs",
-    trend: "+2,340 วันนี้",
-    trendUp: true,
-  },
-  {
-    title: "ประกาศที่ active",
-    value: "3",
-    description: "แสดงอยู่ในระบบ",
-    icon: Megaphone,
-    href: "/admin/announcements",
-    trend: "1 หมดอายุใกล้ถึง",
-    trendUp: false,
-  },
-]
+// --- Types ---
+type AuditSummaryRow = { event_type: string; count: number };
+type AccessCycle = {
+  cycle_id: number;
+  status: string;
+  due_date: string;
+  total_users: number;
+  reviewed_users: number;
+};
 
-const systemStatus = [
-  { name: "API Server", status: "online", latency: "45ms" },
-  { name: "Database", status: "online", latency: "12ms" },
-  { name: "Cache (Redis)", status: "online", latency: "3ms" },
-  { name: "Queue Worker", status: "online", latency: "N/A" },
-]
+type JobStatusResponse = {
+  partial: boolean;
+  summary: {
+    notifications: {
+      pending: number;
+      processing: number;
+      failed: number;
+    };
+  };
+  jobs: Array<{ status: 'RUNNING' | 'IDLE' | 'FAILED' | 'DEGRADED' | 'UNKNOWN' }>;
+};
 
-const recentAuditLogs = [
-  {
-    id: 1,
-    action: "USER_LOGIN",
-    user: "สมชาย ใจดี",
-    target: "Session",
-    timestamp: "5 นาทีที่แล้ว",
-    status: "success",
-  },
-  {
-    id: 2,
-    action: "ROLE_CHANGE",
-    user: "ผู้ดูแลระบบ",
-    target: "วิชัย สมบูรณ์ (USER → HEAD_WARD)",
-    timestamp: "15 นาทีที่แล้ว",
-    status: "success",
-  },
-  {
-    id: 3,
-    action: "ANNOUNCEMENT_CREATE",
-    user: "ผู้ดูแลระบบ",
-    target: "ประกาศวันหยุดสงกรานต์",
-    timestamp: "1 ชั่วโมงที่แล้ว",
-    status: "success",
-  },
-  {
-    id: 4,
-    action: "SYNC_TRIGGER",
-    user: "ผู้ดูแลระบบ",
-    target: "HRMS Full Sync",
-    timestamp: "2 ชั่วโมงที่แล้ว",
-    status: "success",
-  },
-]
-
-const pendingAccessReviews = [
-  {
-    id: 1,
-    user: "วิไล แสนดี",
-    role: "PTS_OFFICER",
-    department: "งานบุคคล",
-    lastReview: "6 เดือนที่แล้ว",
-  },
-  {
-    id: 2,
-    user: "สมศักดิ์ ใจดี",
-    role: "HEAD_WARD",
-    department: "หอผู้ป่วยใน 1",
-    lastReview: "8 เดือนที่แล้ว",
-  },
-  {
-    id: 3,
-    user: "พรทิพย์ รักษาดี",
-    role: "APPROVER",
-    department: "งานการเงิน",
-    lastReview: "12 เดือนที่แล้ว",
-  },
-]
-
+// --- Config ---
 const quickActions = [
-  { label: "จัดการผู้ใช้", href: "/admin/users", icon: Users },
-  { label: "ตรวจสอบสิทธิ์", href: "/admin/access-review", icon: Shield },
-  { label: "Sync HRMS", href: "/admin/system", icon: RefreshCw },
-  { label: "ตั้งค่าระบบ", href: "/admin/system", icon: Settings },
-]
+  { label: 'จัดการผู้ใช้', href: '/admin/users', icon: Users },
+  { label: 'ตรวจสอบสิทธิ์ผู้ใช้งาน', href: '/admin/access-review', icon: Shield },
+  { label: 'ซิงค์ข้อมูล HRMS', href: '/admin/system', icon: RefreshCw },
+  { label: 'ตั้งค่าระบบ', href: '/admin/system', icon: Settings },
+];
 
 export default function AdminDashboardPage() {
+  // --- Data Fetching ---
+  const usersQuery = useSearchUsers({ q: '', page: '1', limit: '1' });
+  const cyclesQuery = useAccessReviewCycles();
+  const auditSummaryQuery = useAuditSummary();
+  const announcementsQuery = useAllAnnouncements();
+  const jobsQuery = useSystemJobStatus();
+  const maintenanceQuery = useMaintenanceStatus();
+
+  // --- Data Processing ---
+  const userResult = usersQuery.data || { total: 0, active_total: 0 };
+  const cycles = (cyclesQuery.data ?? []) as AccessCycle[];
+  const auditSummary = (auditSummaryQuery.data ?? []) as AuditSummaryRow[];
+  const announcements = announcementsQuery.data ?? [];
+
+  const jobsData = (jobsQuery.data ?? {
+    summary: { notifications: { pending: 0, processing: 0, failed: 0 } },
+    jobs: [],
+  }) as JobStatusResponse;
+
+  const maintenanceData = maintenanceQuery.data as { enabled?: boolean } | undefined;
+
+  // Derived State
+  const activeCycle = cycles[0];
+  const totalAuditCount = auditSummary.reduce((sum, row) => sum + Number(row.count ?? 0), 0);
+  const totalUsers = Number(userResult.total ?? 0);
+  const activeUsers = Number(userResult.active_total ?? 0);
+
+  const pendingJobs =
+    Number(jobsData.summary.notifications.pending ?? 0) +
+    Number(jobsData.summary.notifications.processing ?? 0);
+  const failedJobs = Number(jobsData.summary.notifications.failed ?? 0);
+
+  const maintenanceEnabled = Boolean(maintenanceData?.enabled);
+  const hasServiceFailure = jobsData.jobs.some((job) => job.status === 'FAILED');
+
+  // Stats Configuration
+  const stats: StatItem[] = useMemo(
+    () => [
+      {
+        title: 'ผู้ใช้งานทั้งหมด',
+        value: formatThaiNumber(totalUsers),
+        description: `ใช้งานอยู่: ${formatThaiNumber(activeUsers)}`,
+        icon: Users,
+        href: '/admin/users',
+        color: 'blue',
+        trend: 'ข้อมูลล่าสุด',
+        trendUp: true,
+      },
+      {
+        title: 'ทบทวนสิทธิ์',
+        value: activeCycle
+          ? `${Math.round((activeCycle.reviewed_users / (activeCycle.total_users || 1)) * 100)}%`
+          : 'ไม่มีข้อมูล',
+        description: activeCycle ? `รอบที่ #${activeCycle.cycle_id}` : 'ไม่มีรอบตรวจสอบ',
+        icon: Shield,
+        href: '/admin/access-review',
+        color: activeCycle ? 'warning' : 'primary',
+        trend: activeCycle?.due_date
+          ? `ครบกำหนด ${formatThaiDate(activeCycle.due_date)}`
+          : '-',
+        trendUp: false,
+      },
+      {
+        title: 'บันทึกการใช้งาน',
+        value: formatThaiNumber(totalAuditCount),
+        description: 'กิจกรรมในระบบ',
+        icon: FileText,
+        href: '/admin/audit-logs',
+        color: 'primary',
+        trend: 'อัปเดตทันที',
+        trendUp: true,
+      },
+      {
+        title: 'งานระบบ',
+        value: formatThaiNumber(pendingJobs),
+        description: failedJobs > 0 ? `${failedJobs} รายการล้มเหลว` : 'งานที่ค้างในคิว',
+        icon: Activity,
+        href: '/admin/system',
+        color: failedJobs > 0 ? 'destructive' : 'success',
+        trend: hasServiceFailure ? 'บริการมีปัญหา' : 'บริการปกติ',
+        trendUp: !hasServiceFailure && failedJobs === 0,
+        showTrendIcon: true,
+      },
+    ],
+    [
+      totalUsers,
+      activeUsers,
+      activeCycle,
+      totalAuditCount,
+      pendingJobs,
+      failedJobs,
+      hasServiceFailure,
+    ],
+  );
+
   return (
-    <div className="p-6 lg:p-8">
-      {/* Header */}
+    <div className="p-6 lg:p-8 space-y-8">
       <PageHeader
-        title="แดชบอร์ด"
-        description="ภาพรวมการจัดการระบบและผู้ใช้งาน"
+        title="แดชบอร์ดผู้ดูแลระบบ"
+        description="ภาพรวมระบบ ความปลอดภัย และการจัดการผู้ใช้งาน"
       />
 
-      {/* Stats Grid */}
-      <div className="mt-6">
-        <StatCards stats={stats} />
-      </div>
+      {/* Stats Overview */}
+      <StatCards stats={stats} />
 
       {/* Main Content Grid */}
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
-        {/* System Status */}
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-semibold flex items-center gap-2">
-              <Activity className="h-5 w-5 text-emerald-600" />
-              สถานะระบบ
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {systemStatus.map((item, index) => (
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* 1. System Health Status */}
+        <DataTableCard
+          title="สถานะระบบ"
+          icon={Server}
+          viewAllHref="/admin/system"
+          className="lg:col-span-1"
+        >
+          <div className="space-y-4">
+            {/* Service Status */}
+            <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
+              <div className="flex items-center gap-3">
                 <div
-                  key={index}
-                  className="flex items-center justify-between rounded-lg border border-border bg-background/50 p-3"
+                  className={`p-2 rounded-full ${hasServiceFailure ? 'bg-red-100' : 'bg-emerald-100'}`}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    <span className="font-medium text-foreground">{item.name}</span>
-                  </div>
-                  <span className="text-sm text-muted-foreground">{item.latency}</span>
+                  {hasServiceFailure ? (
+                    <AlertTriangle className="h-4 w-4 text-red-600" />
+                  ) : (
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                  )}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Pending Access Reviews */}
-        <DataTableCard title="รอตรวจสอบสิทธิ์" viewAllHref="/admin/access-review">
-          <div className="space-y-3">
-            {pendingAccessReviews.map((review) => (
-              <div
-                key={review.id}
-                className="rounded-lg border border-border bg-background/50 p-3"
-              >
-                <div className="flex items-center justify-between">
-                  <p className="font-medium text-foreground">{review.user}</p>
-                  <Badge variant="outline" className="bg-amber-100 text-amber-800 border-amber-200">
-                    {review.role}
-                  </Badge>
+                <div>
+                  <p className="text-sm font-medium">สถานะบริการหลัก</p>
+                  <p className="text-xs text-muted-foreground">
+                    {hasServiceFailure ? 'มีบางบริการขัดข้อง' : 'ทำงานปกติ'}
+                  </p>
                 </div>
-                <p className="mt-1 text-sm text-muted-foreground">{review.department}</p>
-                <p className="text-xs text-muted-foreground">ตรวจสอบล่าสุด: {review.lastReview}</p>
               </div>
-            ))}
+              <Badge
+                variant={hasServiceFailure ? 'destructive' : 'outline'}
+                className={
+                  !hasServiceFailure ? 'text-emerald-600 border-emerald-200 bg-emerald-50' : ''
+                }
+              >
+                {hasServiceFailure ? 'เสื่อมประสิทธิภาพ' : 'ออนไลน์'}
+              </Badge>
+            </div>
+
+            {/* Maintenance Mode */}
+            <div className="flex items-center justify-between p-3 rounded-lg border bg-card">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`p-2 rounded-full ${maintenanceEnabled ? 'bg-amber-100' : 'bg-secondary'}`}
+                >
+                  <Settings
+                    className={`h-4 w-4 ${maintenanceEnabled ? 'text-amber-600' : 'text-muted-foreground'}`}
+                  />
+                </div>
+                <div>
+                  <p className="text-sm font-medium">โหมดปิดปรับปรุง</p>
+                  <p className="text-xs text-muted-foreground">ปิดปรับปรุงระบบ</p>
+                </div>
+              </div>
+              <Badge variant={maintenanceEnabled ? 'default' : 'secondary'}>
+                {maintenanceEnabled ? 'เปิดใช้งาน' : 'ปิด'}
+              </Badge>
+            </div>
+
+            {/* Job Queue */}
+            <div className="p-3 rounded-lg border bg-card space-y-2">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-muted-foreground">สถานะคิวงานระบบ</span>
+                <span className="font-medium">{pendingJobs} รายการ</span>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center text-xs">
+                <div className="bg-secondary/50 p-1.5 rounded">
+                  <span className="block font-bold text-amber-600">
+                    {jobsData.summary.notifications.pending}
+                  </span>
+                  <span className="text-muted-foreground">รอ</span>
+                </div>
+                <div className="bg-secondary/50 p-1.5 rounded">
+                  <span className="block font-bold text-blue-600">
+                    {jobsData.summary.notifications.processing}
+                  </span>
+                  <span className="text-muted-foreground">กำลังทำ</span>
+                </div>
+                <div className="bg-secondary/50 p-1.5 rounded">
+                  <span className="block font-bold text-red-600">
+                    {jobsData.summary.notifications.failed}
+                  </span>
+                  <span className="text-muted-foreground">ล้มเหลว</span>
+                </div>
+              </div>
+            </div>
           </div>
         </DataTableCard>
 
-        {/* Recent Audit Logs */}
-        <DataTableCard title="บันทึกล่าสุด" viewAllHref="/admin/audit-logs">
-          <div className="space-y-3">
-            {recentAuditLogs.map((log) => (
-              <div
-                key={log.id}
-                className="rounded-lg border border-border bg-background/50 p-3"
-              >
-                <div className="flex items-center justify-between">
-                  <Badge variant="outline" className="bg-blue-100 text-blue-800 border-blue-200">
-                    {log.action}
-                  </Badge>
-                  <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+        {/* 2. Access Review Status */}
+        <DataTableCard
+          title="รอบการตรวจสอบสิทธิ์"
+          icon={Shield}
+          viewAllHref="/admin/access-review"
+          className="lg:col-span-1"
+        >
+          {activeCycle ? (
+            <div className="flex flex-col h-full justify-center space-y-6 py-2">
+              <div className="text-center">
+                <Badge
+                  variant="outline"
+                  className="mb-2 bg-primary/5 text-primary border-primary/20"
+                >
+                  รอบที่: {activeCycle.cycle_id}
+                </Badge>
+                <p className="text-sm text-muted-foreground">
+                  ครบกำหนด:{' '}
+                  {formatThaiDate(activeCycle.due_date, { dateStyle: 'medium' })}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>ความคืบหน้า</span>
+                  <span className="font-medium">
+                    {activeCycle.reviewed_users} / {activeCycle.total_users} คน
+                  </span>
                 </div>
-                <p className="mt-1 text-sm text-foreground">{log.user}</p>
-                <p className="text-xs text-muted-foreground truncate">{log.target}</p>
-                <p className="text-xs text-muted-foreground">{log.timestamp}</p>
+                <Progress
+                  value={(activeCycle.reviewed_users / (activeCycle.total_users || 1)) * 100}
+                  className="h-2"
+                />
+              </div>
+
+              <div className="rounded-lg bg-amber-50 border border-amber-100 p-3 flex gap-3 items-start">
+                <Clock className="h-4 w-4 text-amber-600 mt-0.5" />
+                <div className="text-xs text-amber-800">
+                  <p className="font-semibold">สถานะ: {activeCycle.status}</p>
+                  <p className="mt-1">กรุณาติดตามหัวหน้างานให้ดำเนินการก่อนวันครบกำหนด</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full text-muted-foreground py-8">
+              <Shield className="h-12 w-12 opacity-20 mb-2" />
+              <p>ขณะนี้ไม่มีรอบการตรวจสอบที่เปิดอยู่</p>
+            </div>
+          )}
+        </DataTableCard>
+
+        {/* 3. Announcements */}
+        <DataTableCard
+          title="ประกาศล่าสุด"
+          icon={Megaphone}
+          viewAllHref="/admin/announcements"
+          className="lg:col-span-1"
+        >
+          <div className="space-y-4">
+            {announcements.slice(0, 3).map((item) => (
+              <div key={item.id} className="flex items-start gap-3 group">
+                <div
+                  className={`mt-1 h-2 w-2 rounded-full shrink-0 ${item.is_active ? 'bg-emerald-500' : 'bg-muted-foreground/30'}`}
+                />
+                <div className="flex-1 space-y-1">
+                  <p className="text-sm font-medium leading-none group-hover:text-primary transition-colors line-clamp-1">
+                    {item.title}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className="text-[10px] h-4 px-1 font-normal">
+                      {item.is_active ? 'กำลังแสดง' : 'ฉบับร่าง'}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {item.created_at ? formatThaiDate(item.created_at) : '-'}
+                    </span>
+                  </div>
+                </div>
               </div>
             ))}
+            {announcements.length === 0 && (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                ยังไม่มีรายการประกาศ
+              </div>
+            )}
           </div>
         </DataTableCard>
       </div>
 
       {/* Quick Actions */}
-      <div className="mt-6">
-        <QuickActions actions={quickActions} />
-      </div>
+      <QuickActions actions={quickActions} />
     </div>
-  )
+  );
 }

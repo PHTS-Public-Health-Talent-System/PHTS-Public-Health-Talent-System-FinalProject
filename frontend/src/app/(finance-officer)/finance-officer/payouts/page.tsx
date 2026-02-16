@@ -1,19 +1,20 @@
-"use client"
-export const dynamic = 'force-dynamic'
+'use client';
 
+export const dynamic = 'force-dynamic';
 
-import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
+import { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -21,527 +22,321 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from '@/components/ui/table';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Calendar, Download, Filter, Search, Wallet, ArrowRight } from 'lucide-react';
+import { toast } from 'sonner';
+import { useFinanceSummary } from '@/features/finance/hooks';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog"
-import { Checkbox } from "@/components/ui/checkbox"
-import {
-  Search,
-  Filter,
-  CheckCircle2,
-  XCircle,
-  Download,
-  Wallet,
-  DollarSign,
-  Calendar,
-  Users,
-  AlertTriangle,
-} from "lucide-react"
-import Link from "next/link"
+  formatThaiCurrency,
+  formatThaiMonthYear,
+  formatThaiNumber,
+  toBuddhistYear,
+} from '@/shared/utils/thai-locale';
 
-const payouts = [
-  {
-    id: "PAY-2568-001",
-    employeeId: "EMP001",
-    employeeName: "นางสาวสมหญิง ดีมาก",
-    citizenId: "1-1001-00001-XX-X",
-    profession: "พยาบาลวิชาชีพ",
-    department: "อายุรกรรม",
-    period: "ส.ค. 2568",
-    periodId: "PERIOD-2568-08",
-    amount: 15000,
-    bankAccount: "xxx-x-xxxxx-1",
-    bankName: "กรุงไทย",
-    status: "pending",
-    approvedDate: "5 ก.ย. 2568",
-  },
-  {
-    id: "PAY-2568-002",
-    employeeId: "EMP002",
-    employeeName: "นายสมชาย รักดี",
-    citizenId: "1-1001-00002-XX-X",
-    profession: "เภสัชกร",
-    department: "เภสัชกรรม",
-    period: "ส.ค. 2568",
-    periodId: "PERIOD-2568-08",
-    amount: 12500,
-    bankAccount: "xxx-x-xxxxx-2",
-    bankName: "กสิกร",
-    status: "pending",
-    approvedDate: "5 ก.ย. 2568",
-  },
-  {
-    id: "PAY-2568-003",
-    employeeId: "EMP003",
-    employeeName: "นางสาวมะลิ หอมจัง",
-    citizenId: "1-1001-00003-XX-X",
-    profession: "แพทย์",
-    department: "ศัลยกรรม",
-    period: "ส.ค. 2568",
-    periodId: "PERIOD-2568-08",
-    amount: 18000,
-    bankAccount: "xxx-x-xxxxx-3",
-    bankName: "กรุงไทย",
-    status: "pending",
-    approvedDate: "6 ก.ย. 2568",
-  },
-  {
-    id: "PAY-2568-004",
-    employeeId: "EMP004",
-    employeeName: "นายวิชัย เก่งมาก",
-    citizenId: "1-1001-00004-XX-X",
-    profession: "นักเทคนิคการแพทย์",
-    department: "พยาธิวิทยา",
-    period: "ส.ค. 2568",
-    periodId: "PERIOD-2568-08",
-    amount: 14000,
-    bankAccount: "xxx-x-xxxxx-4",
-    bankName: "ไทยพาณิชย์",
-    status: "pending",
-    approvedDate: "6 ก.ย. 2568",
-  },
-  {
-    id: "PAY-2568-005",
-    employeeId: "EMP005",
-    employeeName: "นางสาวกัลยา สุขใจ",
-    citizenId: "1-1001-00005-XX-X",
-    profession: "พยาบาลวิชาชีพ",
-    department: "กุมารเวชกรรม",
-    period: "ส.ค. 2568",
-    periodId: "PERIOD-2568-08",
-    amount: 16500,
-    bankAccount: "xxx-x-xxxxx-5",
-    bankName: "กรุงไทย",
-    status: "paid",
-    approvedDate: "5 ก.ย. 2568",
-    paidDate: "10 ก.ย. 2568",
-    paidBy: "สมศักดิ์ การเงิน",
-  },
-  {
-    id: "PAY-2568-006",
-    employeeId: "EMP006",
-    employeeName: "นายประสิทธิ์ ดีเด่น",
-    citizenId: "1-1001-00006-XX-X",
-    profession: "รังสีเทคนิค",
-    department: "รังสีวิทยา",
-    period: "ส.ค. 2568",
-    periodId: "PERIOD-2568-08",
-    amount: 13000,
-    bankAccount: "xxx-x-xxxxx-6",
-    bankName: "กรุงเทพ",
-    status: "paid",
-    approvedDate: "5 ก.ย. 2568",
-    paidDate: "10 ก.ย. 2568",
-    paidBy: "สมศักดิ์ การเงิน",
-  },
-  {
-    id: "PAY-2568-007",
-    employeeId: "EMP007",
-    employeeName: "นางวันดี รุ่งเรือง",
-    citizenId: "1-1001-00007-XX-X",
-    profession: "นักกายภาพบำบัด",
-    department: "เวชศาสตร์ฟื้นฟู",
-    period: "ส.ค. 2568",
-    periodId: "PERIOD-2568-08",
-    amount: 17500,
-    bankAccount: "xxx-x-xxxxx-7",
-    bankName: "กสิกร",
-    status: "cancelled",
-    approvedDate: "4 ก.ย. 2568",
-    cancelledDate: "8 ก.ย. 2568",
-    cancelledBy: "สมศักดิ์ การเงิน",
-    cancelReason: "บัญชีธนาคารไม่ถูกต้อง",
-  },
-]
+type FinanceSummaryRow = {
+  period_id: number;
+  period_month: number;
+  period_year: number;
+  period_status: string;
+  total_employees: number;
+  total_amount: number;
+  paid_amount: number;
+  pending_amount: number;
+  paid_count: number;
+  pending_count: number;
+};
 
-const periods = [
-  { id: "PERIOD-2568-08", name: "ส.ค. 2568" },
-  { id: "PERIOD-2568-07", name: "ก.ค. 2568" },
-  { id: "PERIOD-2568-06", name: "มิ.ย. 2568" },
-]
+const toPeriodCode = (month: number, year: number) => {
+  return `PAY-${String(month).padStart(2, '0')}/${toBuddhistYear(year)}`;
+};
+
+const escapeCsv = (value: string | number) => {
+  const text = String(value ?? '');
+  if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+};
 
 export default function PayoutsPage() {
-  const [selectedPayouts, setSelectedPayouts] = useState<string[]>([])
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [periodFilter, setPeriodFilter] = useState("all")
-  const [showMarkPaidDialog, setShowMarkPaidDialog] = useState(false)
-  const [showCancelDialog, setShowCancelDialog] = useState(false)
-  const [selectedPayout, setSelectedPayout] = useState<typeof payouts[0] | null>(null)
+  const { data, isLoading, error } = useFinanceSummary();
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("th-TH").format(amount)
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed'>('all');
+
+  const periods = useMemo<FinanceSummaryRow[]>(() => {
+    if (!Array.isArray(data)) return [];
+    return (data as FinanceSummaryRow[]).map((row) => ({
+      ...row,
+      total_employees: Number(row.total_employees ?? 0),
+      total_amount: Number(row.total_amount ?? 0),
+      paid_amount: Number(row.paid_amount ?? 0),
+      pending_amount: Number(row.pending_amount ?? 0),
+      paid_count: Number(row.paid_count ?? 0),
+      pending_count: Number(row.pending_count ?? 0),
+    }));
+  }, [data]);
+
+  const filteredPeriods = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase();
+    return periods.filter((row) => {
+      const monthLabel = formatThaiMonthYear(row.period_month, row.period_year);
+      const periodCode = toPeriodCode(row.period_month, row.period_year);
+      const yearLabel = String(toBuddhistYear(row.period_year));
+      const open = row.pending_count > 0 || row.pending_amount > 0;
+      const matchesStatus =
+        statusFilter === 'all' ||
+        (statusFilter === 'open' && open) ||
+        (statusFilter === 'closed' && !open);
+      const matchesSearch =
+        !keyword ||
+        monthLabel.toLowerCase().includes(keyword) ||
+        periodCode.toLowerCase().includes(keyword) ||
+        yearLabel.includes(keyword) ||
+        String(row.period_year).includes(keyword);
+      return matchesStatus && matchesSearch;
+    });
+  }, [periods, searchTerm, statusFilter]);
+
+  const summary = useMemo(() => {
+    const totalPeriods = filteredPeriods.length;
+    const openPeriods = filteredPeriods.filter(
+      (row) => row.pending_count > 0 || row.pending_amount > 0,
+    ).length;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const pendingAmount = filteredPeriods.reduce((sum, row) => sum + row.pending_amount, 0);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const paidAmount = filteredPeriods.reduce((sum, row) => sum + row.paid_amount, 0);
+    return { totalPeriods, openPeriods };
+  }, [filteredPeriods]);
+
+  const handleExport = () => {
+    if (filteredPeriods.length === 0) {
+      toast.error('ไม่พบข้อมูลรอบจ่ายสำหรับส่งออก');
+      return;
+    }
+    const headers = [
+      'รหัสรอบ',
+      'เดือน/ปี',
+      'จำนวนผู้รับเงิน',
+      'ยอดรวม',
+      'ยอดจ่ายแล้ว',
+      'ยอดคงค้าง',
+      'จำนวนรายการคงค้าง',
+    ];
+    const rows = filteredPeriods.map((row) => [
+      toPeriodCode(row.period_month, row.period_year),
+      formatThaiMonthYear(row.period_month, row.period_year),
+      row.total_employees,
+      row.total_amount,
+      row.paid_amount,
+      row.pending_amount,
+      row.pending_count,
+    ]);
+    const csv = '\uFEFF' + [headers, ...rows].map((row) => row.map(escapeCsv).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'finance-periods.csv';
+    link.click();
+    window.URL.revokeObjectURL(url);
+    toast.success('ส่งออกรายการรอบจ่ายสำเร็จ');
+  };
+
+  if (isLoading) {
+    return (
+      <div className="p-8 space-y-6">
+        <div className="flex justify-between items-center">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <div className="grid gap-4 lg:grid-cols-2">
+          {[1, 2].map((i) => (
+            <Skeleton key={i} className="h-24 rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-96 rounded-xl" />
+      </div>
+    );
   }
 
-  const filteredPayouts = payouts.filter((payout) => {
-    const matchesSearch =
-      payout.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payout.employeeId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      payout.id.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === "all" || payout.status === statusFilter
-    const matchesPeriod = periodFilter === "all" || payout.periodId === periodFilter
-    return matchesSearch && matchesStatus && matchesPeriod
-  })
-
-  const pendingPayouts = filteredPayouts.filter((p) => p.status === "pending")
-  const totalPendingAmount = pendingPayouts.reduce((sum, p) => sum + p.amount, 0)
-
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedPayouts(pendingPayouts.map((p) => p.id))
-    } else {
-      setSelectedPayouts([])
-    }
-  }
-
-  const handleSelectPayout = (payoutId: string, checked: boolean) => {
-    if (checked) {
-      setSelectedPayouts([...selectedPayouts, payoutId])
-    } else {
-      setSelectedPayouts(selectedPayouts.filter((id) => id !== payoutId))
-    }
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "pending":
-        return (
-          <Badge variant="outline" className="text-amber-600 border-amber-200 bg-amber-50">
-            <Wallet className="mr-1 h-3 w-3" />
-            รอจ่ายเงิน
-          </Badge>
-        )
-      case "paid":
-        return (
-          <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50">
-            <CheckCircle2 className="mr-1 h-3 w-3" />
-            จ่ายแล้ว
-          </Badge>
-        )
-      case "cancelled":
-        return (
-          <Badge variant="outline" className="text-red-600 border-red-200 bg-red-50">
-            <XCircle className="mr-1 h-3 w-3" />
-            ยกเลิก
-          </Badge>
-        )
-      default:
-        return <Badge variant="outline">{status}</Badge>
-    }
+  if (error) {
+    return (
+      <div className="p-8 text-center text-destructive">
+        <h1 className="text-2xl font-bold">เกิดข้อผิดพลาด</h1>
+        <p className="mt-2">ไม่สามารถโหลดข้อมูลรอบจ่ายได้ กรุณาลองใหม่อีกครั้ง</p>
+      </div>
+    );
   }
 
   return (
-    <div className="p-8">
+    <div className="p-8 space-y-8 pb-20">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-foreground">การจ่ายเงิน</h1>
-        <p className="mt-2 text-muted-foreground">
-          จัดการรายการจ่ายเงิน พ.ต.ส. ที่ผ่านการอนุมัติ
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Wallet className="h-6 w-6 text-primary" /> จัดการการจ่ายเงิน
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            ตรวจสอบสถานะและดำเนินการโอนเงินสำหรับแต่ละรอบเดือน
+          </p>
+        </div>
+        <Button variant="outline" onClick={handleExport} className="bg-background">
+            <Download className="mr-2 h-4 w-4" /> ส่งออก CSV
+        </Button>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 mb-6">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">รอจ่ายเงิน</p>
-                <p className="text-2xl font-bold text-amber-600">{pendingPayouts.length}</p>
-              </div>
-              <Wallet className="h-8 w-8 text-amber-600" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Card className="border-border shadow-sm">
+          <CardContent className="p-6 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">รอบจ่ายทั้งหมด</p>
+              <div className="text-2xl font-bold mt-1">{summary.totalPeriods}</div>
+            </div>
+            <div className="p-3 rounded-full bg-primary/10 text-primary">
+              <Calendar className="h-6 w-6" />
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">ยอดรวมรอจ่าย</p>
-                <p className="text-2xl font-bold text-primary">{formatCurrency(totalPendingAmount)}</p>
-              </div>
-              <DollarSign className="h-8 w-8 text-primary" />
+        <Card className="border-border shadow-sm">
+          <CardContent className="p-6 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">รอบที่มียอดค้างจ่าย</p>
+              <div className="text-2xl font-bold mt-1 text-amber-600">{summary.openPeriods}</div>
             </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">เลือกแล้ว</p>
-                <p className="text-2xl font-bold">{selectedPayouts.length}</p>
-              </div>
-              <Users className="h-8 w-8 text-muted-foreground" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">ยอดที่เลือก</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {formatCurrency(
-                    payouts
-                      .filter((p) => selectedPayouts.includes(p.id))
-                      .reduce((sum, p) => sum + p.amount, 0)
-                  )}
-                </p>
-              </div>
-              <CheckCircle2 className="h-8 w-8 text-green-600" />
+            <div className="p-3 rounded-full bg-amber-500/10 text-amber-600">
+              <Wallet className="h-6 w-6" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filters and Actions */}
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-1 gap-4">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      {/* Main Table Card */}
+      <Card className="border-border shadow-sm">
+        <CardHeader className="border-b bg-muted/10 py-4 px-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex flex-col gap-1">
+              <CardTitle className="text-lg">รายการรอบจ่าย</CardTitle>
+              <CardDescription>แสดงรายการแยกตามเดือน</CardDescription>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="ค้นหาชื่อ, รหัส..."
+                  placeholder="ค้นหาเดือน, ปี, รหัส..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
+                  className="bg-background pl-9 h-9"
                 />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[160px]">
-                  <Filter className="mr-2 h-4 w-4" />
-                  <SelectValue placeholder="สถานะ" />
+              <Select
+                value={statusFilter}
+                onValueChange={(v) => setStatusFilter(v as 'all' | 'open' | 'closed')}
+              >
+                <SelectTrigger className="w-full sm:w-[150px] bg-background h-9">
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+                    <SelectValue placeholder="สถานะ" />
+                  </div>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">ทั้งหมด</SelectItem>
-                  <SelectItem value="pending">รอจ่ายเงิน</SelectItem>
-                  <SelectItem value="paid">จ่ายแล้ว</SelectItem>
-                  <SelectItem value="cancelled">ยกเลิก</SelectItem>
-                </SelectContent>
-              </Select>
-              <Select value={periodFilter} onValueChange={setPeriodFilter}>
-                <SelectTrigger className="w-[160px]">
-                  <Calendar className="mr-2 h-4 w-4" />
-                  <SelectValue placeholder="รอบจ่าย" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ทุกรอบ</SelectItem>
-                  {periods.map((period) => (
-                    <SelectItem key={period.id} value={period.id}>
-                      {period.name}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="open">ค้างจ่าย</SelectItem>
+                  <SelectItem value="closed">จ่ายครบ</SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline">
-                <Download className="mr-2 h-4 w-4" />
-                Export
-              </Button>
-              {selectedPayouts.length > 0 && (
-                <Dialog open={showMarkPaidDialog} onOpenChange={setShowMarkPaidDialog}>
-                  <DialogTrigger asChild>
-                    <Button className="bg-green-600 hover:bg-green-700">
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
-                      จ่ายเงิน ({selectedPayouts.length})
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>ยืนยันการจ่ายเงิน</DialogTitle>
-                      <DialogDescription>
-                        คุณกำลังจะทำเครื่องหมายจ่ายเงินแล้ว {selectedPayouts.length} รายการ
-                        <br />
-                        ยอดรวม:{" "}
-                        <span className="font-semibold text-green-600">
-                          {formatCurrency(
-                            payouts
-                              .filter((p) => selectedPayouts.includes(p.id))
-                              .reduce((sum, p) => sum + p.amount, 0)
-                          )}{" "}
-                          บาท
-                        </span>
-                      </DialogDescription>
-                    </DialogHeader>
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setShowMarkPaidDialog(false)}>
-                        ยกเลิก
-                      </Button>
-                      <Button
-                        className="bg-green-600 hover:bg-green-700"
-                        onClick={() => {
-                          setShowMarkPaidDialog(false)
-                          setSelectedPayouts([])
-                        }}
-                      >
-                        ยืนยันจ่ายเงิน
-                      </Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
-              )}
-            </div>
+          </div>
+        </CardHeader>
+
+        <CardContent className="p-0">
+          <div className="relative overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-muted/30">
+                <TableRow>
+                  <TableHead className="w-[140px]">รหัสรอบ</TableHead>
+                  <TableHead>เดือน/ปี</TableHead>
+                  <TableHead className="text-right">จำนวนผู้รับเงิน</TableHead>
+                  <TableHead className="text-right">ยอดรวม</TableHead>
+                  <TableHead className="text-right">จ่ายแล้ว</TableHead>
+                  <TableHead className="text-right">คงค้าง</TableHead>
+                  <TableHead className="text-center w-[140px]">สถานะ</TableHead>
+                  <TableHead className="text-right w-[100px]"></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredPeriods.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                      ไม่พบข้อมูลรอบจ่าย
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredPeriods.map((row) => {
+                    const isOpen = row.pending_count > 0 || row.pending_amount > 0;
+                    return (
+                      <TableRow key={row.period_id} className="hover:bg-muted/20 group">
+                        <TableCell className="font-mono text-sm text-muted-foreground group-hover:text-primary transition-colors">
+                          {toPeriodCode(row.period_month, row.period_year)}
+                        </TableCell>
+                        <TableCell className="font-medium text-foreground">
+                          {formatThaiMonthYear(row.period_month, row.period_year)}
+                        </TableCell>
+                        <TableCell className="text-right text-muted-foreground">
+                          {formatThaiNumber(row.total_employees)}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {formatThaiCurrency(row.total_amount)}
+                        </TableCell>
+                        <TableCell className="text-right text-emerald-600">
+                          {formatThaiCurrency(row.paid_amount)}
+                        </TableCell>
+                        <TableCell className="text-right text-amber-600">
+                          {formatThaiCurrency(row.pending_amount)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {isOpen ? (
+                            <Badge
+                              variant="outline"
+                              className="border-amber-200 bg-amber-50 text-amber-700 font-normal"
+                            >
+                              รอดำเนินการ
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="border-emerald-200 bg-emerald-50 text-emerald-700 font-normal"
+                            >
+                              จ่ายครบแล้ว
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            asChild
+                            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <Link
+                              href={`/finance-officer/payouts/${row.period_id}`}
+                              title="ดูรายละเอียด"
+                            >
+                              <ArrowRight className="h-4 w-4" />
+                            </Link>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>
-
-      {/* Payouts Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Wallet className="h-5 w-5 text-primary" />
-            รายการจ่ายเงิน
-            <Badge variant="secondary" className="ml-2">
-              {filteredPayouts.length} รายการ
-            </Badge>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[50px]">
-                  <Checkbox
-                    checked={
-                      pendingPayouts.length > 0 &&
-                      pendingPayouts.every((p) => selectedPayouts.includes(p.id))
-                    }
-                    onCheckedChange={handleSelectAll}
-                    disabled={pendingPayouts.length === 0}
-                  />
-                </TableHead>
-                <TableHead>รหัส</TableHead>
-                <TableHead>ผู้รับเงิน</TableHead>
-                <TableHead>ว���ชาชีพ/หน่วยงาน</TableHead>
-                <TableHead>รอบจ่าย</TableHead>
-                <TableHead>บัญชีธนาคาร</TableHead>
-                <TableHead className="text-right">จำนวนเงิน</TableHead>
-                <TableHead>สถานะ</TableHead>
-                <TableHead className="w-[100px]">การดำเนินการ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredPayouts.map((payout) => (
-                <TableRow key={payout.id}>
-                  <TableCell>
-                    {payout.status === "pending" && (
-                      <Checkbox
-                        checked={selectedPayouts.includes(payout.id)}
-                        onCheckedChange={(checked) =>
-                          handleSelectPayout(payout.id, checked as boolean)
-                        }
-                      />
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Link
-                      href={`/finance-officer/payouts/${payout.id}`}
-                      className="font-medium text-primary hover:underline"
-                    >
-                      {payout.id}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="font-medium">{payout.employeeName}</p>
-                      <p className="text-xs text-muted-foreground">{payout.employeeId}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="text-sm">{payout.profession}</p>
-                      <p className="text-xs text-muted-foreground">{payout.department}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell>{payout.period}</TableCell>
-                  <TableCell>
-                    <div>
-                      <p className="text-sm">{payout.bankName}</p>
-                      <p className="text-xs text-muted-foreground">{payout.bankAccount}</p>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-right font-semibold text-green-600">
-                    {formatCurrency(payout.amount)}
-                  </TableCell>
-                  <TableCell>{getStatusBadge(payout.status)}</TableCell>
-                  <TableCell>
-                    {payout.status === "pending" && (
-                      <div className="flex gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                          onClick={() => {
-                            setSelectedPayout(payout)
-                            setShowMarkPaidDialog(true)
-                          }}
-                        >
-                          <CheckCircle2 className="h-4 w-4" />
-                        </Button>
-                        <Dialog open={showCancelDialog && selectedPayout?.id === payout.id} onOpenChange={(open) => {
-                          setShowCancelDialog(open)
-                          if (!open) setSelectedPayout(null)
-                        }}>
-                          <DialogTrigger asChild>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                              onClick={() => setSelectedPayout(payout)}
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </Button>
-                          </DialogTrigger>
-                          <DialogContent>
-                            <DialogHeader>
-                              <DialogTitle className="flex items-center gap-2 text-red-600">
-                                <AlertTriangle className="h-5 w-5" />
-                                ยกเลิกการจ่ายเงิน
-                              </DialogTitle>
-                              <DialogDescription>
-                                คุณกำลังจะยกเลิกการจ่ายเงินให้ {payout.employeeName}
-                                <br />
-                                จำนวนเงิน: {formatCurrency(payout.amount)} บาท
-                              </DialogDescription>
-                            </DialogHeader>
-                            <div className="py-4">
-                              <label className="text-sm font-medium">เหตุผลในการยกเลิก</label>
-                              <Input placeholder="กรุณาระบุเหตุผล..." className="mt-2" />
-                            </div>
-                            <DialogFooter>
-                              <Button variant="outline" onClick={() => setShowCancelDialog(false)}>
-                                ปิด
-                              </Button>
-                              <Button
-                                variant="destructive"
-                                onClick={() => {
-                                  setShowCancelDialog(false)
-                                  setSelectedPayout(null)
-                                }}
-                              >
-                                ยืนยันยกเลิก
-                              </Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
-                      </div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
     </div>
-  )
+  );
 }

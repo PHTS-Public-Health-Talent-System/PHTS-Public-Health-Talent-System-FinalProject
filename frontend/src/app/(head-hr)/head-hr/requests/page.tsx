@@ -1,16 +1,16 @@
-"use client"
+'use client';
 
-import { useMemo, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { useMemo, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -18,7 +18,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from '@/components/ui/table';
 import {
   Dialog,
   DialogContent,
@@ -26,147 +26,198 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Search,
-  Filter,
   CheckCircle2,
   XCircle,
   RefreshCw,
   Clock,
   Eye,
   FileText,
-} from "lucide-react"
-import Link from "next/link"
-import { usePendingApprovals, useProcessAction } from "@/features/request/hooks"
-import { usePendingWithSla } from "@/features/sla/hooks"
-import { mapRequestToFormData } from "@/components/request/hooks/request-form-mapper"
-import type { RequestWithDetails } from "@/types/request.types"
-import { normalizeRateMapping, resolveRateMappingDisplay } from "@/app/(user)/user/request-detail-rate-mapping"
-import { useRateHierarchy } from "@/features/master-data/hooks"
+  AlertTriangle,
+  AlertCircle,
+  MoreHorizontal,
+  type LucideIcon,
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import Link from 'next/link';
+import { usePendingApprovals, useProcessAction } from '@/features/request/hooks';
+import { usePendingWithSla } from '@/features/sla/hooks';
+import { mapRequestToFormData } from '@/features/request/components/hooks/request-form-mapper';
+import type { RequestWithDetails } from '@/types/request.types';
+import {
+  normalizeRateMapping,
+  resolveRateMappingDisplay,
+} from '@/features/request/detail/requestDetail.rateMapping';
+import { useRateHierarchy } from '@/features/master-data/hooks';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+import { formatThaiDate, formatThaiNumber } from '@/shared/utils/thai-locale';
+
+// --- Helpers & Types ---
 
 function getSlaStatusBadge(status: string, remaining: number) {
   switch (status) {
-    case "normal":
+    case 'normal':
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--success))]/10 px-2 py-0.5 text-xs font-medium text-[hsl(var(--success))]">
-          {remaining} วัน
-        </span>
-      )
-    case "warning":
+        <Badge
+          variant="outline"
+          className="bg-emerald-50 text-emerald-700 border-emerald-200 font-normal gap-1"
+        >
+          <Clock className="w-3 h-3" /> {remaining} วัน
+        </Badge>
+      );
+    case 'warning':
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--warning))]/10 px-2 py-0.5 text-xs font-medium text-[hsl(var(--warning))]">
-          {remaining} วัน
-        </span>
-      )
-    case "danger":
+        <Badge
+          variant="outline"
+          className="bg-amber-50 text-amber-700 border-amber-200 font-normal gap-1"
+        >
+          <AlertTriangle className="w-3 h-3" /> เหลือ {remaining} วัน
+        </Badge>
+      );
+    case 'danger':
       return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
-          เกิน {Math.abs(remaining)} วัน
-        </span>
-      )
+        <Badge variant="destructive" className="font-normal gap-1">
+          <AlertCircle className="w-3 h-3" /> เกิน {Math.abs(remaining)} วัน
+        </Badge>
+      );
     default:
-      return null
+      return <span className="text-muted-foreground">-</span>;
   }
 }
 
 type SlaInfo = {
-  request_id: number
-  is_approaching_sla: boolean
-  is_overdue: boolean
-  days_until_sla: number
-  days_overdue: number
-}
+  request_id: number;
+  is_approaching_sla: boolean;
+  is_overdue: boolean;
+  days_until_sla: number;
+  days_overdue: number;
+};
 
 type RequestRow = {
-  id: number
-  requestNo: string
-  name: string
-  position: string
-  department: string
-  groupId: string
-  rateItem: string
-  amount: number
-  submittedDate: string
-  slaStatus: "normal" | "warning" | "danger" | "unknown"
-  slaRemaining: number | null
-  raw: RequestWithDetails
-}
+  id: number;
+  requestNo: string;
+  name: string;
+  position: string;
+  department: string;
+  groupNo: string;
+  itemNo: string;
+  subItemNo?: string;
+  mappingDisplay: string;
+  rateItemHint?: string;
+  amount: number;
+  submittedDate: string;
+  slaStatus: 'normal' | 'warning' | 'danger' | 'unknown';
+  slaRemaining: number | null;
+  raw: RequestWithDetails;
+};
+
+const sanitizeRatePart = (value: unknown): string => {
+  const text = String(value ?? '').trim();
+  if (!text || text === '__NONE__' || text === 'NONE' || text === 'null' || text === 'undefined') {
+    return '-';
+  }
+  return text;
+};
 
 const formatDate = (value?: string | Date | null) => {
-  if (!value) return "-"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return "-"
-  return date.toLocaleDateString("th-TH", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  })
-}
+  return formatThaiDate(value);
+};
+
+// Helper Component for Stats
+type StatCardProps = {
+  title: string;
+  value: number;
+  icon: LucideIcon;
+  colorClass: string;
+  bgClass: string;
+};
+
+const StatCard = ({ title, value, icon: Icon, colorClass, bgClass }: StatCardProps) => (
+  <Card className="border-border shadow-sm">
+    <CardContent className="p-6 flex items-center justify-between">
+      <div>
+        <p className="text-sm font-medium text-muted-foreground">{title}</p>
+        <div className={`text-2xl font-bold mt-1 ${colorClass}`}>{value}</div>
+      </div>
+      <div
+        className={`p-3 rounded-full ${bgClass} ${colorClass.replace('text-', 'bg-').replace('text-', 'bg-').split(' ')[0]}/10`}
+      >
+        <Icon className="h-6 w-6" />
+      </div>
+    </CardContent>
+  </Card>
+);
 
 export default function HeadHRRequestsPage() {
-  const [selectedRequest, setSelectedRequest] = useState<RequestRow | null>(null)
-  const [actionType, setActionType] = useState<"approve" | "reject" | "return" | null>(null)
-  const [comment, setComment] = useState("")
-  const [searchTerm, setSearchTerm] = useState("")
-  const [slaFilter, setSlaFilter] = useState("all")
-  const [groupFilter, setGroupFilter] = useState("all")
-  const [actionError, setActionError] = useState<string | null>(null)
+  const [selectedRequest, setSelectedRequest] = useState<RequestRow | null>(null);
+  const [actionType, setActionType] = useState<'approve' | 'reject' | 'return' | null>(null);
+  const [comment, setComment] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [slaFilter, setSlaFilter] = useState('all');
+  const [groupFilter, setGroupFilter] = useState('all');
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const pendingQuery = usePendingApprovals()
-  const slaQuery = usePendingWithSla()
-  const rateHierarchyQuery = useRateHierarchy()
-  const actionMutation = useProcessAction()
+  const pendingQuery = usePendingApprovals();
+  const slaQuery = usePendingWithSla();
+  const rateHierarchyQuery = useRateHierarchy();
+  const actionMutation = useProcessAction();
 
   const slaMap = useMemo(() => {
-    const map = new Map<number, SlaInfo>()
-    const data = (slaQuery.data as SlaInfo[] | undefined) ?? []
+    const map = new Map<number, SlaInfo>();
+    const data = (slaQuery.data as SlaInfo[] | undefined) ?? [];
     for (const row of data) {
-      map.set(row.request_id, row)
+      map.set(row.request_id, row);
     }
-    return map
-  }, [slaQuery.data])
+    return map;
+  }, [slaQuery.data]);
 
   const rows = useMemo<RequestRow[]>(() => {
-    const pending = (pendingQuery.data ?? []) as RequestWithDetails[]
+    const pending = (pendingQuery.data ?? []) as RequestWithDetails[];
     return pending.map((request) => {
-      const formData = mapRequestToFormData(request)
-      const rateMapping = normalizeRateMapping(request.submission_data ?? null)
+      const formData = mapRequestToFormData(request);
+      const rateMapping = normalizeRateMapping(request.submission_data ?? null);
       const rateDisplay = rateMapping
         ? resolveRateMappingDisplay(rateMapping, rateHierarchyQuery.data)
-        : null
-      const groupLabel = rateDisplay?.groupLabel
-      const criteriaLabel = rateDisplay?.criteriaLabel
-      const name = [formData.title, formData.firstName, formData.lastName]
-        .filter(Boolean)
-        .join(" ")
-        .trim() || request.citizen_id
+        : null;
+      const criteriaLabel = rateDisplay?.criteriaLabel;
+      const subCriteriaLabel = rateDisplay?.subCriteriaLabel;
+      const name =
+        [formData.title, formData.firstName, formData.lastName].filter(Boolean).join(' ').trim() ||
+        request.citizen_id;
       const position =
-        formData.positionName ||
-        (request as { position_name?: string }).position_name ||
-        "-"
+        formData.positionName || (request as { position_name?: string }).position_name || '-';
       const department =
-        formData.subDepartment || formData.department || request.current_department || "-"
-      const groupId = formData.rateMapping?.groupId ?? ""
-      const rateItem = formData.rateMapping?.itemId ?? ""
-      const amount = formData.rateMapping?.amount ?? request.requested_amount ?? 0
-      const displayGroup = groupLabel || (groupId ? `กลุ่มที่ ${groupId}` : "")
-      const displayRateItem = criteriaLabel || (rateItem === "__NONE__" ? "" : rateItem)
-      const requestNo = request.request_no ?? String(request.request_id)
-      const sla = slaMap.get(request.request_id)
-      let slaStatus: RequestRow["slaStatus"] = "unknown"
-      let slaRemaining: number | null = null
+        formData.subDepartment || formData.department || request.current_department || '-';
+      const groupNo = sanitizeRatePart(rateMapping?.groupId ?? formData.rateMapping?.groupId);
+      const itemId = rateMapping?.itemId ?? formData.rateMapping?.itemId;
+      const subItemId = rateMapping?.subItemId ?? formData.rateMapping?.subItemId;
+      const amount = formData.rateMapping?.amount ?? request.requested_amount ?? 0;
+      const itemNo = sanitizeRatePart(itemId);
+      const subItemNo = sanitizeRatePart(subItemId);
+      const mappingDisplay = subItemNo !== '-' ? `${groupNo}/${itemNo}/${subItemNo}` : `${groupNo}/${itemNo}`;
+      const requestNo = request.request_no ?? String(request.request_id);
+      const sla = slaMap.get(request.request_id);
+      let slaStatus: RequestRow['slaStatus'] = 'unknown';
+      let slaRemaining: number | null = null;
       if (sla) {
         if (sla.is_overdue) {
-          slaStatus = "danger"
-          slaRemaining = -Math.abs(sla.days_overdue)
+          slaStatus = 'danger';
+          slaRemaining = -Math.abs(sla.days_overdue);
         } else if (sla.is_approaching_sla) {
-          slaStatus = "warning"
-          slaRemaining = sla.days_until_sla
+          slaStatus = 'warning';
+          slaRemaining = sla.days_until_sla;
         } else {
-          slaStatus = "normal"
-          slaRemaining = sla.days_until_sla
+          slaStatus = 'normal';
+          slaRemaining = sla.days_until_sla;
         }
       }
       return {
@@ -175,371 +226,395 @@ export default function HeadHRRequestsPage() {
         name,
         position,
         department,
-        groupId: displayGroup,
-        rateItem: displayRateItem,
+        groupNo,
+        itemNo,
+        subItemNo: subItemNo === '-' ? undefined : subItemNo,
+        mappingDisplay,
+        rateItemHint: [criteriaLabel, subCriteriaLabel].filter(Boolean).join(' / ') || undefined,
         amount,
         submittedDate: formatDate(request.created_at),
         slaStatus,
         slaRemaining,
         raw: request,
-      }
-    })
-  }, [pendingQuery.data, slaMap, rateHierarchyQuery.data])
+      };
+    });
+  }, [pendingQuery.data, slaMap, rateHierarchyQuery.data]);
 
   const filteredRows = useMemo(() => {
-    const keyword = searchTerm.trim().toLowerCase()
+    const keyword = searchTerm.trim().toLowerCase();
     return rows.filter((row) => {
       const matchesSearch =
         !keyword ||
         row.requestNo.toLowerCase().includes(keyword) ||
-        row.name.toLowerCase().includes(keyword)
+        row.name.toLowerCase().includes(keyword);
       const matchesSla =
-        slaFilter === "all" ||
-        (slaFilter === "normal" && row.slaStatus === "normal") ||
-        (slaFilter === "warning" && row.slaStatus === "warning") ||
-        (slaFilter === "danger" && row.slaStatus === "danger")
-      const matchesGroup =
-        groupFilter === "all" ||
-        (row.groupId && row.groupId === groupFilter)
-      return matchesSearch && matchesSla && matchesGroup
-    })
-  }, [rows, searchTerm, slaFilter, groupFilter])
+        slaFilter === 'all' ||
+        (slaFilter === 'normal' && row.slaStatus === 'normal') ||
+        (slaFilter === 'warning' && row.slaStatus === 'warning') ||
+        (slaFilter === 'danger' && row.slaStatus === 'danger');
+      const matchesGroup = groupFilter === 'all' || row.groupNo === groupFilter;
+      return matchesSearch && matchesSla && matchesGroup;
+    });
+  }, [rows, searchTerm, slaFilter, groupFilter]);
 
   const summaryCounts = useMemo(() => {
-    const base = { total: rows.length, normal: 0, warning: 0, danger: 0 }
+    const base = { total: rows.length, normal: 0, warning: 0, danger: 0 };
     return rows.reduce((acc, row) => {
-      if (row.slaStatus === "normal") acc.normal += 1
-      if (row.slaStatus === "warning") acc.warning += 1
-      if (row.slaStatus === "danger") acc.danger += 1
-      return acc
-    }, base)
-  }, [rows])
+      if (row.slaStatus === 'normal') acc.normal += 1;
+      if (row.slaStatus === 'warning') acc.warning += 1;
+      if (row.slaStatus === 'danger') acc.danger += 1;
+      return acc;
+    }, base);
+  }, [rows]);
 
   const handleAction = async () => {
-    if (!selectedRequest || !actionType) return
-    const trimmed = comment.trim()
-    const isCommentRequired = actionType !== "approve"
+    if (!selectedRequest || !actionType) return;
+    const trimmed = comment.trim();
+    const isCommentRequired = actionType !== 'approve';
     if (isCommentRequired && !trimmed) {
-      setActionError("กรุณาระบุเหตุผลก่อนดำเนินการ")
-      return
+      setActionError('กรุณาระบุเหตุผลก่อนดำเนินการ');
+      return;
     }
-    setActionError(null)
+    setActionError(null);
     const actionMap = {
-      approve: "APPROVE",
-      reject: "REJECT",
-      return: "RETURN",
-    } as const
+      approve: 'APPROVE',
+      reject: 'REJECT',
+      return: 'RETURN',
+    } as const;
     try {
       await actionMutation.mutateAsync({
         id: selectedRequest.id,
         payload: { action: actionMap[actionType], comment: trimmed || undefined },
-      })
-      setSelectedRequest(null)
-      setActionType(null)
-      setComment("")
+      });
+      toast.success('บันทึกผลการพิจารณาเรียบร้อยแล้ว');
+      setSelectedRequest(null);
+      setActionType(null);
+      setComment('');
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "ไม่สามารถดำเนินการได้"
-      setActionError(message)
+      const message = error instanceof Error ? error.message : 'ไม่สามารถดำเนินการได้';
+      toast.error(message);
+      setActionError(message);
     }
-  }
+  };
 
-  const isLoading = pendingQuery.isLoading || slaQuery.isLoading
-  const isError = pendingQuery.isError
+  const isLoading = pendingQuery.isLoading || slaQuery.isLoading;
+  const isError = pendingQuery.isError;
   const errorMessage =
-    pendingQuery.error instanceof Error
-      ? pendingQuery.error.message
-      : "ไม่สามารถโหลดรายการคำขอได้"
+    pendingQuery.error instanceof Error ? pendingQuery.error.message : 'ไม่สามารถโหลดรายการคำขอได้';
 
   return (
-    <div className="p-8">
+    <div className="p-8 space-y-8 pb-20">
       {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-foreground">คำขอรออนุมัติ</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          ตรวจสอบและอนุมัติคำขอ พ.ต.ส. ที่ผ่านการตรวจสอบจากเจ้าหน้าที่แล้ว
+      <div className="flex flex-col gap-2">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">อนุมัติคำขอ (HR)</h1>
+        <p className="text-muted-foreground">
+          ตรวจสอบและอนุมัติคำขอ พ.ต.ส. ที่ผ่านการตรวจสอบเบื้องต้นแล้ว
         </p>
       </div>
 
-      {/* Filters */}
-      <Card className="mb-6 bg-card">
-        <CardContent className="pt-6">
-          <div className="flex flex-wrap items-center gap-4">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="ค้นหาชื่อ, รหัสคำขอ..."
-                className="pl-10 bg-background"
-                value={searchTerm}
-                onChange={(event) => setSearchTerm(event.target.value)}
-              />
-            </div>
-            <Select value={slaFilter} onValueChange={setSlaFilter}>
-              <SelectTrigger className="w-[180px] bg-background">
-                <SelectValue placeholder="สถานะ SLA" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">ทั้งหมด</SelectItem>
-                <SelectItem value="normal">ปกติ</SelectItem>
-                <SelectItem value="warning">ใกล้ครบกำหนด</SelectItem>
-                <SelectItem value="danger">เกินกำหนด</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={groupFilter} onValueChange={setGroupFilter}>
-              <SelectTrigger className="w-[180px] bg-background">
-                <SelectValue placeholder="กลุ่มตำแหน่ง" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">ทั้งหมด</SelectItem>
-                <SelectItem value="1">กลุ่มที่ 1</SelectItem>
-                <SelectItem value="2">กลุ่มที่ 2</SelectItem>
-                <SelectItem value="3">กลุ่มที่ 3</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button variant="outline" className="bg-transparent">
-              <Filter className="mr-2 h-4 w-4" />
-              ตัวกรองเพิ่มเติม
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Summary Cards */}
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card className="bg-card">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">ทั้งหมด</p>
-                <p className="text-2xl font-bold text-foreground">{summaryCounts.total}</p>
-              </div>
-              <div className="rounded-lg bg-secondary p-3">
-                <FileText className="h-5 w-5 text-muted-foreground" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">ปกติ</p>
-                <p className="text-2xl font-bold text-[hsl(var(--success))]">{summaryCounts.normal}</p>
-              </div>
-              <div className="rounded-lg bg-[hsl(var(--success))]/10 p-3">
-                <CheckCircle2 className="h-5 w-5 text-[hsl(var(--success))]" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">ใกล้ครบกำหนด</p>
-                <p className="text-2xl font-bold text-[hsl(var(--warning))]">{summaryCounts.warning}</p>
-              </div>
-              <div className="rounded-lg bg-[hsl(var(--warning))]/10 p-3">
-                <Clock className="h-5 w-5 text-[hsl(var(--warning))]" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="bg-card">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">เกินกำหนด</p>
-                <p className="text-2xl font-bold text-destructive">{summaryCounts.danger}</p>
-              </div>
-              <div className="rounded-lg bg-destructive/10 p-3">
-                <XCircle className="h-5 w-5 text-destructive" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Stats Dashboard */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="ทั้งหมด"
+          value={summaryCounts.total}
+          icon={FileText}
+          colorClass="text-primary"
+          bgClass="bg-primary/10"
+        />
+        <StatCard
+          title="ปกติ (ตามกำหนดเวลา)"
+          value={summaryCounts.normal}
+          icon={CheckCircle2}
+          colorClass="text-emerald-600"
+          bgClass="bg-emerald-500/10"
+        />
+        <StatCard
+          title="ใกล้ครบกำหนด"
+          value={summaryCounts.warning}
+          icon={AlertTriangle}
+          colorClass="text-amber-600"
+          bgClass="bg-amber-500/10"
+        />
+        <StatCard
+          title="เกินกำหนด"
+          value={summaryCounts.danger}
+          icon={XCircle}
+          colorClass="text-destructive"
+          bgClass="bg-destructive/10"
+        />
       </div>
 
-      {/* Requests Table */}
-      <Card className="bg-card">
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold">รายการคำขอ</CardTitle>
+      {/* Main Content */}
+      <Card className="border-border shadow-sm">
+        <CardHeader className="py-4 px-6 border-b bg-muted/10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Clock className="h-5 w-5 text-muted-foreground" />
+              รายการรอดำเนินการ
+            </CardTitle>
+
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="ค้นหาชื่อ, เลขที่คำขอ..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="bg-background pl-9 h-9"
+                />
+              </div>
+              <Select value={slaFilter} onValueChange={setSlaFilter}>
+                <SelectTrigger className="w-full sm:w-[160px] bg-background h-9">
+                  <SelectValue placeholder="สถานะกำหนดเวลา" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทุกสถานะกำหนดเวลา</SelectItem>
+                  <SelectItem value="normal">ปกติ</SelectItem>
+                  <SelectItem value="warning">ใกล้ครบกำหนด</SelectItem>
+                  <SelectItem value="danger">เกินกำหนด</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={groupFilter} onValueChange={setGroupFilter}>
+                <SelectTrigger className="w-full sm:w-[160px] bg-background h-9">
+                  <SelectValue placeholder="กลุ่มตำแหน่ง" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทุกกลุ่มตำแหน่ง</SelectItem>
+                  <SelectItem value="1">กลุ่มที่ 1</SelectItem>
+                  <SelectItem value="2">กลุ่มที่ 2</SelectItem>
+                  <SelectItem value="3">กลุ่มที่ 3</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-0">
           {isError && (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-              {errorMessage}
+            <div className="p-8 text-center text-destructive">
+              <AlertCircle className="mx-auto h-8 w-8 mb-2" />
+              <p>{errorMessage}</p>
             </div>
           )}
-          {isLoading ? (
-            <div className="rounded-lg border border-border bg-secondary/30 px-4 py-6 text-center text-sm text-muted-foreground">
-              กำลังโหลดรายการคำขอ...
-            </div>
-          ) : (
+
+          <div className="relative overflow-x-auto">
             <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>รหัสคำขอ</TableHead>
-                <TableHead>ชื่อ-สกุล</TableHead>
-                <TableHead>ตำแหน่ง</TableHead>
-                <TableHead>กลุ่มงาน</TableHead>
-                <TableHead>กลุ่ม</TableHead>
-                <TableHead className="text-right">จำนวนเงิน</TableHead>
-                <TableHead>SLA</TableHead>
-                <TableHead className="text-right">การดำเนินการ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredRows.map((request) => (
-                <TableRow key={request.id}>
-                  <TableCell className="font-mono text-sm">{request.requestNo}</TableCell>
-                  <TableCell className="font-medium">{request.name}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{request.position || "-"}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{request.department || "-"}</TableCell>
-                  <TableCell className="text-sm">
-                    <div>{request.groupId || "-"}</div>
-                  </TableCell>
-                  <TableCell className="text-right font-semibold">
-                    {request.amount.toLocaleString()} บาท
-                  </TableCell>
-                  <TableCell>
-                    {request.slaStatus === "unknown" || request.slaRemaining === null
-                      ? "-"
-                      : getSlaStatusBadge(request.slaStatus, request.slaRemaining)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-2">
-                      <Link href={`/head-hr/requests/${request.id}`}>
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </Link>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-[hsl(var(--success))] hover:text-[hsl(var(--success))]/80 hover:bg-[hsl(var(--success))]/10"
-                        onClick={() => {
-                          setSelectedRequest(request)
-                          setActionType("approve")
-                          setActionError(null)
-                        }}
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-[hsl(var(--warning))] hover:text-[hsl(var(--warning))]/80 hover:bg-[hsl(var(--warning))]/10"
-                        onClick={() => {
-                          setSelectedRequest(request)
-                          setActionType("return")
-                          setActionError(null)
-                        }}
-                      >
-                        <RefreshCw className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive/80 hover:bg-destructive/10"
-                        onClick={() => {
-                          setSelectedRequest(request)
-                          setActionType("reject")
-                          setActionError(null)
-                        }}
-                      >
-                        <XCircle className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+              <TableHeader className="bg-muted/40">
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="font-semibold w-[150px]">เลขที่คำขอ</TableHead>
+                  <TableHead className="font-semibold min-w-[200px]">ชื่อ-สกุล / ตำแหน่ง</TableHead>
+                  <TableHead className="font-semibold">หน่วยงาน</TableHead>
+                  <TableHead className="font-semibold text-center">กลุ่ม/ข้อ</TableHead>
+                  <TableHead className="font-semibold text-right">อัตรา (บาท)</TableHead>
+                  <TableHead className="font-semibold text-center">กำหนดเวลา</TableHead>
+                  <TableHead className="font-semibold text-right w-[140px]">จัดการ</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          )}
-          {!isLoading && !isError && filteredRows.length === 0 && (
-            <div className="py-10 text-center text-sm text-muted-foreground">
-              ไม่พบรายการคำขอ
-            </div>
-          )}
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                      กำลังโหลดข้อมูล...
+                    </TableCell>
+                  </TableRow>
+                ) : filteredRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                      ไม่พบรายการคำขอ
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredRows.map((request) => (
+                    <TableRow
+                      key={request.id}
+                      className="group hover:bg-muted/30 border-border transition-colors"
+                    >
+                      <TableCell className="font-mono text-sm">{request.requestNo}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium text-foreground">{request.name}</span>
+                          <span
+                            className="text-xs text-muted-foreground truncate max-w-[200px]"
+                            title={request.position}
+                          >
+                            {request.position}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {request.department}
+                      </TableCell>
+                      <TableCell className="text-center text-sm">
+                        <Badge
+                          variant="secondary"
+                          className="font-normal"
+                          title={request.rateItemHint}
+                        >
+                          {request.mappingDisplay}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums text-foreground">
+                        {formatThaiNumber(request.amount)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {request.slaStatus === 'unknown' || request.slaRemaining === null ? (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        ) : (
+                          getSlaStatusBadge(request.slaStatus, request.slaRemaining)
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Link href={`/head-hr/requests/${request.id}`}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="text-emerald-600 focus:text-emerald-700 cursor-pointer"
+                                onClick={() => {
+                                  setSelectedRequest(request);
+                                  setActionType('approve');
+                                  setActionError(null);
+                                }}
+                              >
+                                <CheckCircle2 className="mr-2 h-4 w-4" /> อนุมัติ
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-amber-600 focus:text-amber-700 cursor-pointer"
+                                onClick={() => {
+                                  setSelectedRequest(request);
+                                  setActionType('return');
+                                  setActionError(null);
+                                }}
+                              >
+                                <RefreshCw className="mr-2 h-4 w-4" /> ส่งกลับแก้ไข
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive cursor-pointer"
+                                onClick={() => {
+                                  setSelectedRequest(request);
+                                  setActionType('reject');
+                                  setActionError(null);
+                                }}
+                              >
+                                <XCircle className="mr-2 h-4 w-4" /> ไม่อนุมัติ
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="flex justify-end border-t bg-muted/5 px-4 py-3 text-xs text-muted-foreground">
+            แสดง {filteredRows.length} รายการ
+          </div>
         </CardContent>
       </Card>
 
       {/* Action Dialog */}
-      <Dialog open={!!selectedRequest && !!actionType} onOpenChange={() => {
-        setSelectedRequest(null)
-        setActionType(null)
-        setComment("")
-      }}>
-        <DialogContent>
+      <Dialog
+        open={!!selectedRequest && !!actionType}
+        onOpenChange={() => {
+          setSelectedRequest(null);
+          setActionType(null);
+          setComment('');
+          setActionError(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {actionType === "approve" && "อนุมัติคำขอ"}
-              {actionType === "reject" && "ไม่อนุมัติคำขอ"}
-              {actionType === "return" && "ส่งกลับแก้ไข"}
+            <DialogTitle
+              className={`flex items-center gap-2 ${
+                actionType === 'approve'
+                  ? 'text-emerald-600'
+                  : actionType === 'return'
+                    ? 'text-amber-600'
+                    : 'text-destructive'
+              }`}
+            >
+              {actionType === 'approve' && <CheckCircle2 className="h-5 w-5" />}
+              {actionType === 'reject' && <XCircle className="h-5 w-5" />}
+              {actionType === 'return' && <RefreshCw className="h-5 w-5" />}
+
+              {actionType === 'approve' && 'ยืนยันการอนุมัติ'}
+              {actionType === 'reject' && 'ยืนยันการไม่อนุมัติ'}
+              {actionType === 'return' && 'ยืนยันการส่งกลับแก้ไข'}
             </DialogTitle>
             <DialogDescription>
               {selectedRequest && (
-                <span>
-                  คำขอ {selectedRequest.id} - {selectedRequest.name}
-                </span>
+                <div className="mt-3 rounded-md bg-secondary/50 p-3 text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">คำขอเลขที่:</span>
+                    <span className="font-mono font-medium">{selectedRequest.requestNo}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ผู้ยื่น:</span>
+                    <span className="font-medium">{selectedRequest.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">จำนวนเงิน:</span>
+                    <span className="font-medium">
+                      {formatThaiNumber(selectedRequest.amount)} บาท
+                    </span>
+                  </div>
+                </div>
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            {selectedRequest && (
-              <div className="rounded-lg border border-border bg-secondary/30 p-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">ตำแหน่ง:</span>
-                    <p className="font-medium">{selectedRequest.position || "-"}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">กลุ่มงาน:</span>
-                    <p className="font-medium">{selectedRequest.department || "-"}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">กลุ่ม/อัตรา:</span>
-                    <p className="font-medium">
-                      {selectedRequest.groupId || "-"}
-                      {selectedRequest.rateItem ? ` - ข้อ ${selectedRequest.rateItem}` : ""}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">จำนวนเงิน:</span>
-                    <p className="font-medium">{selectedRequest.amount.toLocaleString()} บาท</p>
-                  </div>
-                </div>
-              </div>
-            )}
-            <div>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
-                {actionType === "approve" ? "หมายเหตุ (ไม่บังคับ)" : "เหตุผล"}
+                {actionType === 'approve' ? 'หมายเหตุ (ไม่บังคับ)' : 'เหตุผลการดำเนินการ'}
+                {actionType !== 'approve' && <span className="text-destructive ml-1">*</span>}
               </label>
               <Textarea
                 placeholder={
-                  actionType === "approve"
-                    ? "ระบุหมายเหตุเพิ่มเติม (ถ้ามี)"
-                    : actionType === "reject"
-                    ? "ระบุเหตุผลที่ไม่อนุมัติ"
-                    : "ระบุสิ่งที่ต้องแก้ไข"
+                  actionType === 'approve'
+                    ? 'ระบุหมายเหตุเพิ่มเติม (ถ้ามี)'
+                    : actionType === 'reject'
+                      ? 'โปรดระบุเหตุผลที่ไม่อนุมัติ...'
+                      : 'โปรดระบุสิ่งที่ต้องแก้ไข...'
                 }
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                className="mt-2"
+                className="resize-none min-h-[100px]"
               />
               {actionError && (
-                <p className="mt-2 text-sm text-destructive">{actionError}</p>
+                <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {actionError}
+                </p>
               )}
             </div>
           </div>
+
           <DialogFooter>
             <Button
               variant="outline"
               onClick={() => {
-                setSelectedRequest(null)
-                setActionType(null)
-                setComment("")
+                setSelectedRequest(null);
+                setActionType(null);
+                setComment('');
               }}
             >
               ยกเลิก
@@ -548,20 +623,18 @@ export default function HeadHRRequestsPage() {
               onClick={handleAction}
               disabled={actionMutation.isPending}
               className={
-                actionType === "approve"
-                  ? "bg-[hsl(var(--success))] hover:bg-[hsl(var(--success))]/90"
-                  : actionType === "reject"
-                  ? "bg-destructive hover:bg-destructive/90"
-                  : "bg-[hsl(var(--warning))] hover:bg-[hsl(var(--warning))]/90 text-foreground"
+                actionType === 'approve'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : actionType === 'reject'
+                    ? 'bg-destructive hover:bg-destructive/90 text-white'
+                    : 'bg-amber-500 hover:bg-amber-600 text-white'
               }
             >
-              {actionType === "approve" && "อนุมัติ"}
-              {actionType === "reject" && "ไม่อนุมัติ"}
-              {actionType === "return" && "ส่งกลับแก้ไข"}
+              {actionMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยัน'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

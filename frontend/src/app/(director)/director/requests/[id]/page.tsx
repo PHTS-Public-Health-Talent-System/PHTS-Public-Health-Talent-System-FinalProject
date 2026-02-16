@@ -1,534 +1,474 @@
-"use client"
+'use client';
 
-import { useState } from "react"
-import { use } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Separator } from "@/components/ui/separator"
+import { use, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
-import {
-  ArrowLeft,
+  Briefcase,
+  Building2,
   CheckCircle2,
-  XCircle,
-  RotateCcw,
-  Clock,
-  User,
-  Building,
-  Calendar,
+  CreditCard,
+  ExternalLink,
+  Eye,
   FileText,
-  Award,
-  Banknote,
-} from "lucide-react"
-import Link from "next/link"
+  RefreshCw,
+  User,
+  XCircle,
+} from 'lucide-react';
+import type { RequestWithDetails } from '@/types/request.types';
+import { toRequestDisplayId } from '@/shared/utils/public-id';
+import { useRequestDetail, useProcessAction } from '@/features/request/hooks';
+import { useRateHierarchy } from '@/features/master-data/hooks';
+import { RequestDetailPageShell } from '@/features/request/detail/components/RequestDetailPageShell';
+import { ApprovalTimelineCard } from '@/features/request/detail/components/ApprovalTimelineCard';
+import { SectionHeader, InfoItem } from '@/features/request/detail/requestDetail.ui';
+import { AttachmentPreviewDialog } from '@/components/common/attachment-preview-dialog';
+import { getAttachmentLabel } from '@/features/request/detail/requestDetail.attachmentsLabel';
+import { buildAttachmentUrl, isPreviewableFile } from '@/features/request/detail/requestDetail.attachments';
+import {
+  isEmptyRateMapping,
+  normalizeRateMapping,
+  resolveRateMappingDisplay,
+} from '@/features/request/detail/requestDetail.rateMapping';
+import { formatThaiDate, formatThaiNumber } from '@/shared/utils/thai-locale';
 
-const mockRequest = {
-  id: "REQ-2568-001234",
-  status: "pending_director",
-  createdAt: "20 ม.ค. 68",
-  submittedAt: "21 ม.ค. 68",
-  currentStep: 6,
-  
-  // ข้อมูลผู้ขอ
-  requester: {
-    name: "นางสาวสมหญิง ใจดี",
-    citizenId: "1-1234-56789-01-2",
-    position: "พยาบาลวิชาชีพชำนาญการ",
-    level: "ชำนาญการ",
-    department: "หอผู้ป่วยหนัก (ICU)",
-    division: "กลุ่มการพยาบาล",
-  },
+const parseSubmission = (value: RequestWithDetails['submission_data']) => {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value);
+    } catch {
+      return {};
+    }
+  }
+  return value;
+};
 
-  // ข้อมูลใบอนุญาต
-  license: {
-    number: "พ.ว. 123456",
-    type: "ใบอนุญาตประกอบวิชาชีพการพยาบาลและการผดุงครรภ์ชั้นหนึ่ง",
-    issueDate: "15 มี.ค. 65",
-    expiryDate: "14 มี.ค. 70",
-  },
+const getSubmissionString = (
+  submission: Record<string, unknown>,
+  keys: string[],
+): string | undefined => {
+  for (const key of keys) {
+    const value = submission[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+};
 
-  // ข้อมูลคำขอ
-  period: {
-    month: "สิงหาคม",
-    year: "2568",
-    workDays: 22,
-    leaveDays: 2,
-    effectiveDays: 20,
-  },
+const PERSONNEL_TYPE_LABELS: Record<string, string> = {
+  CIVIL_SERVANT: 'ข้าราชการ',
+  GOV_EMPLOYEE: 'พนักงานราชการ',
+  PH_EMPLOYEE: 'พนักงานกระทรวงสาธารณสุข',
+  TEMP_EMPLOYEE: 'ลูกจ้างชั่วคราว',
+};
 
-  // การคำนวณเงิน
-  calculation: {
-    baseRate: 600,
-    dailyAmount: 600,
-    workDays: 20,
-    totalAmount: 12000,
-    deductions: 0,
-    netAmount: 12000,
-  },
+const REQUEST_TYPE_LABELS: Record<string, string> = {
+  NEW_ENTRY: 'ขอรับสิทธิ พ.ต.ส. ครั้งแรก',
+  EDIT_INFO_SAME_RATE: 'แก้ไขข้อมูล (อัตราเดิม)',
+  EDIT_INFO_NEW_RATE: 'แก้ไขข้อมูล (อัตราใหม่)',
+};
 
-  // ข้อมูลบัญชี
-  bankAccount: {
-    bank: "ธนาคารกรุงไทย",
-    accountNumber: "123-4-56789-0",
-    accountName: "นางสาวสมหญิง ใจดี",
-  },
+const WORK_ATTRIBUTE_LABELS: Record<string, string> = {
+  operation: 'ปฏิบัติการ',
+  planning: 'วางแผน',
+  coordination: 'ประสานงาน',
+  service: 'ให้บริการ',
+};
 
-  // ประวัติการอนุมัติ
-  approvalHistory: [
-    {
-      step: 1,
-      role: "หัวหน้าหอผู้ป่วย",
-      name: "นางสาววิภา รักษาการ",
-      action: "อนุมัติ",
-      date: "22 ม.ค. 68 09:30",
-      comment: "",
-    },
-    {
-      step: 2,
-      role: "หัวหน้ากลุ่มการพยาบาล",
-      name: "นางมณี ผู้จัดการ",
-      action: "อนุมัติ",
-      date: "23 ม.ค. 68 11:15",
-      comment: "",
-    },
-    {
-      step: 3,
-      role: "เจ้าหน้าที่ พ.ต.ส.",
-      name: "นายสมศักดิ์ ตรวจสอบ",
-      action: "อนุมัติ",
-      date: "24 ม.ค. 68 14:20",
-      comment: "ตรวจสอบข้อมูลถูกต้อง",
-    },
-    {
-      step: 4,
-      role: "หัวหน้างาน HR",
-      name: "นางสุดา บริหาร",
-      action: "อนุมัติ",
-      date: "25 ม.ค. 68 10:45",
-      comment: "",
-    },
-    {
-      step: 5,
-      role: "หัวหน้าการเงิน",
-      name: "นายการเงิน ดูแล",
-      action: "อนุมัติ",
-      date: "27 ม.ค. 68 09:00",
-      comment: "ตรวจสอบงบประมาณแล้ว",
-    },
-    {
-      step: 6,
-      role: "ผู้อำนวยการ",
-      name: "รอการอนุมัติ",
-      action: "pending",
-      date: "",
-      comment: "",
-    },
-  ],
-}
+export default function DirectorRequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const router = useRouter();
+  const { data: request, isLoading } = useRequestDetail(id);
+  const { data: rateHierarchy } = useRateHierarchy();
+  const processAction = useProcessAction();
 
-export default function DirectorRequestDetailPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
-}) {
-  const resolvedParams = use(params)
-  const [showApproveDialog, setShowApproveDialog] = useState(false)
-  const [showRejectDialog, setShowRejectDialog] = useState(false)
-  const [showReturnDialog, setShowReturnDialog] = useState(false)
-  const [rejectReason, setRejectReason] = useState("")
-  const [returnReason, setReturnReason] = useState("")
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewName, setPreviewName] = useState('');
+  const [actionType, setActionType] = useState<'approve' | 'reject' | 'return' | null>(null);
+  const [comment, setComment] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const request = mockRequest
+  const submission = useMemo(
+    () => parseSubmission(request?.submission_data) as Record<string, unknown>,
+    [request?.submission_data],
+  );
+  const submissionTitle = getSubmissionString(submission, ['title']);
+  const submissionFirstName = getSubmissionString(submission, ['first_name', 'firstName']);
+  const submissionLastName = getSubmissionString(submission, ['last_name', 'lastName']);
+  const submissionPositionName = getSubmissionString(submission, ['position_name', 'positionName']);
+  const submissionDepartment = getSubmissionString(submission, ['department']);
+  const submissionSubDepartment = getSubmissionString(submission, [
+    'sub_department',
+    'subDepartment',
+  ]);
+  const submissionPositionNumber = getSubmissionString(submission, [
+    'position_number',
+    'positionNumber',
+  ]);
+
+  const requesterName = useMemo(() => {
+    const firstName = submissionFirstName ?? request?.requester?.first_name;
+    const lastName = submissionLastName ?? request?.requester?.last_name;
+    return [submissionTitle, firstName, lastName].filter(Boolean).join(' ').trim() || '-';
+  }, [request?.requester, submissionTitle, submissionFirstName, submissionLastName]);
+
+  const positionName = submissionPositionName ?? request?.requester?.position ?? '-';
+  const department = submissionDepartment ?? request?.current_department ?? '-';
+  const subDepartment = submissionSubDepartment ?? '-';
+  const displayId = request
+    ? (request.request_no ?? toRequestDisplayId(request.request_id, request.created_at))
+    : id;
+
+  const rateMapping = useMemo(
+    () => normalizeRateMapping(request?.submission_data ?? null),
+    [request?.submission_data],
+  );
+  const rateDisplay = useMemo(() => {
+    if (!rateMapping) return null;
+    return resolveRateMappingDisplay(rateMapping, rateHierarchy);
+  }, [rateMapping, rateHierarchy]);
+  const rateAmount = rateMapping?.amount ?? request?.requested_amount ?? null;
+  const isRateMappingEmpty = useMemo(() => isEmptyRateMapping(rateMapping), [rateMapping]);
+  const effectiveDateLabel = request?.effective_date
+    ? formatThaiDate(request.effective_date, { month: 'long' })
+    : null;
+
+  const attachments = request?.attachments ?? [];
+  const personnelTypeLabel = request?.personnel_type
+    ? PERSONNEL_TYPE_LABELS[request.personnel_type] || request.personnel_type
+    : '-';
+  const requestTypeLabel = request?.request_type
+    ? REQUEST_TYPE_LABELS[request.request_type] || request.request_type
+    : '-';
+  const mainDuty = request?.main_duty || '-';
+  const workAttributes = request?.work_attributes
+    ? Object.entries(request.work_attributes)
+        .filter(([, enabled]) => Boolean(enabled))
+        .map(([key]) => WORK_ATTRIBUTE_LABELS[key] || key)
+    : [];
+
+  const canAct = request?.status === 'PENDING' && request?.current_step === 6;
+
+  const handlePreview = (url: string, name: string) => {
+    setPreviewUrl(url);
+    setPreviewName(name);
+    setPreviewOpen(true);
+  };
+
+  const handleAction = async () => {
+    if (!request || !actionType) return;
+    const trimmed = comment.trim();
+    if (actionType !== 'approve' && !trimmed) {
+      setActionError('กรุณาระบุเหตุผลก่อนดำเนินการ');
+      return;
+    }
+    setActionError(null);
+    const actionMap = {
+      approve: 'APPROVE',
+      reject: 'REJECT',
+      return: 'RETURN',
+    } as const;
+
+    try {
+      await processAction.mutateAsync({
+        id: request.request_id,
+        payload: { action: actionMap[actionType], comment: trimmed || undefined },
+      });
+      toast.success('ดำเนินการคำขอเรียบร้อย');
+      setActionType(null);
+      setComment('');
+      router.push('/director/requests');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'เกิดข้อผิดพลาด';
+      setActionError(message);
+    }
+  };
 
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Link href="/director/requests">
-            <Button variant="ghost" size="icon">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold text-foreground">{resolvedParams.id}</h1>
-              <Badge variant="secondary" className="bg-purple-100 text-purple-700">
-                รอ Director อนุมัติ
-              </Badge>
-            </div>
-            <p className="mt-1 text-muted-foreground">
-              ขั้นตอนที่ 6 - การอนุมัติขั้นสุดท้าย
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            className="text-amber-600 border-amber-600 hover:bg-amber-50"
-            onClick={() => setShowReturnDialog(true)}
-          >
-            <RotateCcw className="mr-2 h-4 w-4" />
-            ส่งกลับแก้ไข
-          </Button>
-          <Button
-            variant="outline"
-            className="text-red-600 border-red-600 hover:bg-red-50"
-            onClick={() => setShowRejectDialog(true)}
-          >
-            <XCircle className="mr-2 h-4 w-4" />
-            ไม่อนุมัติ
-          </Button>
-          <Button
-            className="bg-green-600 hover:bg-green-700"
-            onClick={() => setShowApproveDialog(true)}
-          >
-            <CheckCircle2 className="mr-2 h-4 w-4" />
-            อนุมัติ
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Main Content */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Requester Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <User className="h-5 w-5" />
-                ข้อมูลผู้ขอ
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="text-sm text-muted-foreground">ชื่อ-นามสกุล</label>
-                  <p className="font-medium">{request.requester.name}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">เลขประจำตัวประชาชน</label>
-                  <p className="font-medium">{request.requester.citizenId}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">ตำแหน่ง</label>
-                  <p className="font-medium">{request.requester.position}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">ระดับ</label>
-                  <p className="font-medium">{request.requester.level}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">หน่วยงาน</label>
-                  <p className="font-medium">{request.requester.department}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">กลุ่มงาน</label>
-                  <p className="font-medium">{request.requester.division}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* License Info */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Award className="h-5 w-5" />
-                ข้อมูลใบอนุญาต
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="text-sm text-muted-foreground">เลขใบอนุญาต</label>
-                  <p className="font-medium">{request.license.number}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">ประเภท</label>
-                  <p className="font-medium">{request.license.type}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">วันที่ออก</label>
-                  <p className="font-medium">{request.license.issueDate}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">วันหมดอายุ</label>
-                  <p className="font-medium">{request.license.expiryDate}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Calculation */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Banknote className="h-5 w-5" />
-                รายละเอียดการคำนวณ
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div>
-                    <label className="text-sm text-muted-foreground">เดือนที่ขอ</label>
-                    <p className="font-medium">{request.period.month} {request.period.year}</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">วันทำงาน</label>
-                    <p className="font-medium">{request.period.workDays} วัน</p>
-                  </div>
-                  <div>
-                    <label className="text-sm text-muted-foreground">วันลา</label>
-                    <p className="font-medium">{request.period.leaveDays} วัน</p>
-                  </div>
-                </div>
-
-                <Separator />
-
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">อัตราเงินต่อวัน</span>
-                    <span>{request.calculation.dailyAmount.toLocaleString()} บาท</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">วันที่มีสิทธิ์</span>
-                    <span>{request.period.effectiveDays} วัน</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">รวมก่อนหักลดหย่อน</span>
-                    <span>{request.calculation.totalAmount.toLocaleString()} บาท</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">หักลดหย่อน</span>
-                    <span>-{request.calculation.deductions.toLocaleString()} บาท</span>
-                  </div>
-                  <Separator />
-                  <div className="flex justify-between text-lg font-bold">
-                    <span>ยอดสุทธิ</span>
-                    <span className="text-green-600">
-                      {request.calculation.netAmount.toLocaleString()} บาท
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Bank Account */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building className="h-5 w-5" />
-                ข้อมูลบัญชีธนาคาร
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-4 md:grid-cols-3">
-                <div>
-                  <label className="text-sm text-muted-foreground">ธนาคาร</label>
-                  <p className="font-medium">{request.bankAccount.bank}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">เลขบัญชี</label>
-                  <p className="font-medium font-mono">{request.bankAccount.accountNumber}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-muted-foreground">ชื่อบัญชี</label>
-                  <p className="font-medium">{request.bankAccount.accountName}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Approval History Sidebar */}
-        <div>
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="h-5 w-5" />
-                ประวัติการอนุมัติ
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {request.approvalHistory.map((history, index) => (
-                  <div
-                    key={index}
-                    className={`relative pl-6 pb-4 ${
-                      index < request.approvalHistory.length - 1 ? "border-l-2 border-border" : ""
-                    }`}
-                  >
-                    <div
-                      className={`absolute -left-2 top-0 h-4 w-4 rounded-full ${
-                        history.action === "อนุมัติ"
-                          ? "bg-green-500"
-                          : history.action === "pending"
-                          ? "bg-purple-500 animate-pulse"
-                          : "bg-gray-300"
-                      }`}
-                    />
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-muted-foreground">
-                          Step {history.step}
-                        </span>
-                        {history.action === "อนุมัติ" && (
-                          <Badge variant="outline" className="text-green-600 text-xs">
-                            อนุมัติแล้ว
-                          </Badge>
-                        )}
-                        {history.action === "pending" && (
-                          <Badge variant="secondary" className="text-purple-600 text-xs">
-                            รอดำเนินการ
-                          </Badge>
-                        )}
-                      </div>
-                      <p className="font-medium text-sm">{history.role}</p>
-                      <p className="text-sm text-muted-foreground">{history.name}</p>
-                      {history.date && (
-                        <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Calendar className="h-3 w-3" />
-                          {history.date}
-                        </div>
-                      )}
-                      {history.comment && (
-                        <p className="text-xs text-muted-foreground italic">
-                          &quot;{history.comment}&quot;
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Request Timeline */}
-          <Card className="mt-6">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Clock className="h-5 w-5" />
-                ไทม์ไลน์
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">สร้างคำขอ</span>
-                  <span>{request.createdAt}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">ส่งคำขอ</span>
-                  <span>{request.submittedAt}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">ถึง Director</span>
-                  <span>28 ม.ค. 68</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between font-medium">
-                  <span>รอดำเนินการ</span>
-                  <span className="text-purple-600">1 วัน</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-
-      {/* Approve Dialog */}
-      <Dialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ยืนยันการอนุมัติ</DialogTitle>
-            <DialogDescription>
-              คุณต้องการอนุมัติคำขอเลขที่ {resolvedParams.id} จำนวน{" "}
-              {request.calculation.netAmount.toLocaleString()} บาท หรือไม่?
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowApproveDialog(false)}>
-              ยกเลิก
-            </Button>
-            <Button className="bg-green-600 hover:bg-green-700">
+    <RequestDetailPageShell
+      state={isLoading ? 'loading' : request ? 'ready' : 'notFound'}
+      backHref="/director/requests"
+      backLabel="รายการคำขอ"
+      displayId={displayId}
+      status={request?.status}
+      currentStep={request?.current_step ?? null}
+      createdAt={request?.created_at ?? null}
+      headerActions={
+        request ? (
+          <>
+            <Button
+              size="sm"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
+              disabled={!canAct || processAction.isPending}
+              onClick={() => setActionType('approve')}
+            >
               <CheckCircle2 className="mr-2 h-4 w-4" />
-              ยืนยันอนุมัติ
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Reject Dialog */}
-      <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ไม่อนุมัติคำขอ</DialogTitle>
-            <DialogDescription>
-              กรุณาระบุเหตุผลในการไม่อนุมัติคำขอ
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Textarea
-              placeholder="ระบุเหตุผล..."
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              rows={4}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRejectDialog(false)}>
-              ยกเลิก
-            </Button>
-            <Button variant="destructive" disabled={!rejectReason.trim()}>
-              <XCircle className="mr-2 h-4 w-4" />
-              ยืนยันไม่อนุมัติ
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Return Dialog */}
-      <Dialog open={showReturnDialog} onOpenChange={setShowReturnDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ส่งกลับแก้ไข</DialogTitle>
-            <DialogDescription>
-              กรุณาระบุสิ่งที่ต้องแก้ไข
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Textarea
-              placeholder="ระบุสิ่งที่ต้องแก้ไข..."
-              value={returnReason}
-              onChange={(e) => setReturnReason(e.target.value)}
-              rows={4}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowReturnDialog(false)}>
-              ยกเลิก
+              อนุมัติ
             </Button>
             <Button
-              className="bg-amber-600 hover:bg-amber-700"
-              disabled={!returnReason.trim()}
+              variant="outline"
+              size="sm"
+              disabled={!canAct || processAction.isPending}
+              onClick={() => setActionType('return')}
             >
-              <RotateCcw className="mr-2 h-4 w-4" />
+              <RefreshCw className="mr-2 h-4 w-4" />
               ส่งกลับแก้ไข
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  )
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+              disabled={!canAct || processAction.isPending}
+              onClick={() => setActionType('reject')}
+            >
+              <XCircle className="mr-2 h-4 w-4" />
+              ไม่อนุมัติ
+            </Button>
+          </>
+        ) : null
+      }
+      left={
+        request ? (
+          <>
+            <Card className="scroll-mt-20 shadow-sm transition-all duration-300 border-border/60">
+              <CardContent className="p-6">
+                <SectionHeader title="ข้อมูลผู้ยื่นคำขอ" icon={User} />
+                <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-6 gap-x-4">
+                  <InfoItem label="ชื่อ-นามสกุล" value={requesterName} icon={User} className="sm:col-span-2" />
+                  <InfoItem label="เลขประจำตัวประชาชน" value={request.citizen_id ?? '-'} />
+                  <div className="col-span-full border-t border-border/50 my-2"></div>
+                  <InfoItem label="ตำแหน่ง" value={positionName} icon={Briefcase} className="sm:col-span-2" />
+                  <InfoItem
+                    label="เลขที่ตำแหน่ง"
+                    value={submissionPositionNumber || request.current_position_number || '-'}
+                  />
+                  <InfoItem label="กลุ่มงาน" value={department} icon={Building2} />
+                  <InfoItem label="หน่วยงาน" value={subDepartment} />
+                </dl>
+              </CardContent>
+            </Card>
+
+            <Card className="scroll-mt-20 shadow-sm transition-all duration-300 border-border/60">
+              <CardContent className="p-6">
+                <SectionHeader title="รายละเอียดสิทธิ พ.ต.ส." icon={CreditCard} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4 mb-6">
+                  <InfoItem label="ประเภทคำขอ" value={requestTypeLabel} className="sm:col-span-2" />
+                  <InfoItem label="ประเภทบุคลากร" value={personnelTypeLabel} />
+                  <InfoItem label="วันที่เริ่มมีผล" value={effectiveDateLabel || '-'} />
+                  <InfoItem label="งานที่ได้รับมอบหมาย" value={mainDuty} className="sm:col-span-2" />
+                  <InfoItem
+                    label="ลักษณะงาน"
+                    value={workAttributes.length > 0 ? workAttributes.join(', ') : '-'}
+                    className="sm:col-span-2"
+                  />
+                </div>
+
+                <div className="bg-muted/30 rounded-lg p-5 border border-border/50">
+                  <h4 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
+                    <span className="w-1 h-4 bg-primary rounded-full"></span>
+                    ผลการประเมินสิทธิ พ.ต.ส.
+                  </h4>
+
+                  {isRateMappingEmpty ? (
+                    <div className="text-sm text-muted-foreground text-center py-4 italic">
+                      ยังไม่มีผลการประเมินสิทธิ
+                    </div>
+                  ) : (
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-4">
+                      <InfoItem label="วิชาชีพ" value={rateDisplay?.professionLabel || '-'} />
+                      <InfoItem label="กลุ่ม" value={rateDisplay?.groupLabel || '-'} />
+                      <InfoItem
+                        label="เงื่อนไขหลัก"
+                        value={rateDisplay?.criteriaLabel || '-'}
+                        className="sm:col-span-2"
+                      />
+                      <InfoItem
+                        label="เงื่อนไขย่อย"
+                        value={rateDisplay?.subCriteriaLabel || '-'}
+                        className="sm:col-span-2"
+                      />
+
+                      <div className="sm:col-span-2 mt-2 pt-4 border-t border-border/50 flex justify-between items-center">
+                        <span className="text-sm font-medium">อัตราเงินตามสิทธิ</span>
+                        <span className="text-lg font-bold text-primary">
+                          {rateAmount !== null && rateAmount !== undefined
+                            ? formatThaiNumber(Number(rateAmount))
+                            : '-'}
+                          <span className="text-sm font-normal text-muted-foreground ml-1">
+                            บาท/เดือน
+                          </span>
+                        </span>
+                      </div>
+                    </dl>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="scroll-mt-20 shadow-sm transition-all duration-300 border-border/60">
+              <CardContent className="p-6">
+                <SectionHeader title={`ไฟล์แนบ (${attachments.length})`} icon={FileText} />
+                {attachments.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground bg-muted/20 rounded-lg border border-dashed">
+                    <FileText className="h-8 w-8 mb-2 opacity-20" />
+                    <p className="text-sm">ไม่มีไฟล์เอกสารแนบ</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {attachments.map((file) => {
+                      const fileUrl = buildAttachmentUrl(file.file_path);
+                      const previewable = isPreviewableFile(file.file_name);
+                      return (
+                        <div
+                          key={file.attachment_id}
+                          className="group relative flex items-start gap-3 p-3 rounded-lg border border-border bg-card hover:bg-muted/30 hover:border-primary/30 transition-all duration-200"
+                        >
+                          <div className="h-10 w-10 shrink-0 rounded bg-primary/10 flex items-center justify-center">
+                            <FileText className="h-5 w-5 text-primary" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate pr-6" title={file.file_name}>
+                              {file.file_name}
+                            </p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {getAttachmentLabel(file.file_name, file.file_type)}
+                            </p>
+                            <div className="flex items-center gap-2 mt-2 opacity-60 group-hover:opacity-100 transition-opacity">
+                              {previewable && (
+                                <button
+                                  onClick={() => handlePreview(fileUrl, file.file_name)}
+                                  className="text-xs flex items-center hover:text-primary transition-colors hover:underline"
+                                >
+                                  <Eye className="w-3 h-3 mr-1" /> ดูตัวอย่าง
+                                </button>
+                              )}
+                              <a
+                                href={fileUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-xs flex items-center hover:text-primary transition-colors hover:underline"
+                              >
+                                <ExternalLink className="w-3 h-3 mr-1" /> เปิดไฟล์
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </>
+        ) : null
+      }
+      right={
+        request ? (
+          <>
+            <Card className="shadow-sm border-primary/20 bg-primary/5 overflow-hidden">
+              <CardContent className="p-6">
+                <p className="text-sm font-medium text-primary/80 mb-1">ยอดเงินเบิกจ่าย</p>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-bold text-primary">
+                    {formatThaiNumber(request.requested_amount ?? 0)}
+                  </span>
+                  <span className="text-sm text-primary/80">บาท</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            <ApprovalTimelineCard request={request} />
+          </>
+        ) : null
+      }
+      after={
+        request ? (
+          <>
+            <AttachmentPreviewDialog
+              open={previewOpen}
+              onOpenChange={setPreviewOpen}
+              previewUrl={previewUrl}
+              previewName={previewName}
+            />
+
+            <Dialog
+              open={!!actionType}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setActionType(null);
+                  setComment('');
+                  setActionError(null);
+                }
+              }}
+            >
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>
+                    {actionType === 'approve' && 'อนุมัติคำขอ'}
+                    {actionType === 'reject' && 'ไม่อนุมัติคำขอ'}
+                    {actionType === 'return' && 'ส่งกลับแก้ไข'}
+                  </DialogTitle>
+                  <DialogDescription>
+                    คำขอ {displayId} - {requesterName}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div>
+                    <label className="text-sm font-medium text-foreground">
+                      {actionType === 'approve' ? 'หมายเหตุ (ไม่บังคับ)' : 'เหตุผล'}
+                    </label>
+                    <Textarea
+                      placeholder={
+                        actionType === 'approve'
+                          ? 'ระบุหมายเหตุเพิ่มเติม (ถ้ามี)'
+                          : actionType === 'reject'
+                            ? 'ระบุเหตุผลที่ไม่อนุมัติ'
+                            : 'ระบุสิ่งที่ต้องแก้ไข'
+                      }
+                      value={comment}
+                      onChange={(event) => setComment(event.target.value)}
+                      className="mt-2"
+                    />
+                    {actionError && <p className="mt-2 text-sm text-destructive">{actionError}</p>}
+                  </div>
+                </div>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setActionType(null);
+                      setComment('');
+                      setActionError(null);
+                    }}
+                  >
+                    ยกเลิก
+                  </Button>
+                  <Button
+                    onClick={handleAction}
+                    disabled={processAction.isPending}
+                    className={
+                      actionType === 'approve'
+                        ? 'bg-emerald-600 hover:bg-emerald-700'
+                        : actionType === 'return'
+                          ? 'bg-orange-500 hover:bg-orange-600 text-white'
+                          : 'bg-destructive hover:bg-destructive/90'
+                    }
+                  >
+                    {actionType === 'approve' && 'อนุมัติ'}
+                    {actionType === 'reject' && 'ไม่อนุมัติ'}
+                    {actionType === 'return' && 'ส่งกลับแก้ไข'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </>
+        ) : null
+      }
+    />
+  );
 }

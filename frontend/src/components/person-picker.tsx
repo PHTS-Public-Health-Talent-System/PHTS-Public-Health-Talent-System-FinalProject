@@ -1,71 +1,78 @@
-"use client"
+'use client';
 
-import * as React from "react"
-import { Check, ChevronsUpDown, Search, X } from "lucide-react"
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import * as React from 'react';
+import { Check, ChevronsUpDown, User, X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { ScrollArea } from "@/components/ui/scroll-area"
-
-// TODO: add command palette experience when search UX is upgraded: Command*
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Badge } from '@/components/ui/badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 export interface Person {
-  id: string
-  name: string
-  position?: string
-  department?: string
-  profession?: string
+  id: string;
+  name: string;
+  position?: string;
+  department?: string;
+  profession?: string;
+  image?: string; // Optional: URL ของรูปโปรไฟล์
 }
 
 interface PersonPickerProps {
-  persons: Person[]
-  value: string
-  onChange: (value: string) => void
-  placeholder?: string
-  disabled?: boolean
+  persons: Person[];
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
 }
 
 export function PersonPicker({
   persons,
   value,
   onChange,
-  placeholder = "เลือกบุคลากร",
+  placeholder = 'เลือกบุคลากร',
   disabled = false,
 }: PersonPickerProps) {
-  const [open, setOpen] = React.useState(false)
-  const [search, setSearch] = React.useState("")
+  const [open, setOpen] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState('');
 
-  const selectedPerson = persons.find((p) => p.id === value)
+  const selectedPerson = React.useMemo(() => persons.find((p) => p.id === value), [persons, value]);
 
-  // Filter persons based on search
+  // Filter persons (Manual filtering allows searching across multiple fields)
   const filteredPersons = React.useMemo(() => {
-    if (!search) return persons
-    const searchLower = search.toLowerCase()
+    if (!searchQuery) return persons;
+    const lowerQuery = searchQuery.toLowerCase();
     return persons.filter(
       (p) =>
-        p.name.toLowerCase().includes(searchLower) ||
-        (p.department && p.department.toLowerCase().includes(searchLower)) ||
-        (p.position && p.position.toLowerCase().includes(searchLower)) ||
-        (p.profession && p.profession.toLowerCase().includes(searchLower))
-    )
-  }, [persons, search])
+        p.name.toLowerCase().includes(lowerQuery) ||
+        p.department?.toLowerCase().includes(lowerQuery) ||
+        p.position?.toLowerCase().includes(lowerQuery) ||
+        p.profession?.toLowerCase().includes(lowerQuery),
+    );
+  }, [persons, searchQuery]);
 
   // Group by department
   const groupedPersons = React.useMemo(() => {
-    const groups: Record<string, Person[]> = {}
+    const groups: Record<string, Person[]> = {};
     filteredPersons.forEach((p) => {
-      const dept = p.department || "อื่นๆ"
-      if (!groups[dept]) groups[dept] = []
-      groups[dept].push(p)
-    })
-    return groups
-  }, [filteredPersons])
+      const dept = p.department || 'อื่นๆ';
+      if (!groups[dept]) groups[dept] = [];
+      groups[dept].push(p);
+    });
+    return groups;
+  }, [filteredPersons]);
+
+  const getInitials = (name: string) => {
+    return name.slice(0, 2).toUpperCase();
+  };
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -74,92 +81,123 @@ export function PersonPicker({
           variant="outline"
           role="combobox"
           aria-expanded={open}
-          className="w-full justify-between bg-secondary border-border hover:bg-secondary/80"
           disabled={disabled}
+          className={cn(
+            'w-full justify-between h-auto py-2 px-3 bg-background hover:bg-accent/50 border-input',
+            !value && 'text-muted-foreground',
+          )}
         >
           {selectedPerson ? (
-            <div className="flex flex-col items-start text-left">
-              <span className="font-medium truncate max-w-[250px]">{selectedPerson.name}</span>
-              {selectedPerson.department && (
-                <span className="text-xs text-muted-foreground">{selectedPerson.department}</span>
-              )}
+            <div className="flex items-center gap-3 text-left overflow-hidden">
+              <Avatar className="h-8 w-8 border shrink-0">
+                <AvatarImage src={selectedPerson.image} />
+                <AvatarFallback className="text-[10px] bg-primary/10 text-primary font-medium">
+                  {getInitials(selectedPerson.name)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col min-w-0">
+                <span className="font-medium text-sm leading-none truncate">
+                  {selectedPerson.name}
+                </span>
+                <span className="text-xs text-muted-foreground mt-1 truncate">
+                  {selectedPerson.position || selectedPerson.department || '-'}
+                </span>
+              </div>
             </div>
           ) : (
-            <span className="text-muted-foreground">{placeholder}</span>
+            <span className="flex items-center gap-2">
+              <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+                <User className="h-4 w-4 opacity-50" />
+              </div>
+              <span>{placeholder}</span>
+            </span>
           )}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[400px] p-0 bg-card border-border" align="start">
-        <div className="flex items-center border-b border-border px-3 py-2">
-          <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-          <Input
-            placeholder="ค้นหาชื่อ, หน่วยงาน, ตำแหน่ง..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="h-8 border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+
+      <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+        <Command shouldFilter={false} className="max-h-[400px]">
+          <CommandInput
+            placeholder="ค้นหาชื่อ, ตำแหน่ง, หรือหน่วยงาน..."
+            value={searchQuery}
+            onValueChange={setSearchQuery}
           />
-          {search && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 w-6 p-0"
-              onClick={() => setSearch("")}
-            >
-              <X className="h-3 w-3" />
-            </Button>
-          )}
-        </div>
-        <ScrollArea className="h-[300px]">
-          {filteredPersons.length === 0 ? (
-            <div className="py-6 text-center text-sm text-muted-foreground">
-              ไม่พบบุคลากร
-            </div>
-          ) : (
-            <div className="p-1">
-              {Object.entries(groupedPersons).map(([dept, deptPersons]) => (
-                <div key={dept} className="mb-2">
-                  <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground sticky top-0 bg-card">
-                    {dept} ({deptPersons.length})
-                  </div>
+          <CommandList>
+            <CommandEmpty className="py-6 text-center text-sm text-muted-foreground">
+              ไม่พบบุคลากรที่ค้นหา
+            </CommandEmpty>
+
+            {value && (
+              <CommandGroup>
+                <CommandItem
+                  onSelect={() => {
+                    onChange('');
+                    setOpen(false);
+                  }}
+                  className="text-muted-foreground justify-center text-xs h-8"
+                >
+                  <X className="mr-2 h-3 w-3" /> ล้างการเลือก
+                </CommandItem>
+              </CommandGroup>
+            )}
+
+            {Object.entries(groupedPersons).map(([dept, deptPersons]) => (
+              <React.Fragment key={dept}>
+                <CommandGroup heading={dept}>
                   {deptPersons.map((person) => (
-                    <div
+                    <CommandItem
                       key={person.id}
-                      className={cn(
-                        "flex items-center gap-2 px-2 py-2 cursor-pointer rounded-md hover:bg-secondary/50",
-                        value === person.id && "bg-primary/10"
-                      )}
-                      onClick={() => {
-                        onChange(person.id)
-                        setOpen(false)
-                        setSearch("")
+                      value={person.id}
+                      onSelect={() => {
+                        onChange(person.id);
+                        setOpen(false);
+                        setSearchQuery('');
                       }}
+                      className="flex items-center justify-between py-2 cursor-pointer"
                     >
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">{person.name}</p>
-                        <p className="text-xs text-muted-foreground truncate">
-                          {person.position}
-                        </p>
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <Avatar className="h-8 w-8 shrink-0 border">
+                          <AvatarImage src={person.image} />
+                          <AvatarFallback className="text-[10px]">
+                            {getInitials(person.name)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col min-w-0 gap-0.5">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm truncate">{person.name}</span>
+                            {person.profession && (
+                              <Badge
+                                variant="secondary"
+                                className="h-4 px-1 text-[9px] font-normal text-muted-foreground shrink-0"
+                              >
+                                {person.profession}
+                              </Badge>
+                            )}
+                          </div>
+                          <span
+                            className="text-xs text-muted-foreground truncate"
+                            title={person.position}
+                          >
+                            {person.position || '-'}
+                          </span>
+                        </div>
                       </div>
-                      {person.profession && (
-                        <Badge variant="outline" className="text-xs shrink-0">
-                          {person.profession}
-                        </Badge>
-                      )}
                       {value === person.id && (
-                        <Check className="h-4 w-4 text-primary shrink-0" />
+                        <Check className="h-4 w-4 text-primary shrink-0 ml-2" />
                       )}
-                    </div>
+                    </CommandItem>
                   ))}
-                </div>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
-        <div className="border-t border-border px-3 py-2 text-xs text-muted-foreground">
-          แสดง {filteredPersons.length} จาก {persons.length} คน
-        </div>
+                </CommandGroup>
+                <CommandSeparator />
+              </React.Fragment>
+            ))}
+          </CommandList>
+          <div className="border-t p-2 text-[10px] text-center text-muted-foreground bg-muted/20">
+            แสดง {filteredPersons.length} จาก {persons.length} รายชื่อ
+          </div>
+        </Command>
       </PopoverContent>
     </Popover>
-  )
+  );
 }

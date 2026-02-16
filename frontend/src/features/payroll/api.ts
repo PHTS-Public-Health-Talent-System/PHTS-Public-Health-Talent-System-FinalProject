@@ -55,6 +55,7 @@ export type PeriodSummaryRow = {
 export type PeriodPayoutRow = {
   payout_id: number;
   citizen_id: string;
+  eligibility_id?: number | null;
   request_id?: number | null;
   profession_code?: string | null;
   title?: string | null;
@@ -71,6 +72,60 @@ export type PeriodPayoutRow = {
   retroactive_amount?: number | null;
   total_payable?: number | null;
   remark?: string | null;
+  check_count?: number | null;
+  blocker_count?: number | null;
+  warning_count?: number | null;
+};
+
+export type PayoutDetail = {
+  payout: {
+    payout_id: number;
+    period_id: number;
+    period_month?: number | null;
+    period_year?: number | null;
+    citizen_id: string;
+    master_rate_id?: number | null;
+    profession_code?: string | null;
+    group_no?: number | null;
+    item_no?: number | string | null;
+    sub_item_no?: number | string | null;
+    pts_rate_snapshot?: number | null;
+    calculated_amount?: number | null;
+    retroactive_amount?: number | null;
+    total_payable?: number | null;
+    deducted_days?: number | null;
+    eligible_days?: number | null;
+    remark?: string | null;
+    title?: string | null;
+    first_name?: string | null;
+    last_name?: string | null;
+    position_name?: string | null;
+    department?: string | null;
+  };
+  items: Array<{
+    item_id: number;
+    payout_id: number;
+    reference_month: number;
+    reference_year: number;
+    item_type: string;
+    amount: number;
+    description?: string | null;
+    created_at?: string | null;
+  }>;
+  checks: Array<{
+    check_id: number;
+    payout_id: number;
+    code: string;
+    severity: "BLOCKER" | "WARNING" | string;
+    title: string;
+    summary?: string | null;
+    impact_days?: number | null;
+    impact_amount?: number | null;
+    start_date?: string | null;
+    end_date?: string | null;
+    evidence?: unknown[];
+    created_at?: string | null;
+  }>;
 };
 
 export type PayoutSearchRow = {
@@ -101,6 +156,46 @@ export async function getPeriodPayouts(periodId: number | string): Promise<Perio
   return res.data.data;
 }
 
+export async function getPayoutDetail(payoutId: number | string): Promise<PayoutDetail> {
+  const res = await api.get<ApiResponse<PayoutDetail>>(`/payroll/payout/${payoutId}/detail`);
+  return res.data.data;
+}
+
+export async function updatePayout(
+  payoutId: number | string,
+  payload: {
+    eligible_days?: number;
+    deducted_days?: number;
+    retroactive_amount?: number;
+    remark?: string | null;
+  },
+): Promise<{
+  payout_id: number;
+  period_id: number;
+  eligible_days: number;
+  deducted_days: number;
+  calculated_amount: number;
+  retroactive_amount: number;
+  total_payable: number;
+  remark: string | null;
+  updated_by?: number | null;
+}> {
+  const res = await api.patch<
+    ApiResponse<{
+      payout_id: number;
+      period_id: number;
+      eligible_days: number;
+      deducted_days: number;
+      calculated_amount: number;
+      retroactive_amount: number;
+      total_payable: number;
+      remark: string | null;
+      updated_by?: number | null;
+    }>
+  >(`/payroll/payout/${payoutId}`, payload);
+  return res.data.data;
+}
+
 export async function getPeriodSummaryByProfession(periodId: number | string): Promise<PeriodSummaryRow[]> {
   const res = await api.get<ApiResponse<PeriodSummaryRow[]>>(`/payroll/period/${periodId}/summary-by-profession`);
   return res.data.data;
@@ -126,6 +221,11 @@ export async function createPeriod(payload: ApiPayload): Promise<PayPeriod> {
 
 export async function listPeriods(): Promise<PayPeriod[]> {
   const res = await api.get<ApiResponse<PayPeriod[]>>('/payroll/period');
+  return res.data.data;
+}
+
+export async function deletePeriod(periodId: number | string) {
+  const res = await api.delete<ApiResponse<ApiPayload>>(`/payroll/period/${periodId}`);
   return res.data.data;
 }
 

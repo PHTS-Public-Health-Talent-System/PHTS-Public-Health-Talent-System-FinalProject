@@ -10,6 +10,29 @@ const api = axios.create({
 const TOKEN_KEY = 'phts_token';
 const USER_KEY = 'phts_user';
 
+type ValidationDetail = {
+  field?: string;
+  message?: string;
+};
+
+type ApiErrorBody = {
+  success?: boolean;
+  error?: string;
+  message?: string;
+  details?: ValidationDetail[];
+};
+
+const toReadableErrorMessage = (body?: ApiErrorBody): string => {
+  if (!body) return 'เกิดข้อผิดพลาดจากการเชื่อมต่อระบบ';
+
+  if (Array.isArray(body.details) && body.details.length > 0) {
+    const first = body.details[0];
+    if (first?.message) return first.message;
+  }
+
+  return body.error || body.message || 'เกิดข้อผิดพลาดจากการเชื่อมต่อระบบ';
+};
+
 // Interceptor: Attach Token
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
@@ -25,6 +48,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    const errorBody = error?.response?.data as ApiErrorBody | undefined;
+    const readableMessage = toReadableErrorMessage(errorBody);
+
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         localStorage.removeItem(TOKEN_KEY);
@@ -35,6 +61,9 @@ api.interceptors.response.use(
         }
       }
     }
+
+    error.message = readableMessage;
+    (error as { details?: ValidationDetail[] }).details = errorBody?.details;
     return Promise.reject(error);
   }
 );

@@ -2,6 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
+  listSupportTickets,
   listMySupportTickets,
   getSupportTicket,
   createSupportTicketWithAttachments,
@@ -10,12 +11,26 @@ import {
   reopenSupportTicket,
   closeSupportTicket,
   deleteSupportTicket,
+  updateSupportTicketStatus,
+  type SupportTicketStatus,
 } from './api';
 
-export function useMySupportTickets() {
+export function useMySupportTickets(enabled = true) {
   return useQuery({
     queryKey: ['support-tickets', 'my'],
     queryFn: listMySupportTickets,
+    enabled,
+  });
+}
+
+export function useSupportTickets(
+  params?: { status?: SupportTicketStatus; page?: number; limit?: number },
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ['support-tickets', 'all', params],
+    queryFn: () => listSupportTickets(params),
+    enabled,
   });
 }
 
@@ -85,6 +100,25 @@ export function useDeleteSupportTicket() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (ticketId: string | number) => deleteSupportTicket(ticketId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
+      queryClient.invalidateQueries({ queryKey: ['support-tickets', 'my'] });
+    },
+  });
+}
+
+export function useUpdateSupportTicketStatus() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      ticketId,
+      status,
+      remark,
+    }: {
+      ticketId: string | number;
+      status: SupportTicketStatus;
+      remark?: string | null;
+    }) => updateSupportTicketStatus(ticketId, { status, remark }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['support-tickets'] });
       queryClient.invalidateQueries({ queryKey: ['support-tickets', 'my'] });

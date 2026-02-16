@@ -6,12 +6,14 @@ import {
   addHoliday,
   deleteHoliday,
   getHolidays,
+  updateHoliday,
   getMasterRates,
   getProfessions,
   createMasterRate,
   deleteMasterRate,
   updateMasterRate,
   getRateHierarchy,
+  type HolidayType,
 } from './api';
 
 export function useHolidays(params?: ApiParams) {
@@ -23,7 +25,19 @@ export function useHolidays(params?: ApiParams) {
 
 export function useAddHoliday() {
   return useMutation({
-    mutationFn: (payload: { date: string; name: string }) => addHoliday(payload),
+    mutationFn: (payload: { date: string; name: string; type?: HolidayType }) => addHoliday(payload),
+  });
+}
+
+export function useUpdateHoliday() {
+  return useMutation({
+    mutationFn: ({
+      originalDate,
+      payload,
+    }: {
+      originalDate: string;
+      payload: { date: string; name: string; type?: HolidayType };
+    }) => updateHoliday(originalDate, payload),
   });
 }
 

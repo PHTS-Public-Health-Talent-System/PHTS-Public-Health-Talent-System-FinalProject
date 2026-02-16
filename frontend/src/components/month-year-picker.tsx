@@ -1,93 +1,91 @@
-"use client"
+'use client';
 
-import * as React from "react"
-import { ChevronLeft, ChevronRight, Calendar } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { cn } from "@/lib/utils"
-import { Input } from "@/components/ui/input"
+import * as React from 'react';
+import { Calendar as CalendarIcon, Check } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { cn } from '@/lib/utils';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
-interface MonthYearPickerProps {
-  value: { month: number; year: number }
-  onChange: (value: { month: number; year: number }) => void
-  minYear?: number
-  maxYear?: number
-  placeholder?: string
-  disabled?: boolean
-}
+// --- Constants ---
 
 const thaiMonths = [
-  "มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน",
-  "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม",
-  "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"
-]
+  'มกราคม',
+  'กุมภาพันธ์',
+  'มีนาคม',
+  'เมษายน',
+  'พฤษภาคม',
+  'มิถุนายน',
+  'กรกฎาคม',
+  'สิงหาคม',
+  'กันยายน',
+  'ตุลาคม',
+  'พฤศจิกายน',
+  'ธันวาคม',
+];
 
 const shortThaiMonths = [
-  "ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.",
-  "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.",
-  "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."
-]
+  'ม.ค.',
+  'ก.พ.',
+  'มี.ค.',
+  'เม.ย.',
+  'พ.ค.',
+  'มิ.ย.',
+  'ก.ค.',
+  'ส.ค.',
+  'ก.ย.',
+  'ต.ค.',
+  'พ.ย.',
+  'ธ.ค.',
+];
+
+const currentYear = new Date().getFullYear() + 543;
+
+// --- MonthYearPicker ---
+
+interface MonthYearPickerProps {
+  value: { month: number; year: number };
+  onChange: (value: { month: number; year: number }) => void;
+  minYear?: number;
+  maxYear?: number;
+  placeholder?: string;
+  disabled?: boolean;
+  className?: string;
+}
 
 export function MonthYearPicker({
   value,
   onChange,
-  minYear = 2500,
-  maxYear = 2600,
-  placeholder = "เลือกเดือน/ปี",
+  minYear = currentYear - 10,
+  maxYear = currentYear + 10,
+  placeholder = 'เลือกเดือน/ปี',
   disabled = false,
+  className,
 }: MonthYearPickerProps) {
-  const [open, setOpen] = React.useState(false)
-  const [viewYear, setViewYear] = React.useState(value.year)
-  const [isEditingYear, setIsEditingYear] = React.useState(false)
-  const [yearInput, setYearInput] = React.useState(String(value.year))
+  const [open, setOpen] = React.useState(false);
+  const [viewYear, setViewYear] = React.useState(value.year || currentYear);
+  const [mode, setMode] = React.useState<'month' | 'year'>('month'); // Switch between picking month or year
 
-  const handleMonthSelect = (month: number) => {
-    onChange({ month, year: viewYear })
-    setOpen(false)
-  }
-
-  const handleYearChange = (delta: number) => {
-    const newYear = viewYear + delta
-    if (newYear >= minYear && newYear <= maxYear) {
-      setViewYear(newYear)
-      setYearInput(String(newYear))
+  // Reset view to selected year when opening
+  React.useEffect(() => {
+    if (open) {
+      setViewYear(value.year || currentYear);
+      setMode('month');
     }
-  }
+  }, [open, value.year]);
 
-  const handleYearInputSubmit = () => {
-    const year = parseInt(yearInput)
-    if (!isNaN(year) && year >= minYear && year <= maxYear) {
-      setViewYear(year)
-      setIsEditingYear(false)
-    } else {
-      setYearInput(String(viewYear))
-      setIsEditingYear(false)
+  const handleMonthSelect = (monthIndex: number) => {
+    onChange({ month: monthIndex + 1, year: viewYear });
+    setOpen(false);
+  };
+
+  const years = React.useMemo(() => {
+    const y = [];
+    for (let i = minYear; i <= maxYear; i++) {
+      y.push(i);
     }
-  }
-
-  const handleYearInputKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      handleYearInputSubmit()
-    } else if (e.key === "Escape") {
-      setYearInput(String(viewYear))
-      setIsEditingYear(false)
-    }
-  }
-
-  // Generate quick year options
-  const currentBuddhistYear = new Date().getFullYear() + 543
-  const quickYears = [
-    currentBuddhistYear,
-    currentBuddhistYear - 1,
-    currentBuddhistYear - 2,
-    currentBuddhistYear - 3,
-    currentBuddhistYear - 4,
-    currentBuddhistYear - 5,
-  ].filter(y => y >= minYear && y <= maxYear)
+    return y;
+  }, [minYear, maxYear]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -95,211 +93,179 @@ export function MonthYearPicker({
         <Button
           variant="outline"
           className={cn(
-            "w-full justify-start text-left font-normal bg-secondary border-border hover:bg-secondary/80",
-            !value && "text-muted-foreground"
+            'w-full justify-start text-left font-normal',
+            !value.month && 'text-muted-foreground',
+            className,
           )}
           disabled={disabled}
         >
-          <Calendar className="mr-2 h-4 w-4" />
+          <CalendarIcon className="mr-2 h-4 w-4 opacity-50" />
           {value.month && value.year ? (
             `${thaiMonths[value.month - 1]} ${value.year}`
           ) : (
-            <span className="text-muted-foreground">{placeholder}</span>
+            <span>{placeholder}</span>
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[320px] p-0 bg-card border-border" align="start">
-        {/* Year Header */}
-        <div className="flex items-center justify-between p-3 border-b border-border">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => handleYearChange(-1)}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          
-          {isEditingYear ? (
-            <Input
-              type="number"
-              value={yearInput}
-              onChange={(e) => setYearInput(e.target.value)}
-              onBlur={handleYearInputSubmit}
-              onKeyDown={handleYearInputKeyDown}
-              className="w-24 h-8 text-center bg-secondary border-border"
-              autoFocus
-            />
-          ) : (
+      <PopoverContent className="w-[280px] p-0" align="start">
+        <div className="p-3">
+          {/* Header (Switch Mode) */}
+          <div className="flex items-center justify-center mb-4">
             <Button
               variant="ghost"
-              className="font-semibold text-lg"
-              onClick={() => setIsEditingYear(true)}
+              size="sm"
+              className="font-semibold text-lg hover:bg-secondary w-full"
+              onClick={() => setMode(mode === 'month' ? 'year' : 'month')}
             >
-              พ.ศ. {viewYear}
+              {mode === 'month' ? `พ.ศ. ${viewYear}` : 'เลือกปี พ.ศ.'}
             </Button>
+          </div>
+
+          {/* Month Selection Mode */}
+          {mode === 'month' && (
+            <div className="grid grid-cols-3 gap-2">
+              {shortThaiMonths.map((month, index) => {
+                const isSelected = value.month === index + 1 && value.year === viewYear;
+                const isCurrentMonth =
+                  new Date().getMonth() === index && new Date().getFullYear() + 543 === viewYear;
+                return (
+                  <Button
+                    key={month}
+                    variant={isSelected ? 'default' : 'outline'}
+                    className={cn(
+                      'h-9 text-xs font-normal',
+                      isSelected && 'font-semibold',
+                      !isSelected &&
+                        'border-transparent bg-transparent hover:bg-secondary hover:text-foreground',
+                      isCurrentMonth && !isSelected && 'border-primary/20 text-primary',
+                    )}
+                    onClick={() => handleMonthSelect(index)}
+                  >
+                    {month}
+                  </Button>
+                );
+              })}
+            </div>
           )}
-          
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-8 w-8"
-            onClick={() => handleYearChange(1)}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+
+          {/* Year Selection Mode */}
+          {mode === 'year' && (
+            <ScrollArea className="h-[240px] pr-3">
+              <div className="grid grid-cols-3 gap-2">
+                {years.map((year) => {
+                  const isSelected = viewYear === year;
+                  const isCurrentYear = currentYear === year;
+                  return (
+                    <Button
+                      key={year}
+                      variant={isSelected ? 'default' : 'ghost'}
+                      className={cn(
+                        'h-9 text-sm font-normal',
+                        isSelected && 'font-semibold',
+                        isCurrentYear && !isSelected && 'text-primary font-medium',
+                      )}
+                      onClick={() => {
+                        setViewYear(year);
+                        setMode('month'); // Go back to month selection after picking year
+                      }}
+                    >
+                      {year}
+                    </Button>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          )}
         </div>
 
-        {/* Quick Year Selection */}
-        <div className="p-2 border-b border-border">
-          <p className="text-xs text-muted-foreground mb-2 px-1">ปีล่าสุด</p>
-          <div className="flex flex-wrap gap-1">
-            {quickYears.map((year) => (
-              <Button
-                key={year}
-                variant={viewYear === year ? "default" : "outline"}
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => {
-                  setViewYear(year)
-                  setYearInput(String(year))
-                }}
-              >
-                {year}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        {/* Month Grid */}
-        <div className="p-3">
-          <div className="grid grid-cols-3 gap-2">
-            {thaiMonths.map((month, index) => {
-              const isSelected = value.month === index + 1 && value.year === viewYear
-              return (
-                <Button
-                  key={month}
-                  variant={isSelected ? "default" : "ghost"}
-                  className={cn(
-                    "h-10 text-sm",
-                    isSelected && "bg-primary text-primary-foreground"
-                  )}
-                  onClick={() => handleMonthSelect(index + 1)}
-                >
-                  {shortThaiMonths[index]}
-                </Button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="p-2 border-t border-border">
+        {/* Footer (Quick Action) */}
+        <div className="border-t p-2">
           <Button
             variant="ghost"
             size="sm"
-            className="w-full text-xs"
+            className="w-full text-xs h-8"
             onClick={() => {
-              const now = new Date()
-              onChange({ month: now.getMonth() + 1, year: now.getFullYear() + 543 })
-              setOpen(false)
+              const now = new Date();
+              onChange({ month: now.getMonth() + 1, year: now.getFullYear() + 543 });
+              setOpen(false);
             }}
           >
-            เดือน/ปีปัจจุบัน
+            เดือนปัจจุบัน
           </Button>
         </div>
       </PopoverContent>
     </Popover>
-  )
+  );
 }
 
-// Simple Year Picker Component
+// --- YearPicker (Standalone) ---
+
 interface YearPickerProps {
-  value: number
-  onChange: (year: number) => void
-  minYear?: number
-  maxYear?: number
-  disabled?: boolean
+  value: number;
+  onChange: (year: number) => void;
+  minYear?: number;
+  maxYear?: number;
+  disabled?: boolean;
+  className?: string;
 }
 
 export function YearPicker({
   value,
   onChange,
-  minYear = 2500,
-  maxYear = 2600,
+  minYear = currentYear - 10,
+  maxYear = currentYear + 10,
   disabled = false,
+  className,
 }: YearPickerProps) {
-  const [open, setOpen] = React.useState(false)
-  const [yearInput, setYearInput] = React.useState(String(value))
+  const [open, setOpen] = React.useState(false);
 
-  const currentBuddhistYear = new Date().getFullYear() + 543
-  
-  // Generate year range
   const years = React.useMemo(() => {
-    const result = []
-    for (let y = currentBuddhistYear + 2; y >= currentBuddhistYear - 10; y--) {
-      if (y >= minYear && y <= maxYear) {
-        result.push(y)
-      }
+    const y = [];
+    for (let i = minYear; i <= maxYear; i++) {
+      y.push(i);
     }
-    return result
-  }, [minYear, maxYear, currentBuddhistYear])
-
-  const handleYearInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setYearInput(e.target.value)
-  }
-
-  const handleYearInputSubmit = () => {
-    const year = parseInt(yearInput)
-    if (!isNaN(year) && year >= minYear && year <= maxYear) {
-      onChange(year)
-      setOpen(false)
-    }
-  }
+    return y;
+  }, [minYear, maxYear]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
-          className="w-[100px] justify-between bg-secondary border-border hover:bg-secondary/80"
+          className={cn(
+            'w-[120px] justify-between font-normal',
+            !value && 'text-muted-foreground',
+            className,
+          )}
           disabled={disabled}
         >
-          {value}
-          <ChevronLeft className="h-4 w-4 rotate-[-90deg]" />
+          {value || 'เลือกปี'}
+          <CalendarIcon className="ml-2 h-4 w-4 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-2 bg-card border-border" align="start">
-        <div className="mb-2">
-          <Input
-            type="number"
-            placeholder="พิมพ์ปี พ.ศ."
-            value={yearInput}
-            onChange={handleYearInputChange}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleYearInputSubmit()
-            }}
-            className="h-8 text-center bg-secondary border-border"
-          />
-        </div>
-        <div className="max-h-[200px] overflow-y-auto space-y-1">
-          {years.map((year) => (
-            <Button
-              key={year}
-              variant={value === year ? "default" : "ghost"}
-              size="sm"
-              className="w-full justify-center"
-              onClick={() => {
-                onChange(year)
-                setYearInput(String(year))
-                setOpen(false)
-              }}
-            >
-              {year}
-            </Button>
-          ))}
-        </div>
+      <PopoverContent className="w-[200px] p-0" align="start">
+        <ScrollArea className="h-[300px]">
+          <div className="p-2 space-y-1">
+            {years.map((year) => (
+              <Button
+                key={year}
+                variant="ghost"
+                className={cn(
+                  'w-full justify-between font-normal h-8 px-2',
+                  value === year && 'bg-secondary font-medium',
+                )}
+                onClick={() => {
+                  onChange(year);
+                  setOpen(false);
+                }}
+              >
+                {year}
+                {value === year && <Check className="h-4 w-4 opacity-50" />}
+              </Button>
+            ))}
+          </div>
+        </ScrollArea>
       </PopoverContent>
     </Popover>
-  )
+  );
 }

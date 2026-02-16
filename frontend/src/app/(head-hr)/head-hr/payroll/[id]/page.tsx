@@ -1,10 +1,12 @@
 'use client';
 
 import { use } from 'react';
-import { PayrollDetailContent } from '@/components/payroll/PayrollDetailContent';
+import { PayrollDetailContent } from '@/features/payroll/components/PayrollDetailContent';
+import { usePayrollReviewProgress } from '@/features/payroll/usePayrollReviewProgress';
 
 export default function HeadHRPayrollDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { reviewedCodes } = usePayrollReviewProgress(id);
 
   return (
     <PayrollDetailContent
@@ -14,6 +16,7 @@ export default function HeadHRPayrollDetailPage({ params }: { params: Promise<{ 
       showTable={false}
       showSummary={false}
       showSelector
+      reviewedProfessionCodes={reviewedCodes}
     />
   );
 }

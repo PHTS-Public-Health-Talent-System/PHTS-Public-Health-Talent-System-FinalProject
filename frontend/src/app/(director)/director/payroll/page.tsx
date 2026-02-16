@@ -1,9 +1,9 @@
-"use client"
+'use client';
 
-import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
+import { useMemo, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Table,
   TableBody,
@@ -11,7 +11,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from '@/components/ui/table';
 import {
   Dialog,
   DialogContent,
@@ -19,370 +19,476 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Textarea } from "@/components/ui/textarea"
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Calendar,
-  Users,
-  Banknote,
   CheckCircle2,
   XCircle,
-  Eye,
   Clock,
+  Eye,
+  Download,
+  Users,
+  Banknote,
   TrendingUp,
-} from "lucide-react"
-import Link from "next/link"
+  AlertCircle,
+  type LucideIcon,
+} from 'lucide-react';
+import Link from 'next/link';
+import { toast } from 'sonner';
+import {
+  useApproveByDirector,
+  useDownloadPeriodReport,
+  usePeriods,
+  useRejectPeriod,
+} from '@/features/payroll/hooks';
+import type { PayPeriod } from '@/features/payroll/api';
+import { formatThaiDate, formatThaiMonthYear, formatThaiNumber } from '@/shared/utils/thai-locale';
 
-const payrollPeriods = [
-  {
-    id: "PAY-2568-08",
-    month: "สิงหาคม",
-    year: "2568",
-    totalPersons: 156,
-    totalAmount: 1245800,
-    status: "pending_director",
-    submittedAt: "28 ม.ค. 68",
-    hrApprovedAt: "27 ม.ค. 68",
-    headFinanceApprovedAt: "27 ม.ค. 68",
-    hrApprovedBy: "นางสุดา บริหาร",
-    headFinanceApprovedBy: "นายการเงิน ดูแล",
-  },
-  {
-    id: "PAY-2568-07",
-    month: "กรกฎาคม",
-    year: "2568",
-    totalPersons: 152,
-    totalAmount: 1198500,
-    status: "pending_director",
-    submittedAt: "25 ม.ค. 68",
-    hrApprovedAt: "24 ม.ค. 68",
-    headFinanceApprovedAt: "25 ม.ค. 68",
-    hrApprovedBy: "นางสุดา บริหาร",
-    headFinanceApprovedBy: "นายการเงิน ดูแล",
-  },
-  {
-    id: "PAY-2568-06",
-    month: "มิถุนายน",
-    year: "2568",
-    totalPersons: 148,
-    totalAmount: 1156200,
-    status: "approved",
-    submittedAt: "20 ม.ค. 68",
-    hrApprovedAt: "19 ม.ค. 68",
-    headFinanceApprovedAt: "19 ม.ค. 68",
-    directorApprovedAt: "20 ม.ค. 68",
-    hrApprovedBy: "นางสุดา บริหาร",
-    headFinanceApprovedBy: "นายการเงิน ดูแล",
-    directorApprovedBy: "นพ.สมศักดิ์ รักษาดี",
-  },
-  {
-    id: "PAY-2568-05",
-    month: "พฤษภาคม",
-    year: "2568",
-    totalPersons: 145,
-    totalAmount: 1089000,
-    status: "approved",
-    submittedAt: "15 ม.ค. 68",
-    hrApprovedAt: "14 ม.ค. 68",
-    headFinanceApprovedAt: "14 ม.ค. 68",
-    directorApprovedAt: "15 ม.ค. 68",
-    hrApprovedBy: "นางสุดา บริหาร",
-    headFinanceApprovedBy: "นายการเงิน ดูแล",
-    directorApprovedBy: "นพ.สมศักดิ์ รักษาดี",
-  },
-]
+const formatPeriodLabel = (month: number, year: number) => formatThaiMonthYear(month, year);
+
+const toPeriodCode = (month: number, year: number) => {
+  const buddhistYear = year >= 2400 ? year : year + 543;
+  return `PAY-${String(month).padStart(2, '0')}/${buddhistYear}`;
+};
+
+const formatDate = (value?: string | null) => {
+  if (!value) return '-';
+  return formatThaiDate(value);
+};
+
+type PayrollRow = {
+  periodId: number;
+  periodLabel: string;
+  periodCode: string;
+  totalAmount: number;
+  totalRecords: number;
+  submittedBy: string;
+  submittedDate: string;
+  closedDate: string;
+  status: 'WAITING_DIRECTOR' | 'CLOSED';
+};
+
+type StatCardProps = {
+  title: string;
+  value: number | string;
+  icon: LucideIcon;
+  colorClass: string;
+  bgClass: string;
+};
+
+const StatCard = ({ title, value, icon: Icon, colorClass, bgClass }: StatCardProps) => (
+  <Card className="border-border shadow-sm">
+    <CardContent className="p-6 flex items-center justify-between">
+      <div>
+        <p className="text-sm font-medium text-muted-foreground">{title}</p>
+        <div className={`text-2xl font-bold mt-1 ${colorClass}`}>{value}</div>
+      </div>
+      <div
+        className={`p-3 rounded-full ${bgClass} ${colorClass.replace('text-', 'bg-').split(' ')[0]}/10`}
+      >
+        <Icon className="h-6 w-6" />
+      </div>
+    </CardContent>
+  </Card>
+);
 
 export default function DirectorPayrollPage() {
-  const [showApproveDialog, setShowApproveDialog] = useState(false)
-  const [showRejectDialog, setShowRejectDialog] = useState(false)
-  const [selectedPayroll, setSelectedPayroll] = useState<string | null>(null)
-  const [rejectReason, setRejectReason] = useState("")
+  const periodsQuery = usePeriods();
+  const approveByDirector = useApproveByDirector();
+  const rejectPeriod = useRejectPeriod();
+  const downloadReport = useDownloadPeriodReport();
 
-  const pendingPayrolls = payrollPeriods.filter((p) => p.status === "pending_director")
-  const approvedPayrolls = payrollPeriods.filter((p) => p.status === "approved")
+  const [selectedPayroll, setSelectedPayroll] = useState<PayrollRow | null>(null);
+  const [actionType, setActionType] = useState<'approve' | 'reject' | null>(null);
+  const [comment, setComment] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const totalPendingAmount = pendingPayrolls.reduce((sum, p) => sum + p.totalAmount, 0)
-  const totalPendingPersons = pendingPayrolls.reduce((sum, p) => sum + p.totalPersons, 0)
+  const rows = useMemo<PayrollRow[]>(() => {
+    const periods = (periodsQuery.data ?? []) as PayPeriod[];
+    return periods
+      .filter((period) => period.status === 'WAITING_DIRECTOR' || period.status === 'CLOSED')
+      .map((period) => ({
+        periodId: period.period_id,
+        periodLabel: formatPeriodLabel(period.period_month, period.period_year),
+        periodCode: toPeriodCode(period.period_month, period.period_year),
+        totalAmount: Number(period.total_amount ?? 0),
+        totalRecords: Number(period.total_headcount ?? 0),
+        submittedBy: period.created_by_name ?? '-',
+        submittedDate: formatDate(period.created_at ?? null),
+        closedDate: formatDate(period.closed_at ?? period.updated_at ?? null),
+        status: period.status as 'WAITING_DIRECTOR' | 'CLOSED',
+      }));
+  }, [periodsQuery.data]);
 
-  const handleApprove = () => {
-    // Implement approve logic
-    setShowApproveDialog(false)
-    setSelectedPayroll(null)
-  }
+  const pendingRows = useMemo(
+    () => rows.filter((row) => row.status === 'WAITING_DIRECTOR'),
+    [rows],
+  );
+  const closedRows = useMemo(() => rows.filter((row) => row.status === 'CLOSED'), [rows]);
 
-  const handleReject = () => {
-    // Implement reject logic
-    setShowRejectDialog(false)
-    setSelectedPayroll(null)
-    setRejectReason("")
-  }
+  const latestPeriodId = useMemo(() => {
+    const sorted = [...rows].sort((a, b) => b.periodId - a.periodId);
+    return sorted[0]?.periodId;
+  }, [rows]);
+
+  const pendingTotalAmount = pendingRows.reduce((sum, row) => sum + row.totalAmount, 0);
+  const waitingTotalRecords = pendingRows.reduce((sum, row) => sum + row.totalRecords, 0);
+
+  const handleAction = async () => {
+    if (!selectedPayroll || !actionType) return;
+    const trimmed = comment.trim();
+
+    if (actionType === 'reject' && !trimmed) {
+      setActionError('กรุณาระบุเหตุผลก่อนปฏิเสธ');
+      return;
+    }
+
+    setActionError(null);
+    try {
+      if (actionType === 'approve') {
+        await approveByDirector.mutateAsync(selectedPayroll.periodId);
+        toast.success('อนุมัติรอบจ่ายเงินแล้ว');
+      } else {
+        await rejectPeriod.mutateAsync({
+          periodId: selectedPayroll.periodId,
+          payload: { reason: trimmed },
+        });
+        toast.success('ปฏิเสธรอบจ่ายเงินแล้ว');
+      }
+
+      await periodsQuery.refetch();
+      setSelectedPayroll(null);
+      setActionType(null);
+      setComment('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'เกิดข้อผิดพลาด';
+      setActionError(message);
+    }
+  };
+
+  const isLoading = periodsQuery.isLoading;
 
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">รอบจ่ายเงิน</h1>
-        <p className="mt-1 text-muted-foreground">
-          ตรวจสอบและอนุมัติรอบจ่ายเงิน พ.ต.ส.
-        </p>
+    <div className="p-8 space-y-6 pb-20">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">รอบจ่ายเงิน</h1>
+          <p className="text-muted-foreground mt-1">ตรวจสอบและอนุมัติรอบจ่ายเงิน พ.ต.ส. ในฐานะผู้บริหาร</p>
+        </div>
+        <div>
+          <Button
+            variant="outline"
+            className="bg-background shadow-sm"
+            disabled={!latestPeriodId || downloadReport.isPending}
+            onClick={async () => {
+              if (!latestPeriodId) return;
+              const blob = await downloadReport.mutateAsync(latestPeriodId);
+              const url = window.URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = `payroll_${latestPeriodId}.pdf`;
+              link.click();
+              window.URL.revokeObjectURL(url);
+            }}
+          >
+            <Download className="mr-2 h-4 w-4" />
+            ดาวน์โหลดรายงานล่าสุด
+          </Button>
+        </div>
       </div>
 
-      {/* Stats */}
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-100">
-                <Calendar className="h-5 w-5 text-purple-600" />
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">รอบรออนุมัติ</div>
-                <div className="text-2xl font-bold">{pendingPayrolls.length}</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-100">
-                <Users className="h-5 w-5 text-blue-600" />
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">ผู้มีสิทธิ์รอจ่าย</div>
-                <div className="text-2xl font-bold">{totalPendingPersons}</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100">
-                <Banknote className="h-5 w-5 text-green-600" />
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">ยอดรวมรออนุมัติ</div>
-                <div className="text-2xl font-bold">{(totalPendingAmount / 1000000).toFixed(2)}M</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-amber-100">
-                <TrendingUp className="h-5 w-5 text-amber-600" />
-              </div>
-              <div>
-                <div className="text-sm text-muted-foreground">อนุมัติแล้วปีนี้</div>
-                <div className="text-2xl font-bold">{approvedPayrolls.length}</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="รอรอบอนุมัติ"
+          value={pendingRows.length}
+          icon={Calendar}
+          colorClass="text-purple-600"
+          bgClass="bg-purple-500/10"
+        />
+        <StatCard
+          title="ผู้มีสิทธิรอจ่าย"
+          value={waitingTotalRecords}
+          icon={Users}
+          colorClass="text-blue-600"
+          bgClass="bg-blue-500/10"
+        />
+        <StatCard
+          title="ยอดรวมรออนุมัติ"
+          value={`${(pendingTotalAmount / 1_000_000).toFixed(2)}M`}
+          icon={Banknote}
+          colorClass="text-emerald-600"
+          bgClass="bg-emerald-500/10"
+        />
+        <StatCard
+          title="อนุมัติแล้ว"
+          value={closedRows.length}
+          icon={TrendingUp}
+          colorClass="text-amber-600"
+          bgClass="bg-amber-500/10"
+        />
       </div>
 
-      {/* Pending Payrolls */}
-      {pendingPayrolls.length > 0 && (
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5 text-purple-600" />
-              รอบจ่ายเงินรออนุมัติ
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
+      <Card className="border-border shadow-sm">
+        <CardHeader className="py-4 px-6 border-b bg-muted/10">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Clock className="h-5 w-5 text-purple-600" />
+            รอบจ่ายเงินรออนุมัติ
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="relative overflow-x-auto">
             <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>รอบจ่าย</TableHead>
-                  <TableHead>เดือน/ปี</TableHead>
-                  <TableHead className="text-right">จำนวนคน</TableHead>
-                  <TableHead className="text-right">ยอดรวม</TableHead>
-                  <TableHead>ผู้อนุมัติก่อนหน้า</TableHead>
-                  <TableHead>วันที่ส่ง</TableHead>
-                  <TableHead className="text-right">การดำเนินการ</TableHead>
+              <TableHeader className="bg-muted/40">
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="font-semibold w-[150px]">รหัสรอบ</TableHead>
+                  <TableHead className="font-semibold">เดือนงวด</TableHead>
+                  <TableHead className="font-semibold text-right">จำนวนคน</TableHead>
+                  <TableHead className="font-semibold text-right">ยอดรวม</TableHead>
+                  <TableHead className="font-semibold">ผู้อนุมัติก่อนหน้า</TableHead>
+                  <TableHead className="font-semibold">วันที่ส่ง</TableHead>
+                  <TableHead className="font-semibold text-right w-[170px]">การดำเนินการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {pendingPayrolls.map((payroll) => (
-                  <TableRow key={payroll.id}>
-                    <TableCell className="font-mono">{payroll.id}</TableCell>
-                    <TableCell>
-                      <div className="font-medium">{payroll.month}</div>
-                      <div className="text-sm text-muted-foreground">{payroll.year}</div>
-                    </TableCell>
-                    <TableCell className="text-right">{payroll.totalPersons} คน</TableCell>
-                    <TableCell className="text-right font-semibold">
-                      {payroll.totalAmount.toLocaleString()} บาท
-                    </TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        <div>HR: {payroll.hrApprovedBy}</div>
-                        <div>Finance: {payroll.headFinanceApprovedBy}</div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{payroll.submittedAt}</TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        <Link href={`/director/payroll/${payroll.id}`}>
-                          <Button variant="ghost" size="sm">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-green-600 hover:text-green-700"
-                          onClick={() => {
-                            setSelectedPayroll(payroll.id)
-                            setShowApproveDialog(true)
-                          }}
-                        >
-                          <CheckCircle2 className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:text-red-700"
-                          onClick={() => {
-                            setSelectedPayroll(payroll.id)
-                            setShowRejectDialog(true)
-                          }}
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </Button>
-                      </div>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                      กำลังโหลดข้อมูล...
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : pendingRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                      ไม่มีรอบที่รอผู้บริหารอนุมัติ
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  pendingRows.map((row) => (
+                    <TableRow key={row.periodId} className="group hover:bg-muted/30 border-border">
+                      <TableCell className="font-mono text-sm">PAY-{row.periodCode}</TableCell>
+                      <TableCell className="font-medium">{row.periodLabel}</TableCell>
+                      <TableCell className="text-right">
+                        {formatThaiNumber(row.totalRecords)} คน
+                      </TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">
+                        {formatThaiNumber(row.totalAmount)} บาท
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          <div>ฝ่ายทรัพยากรบุคคล: อนุมัติแล้ว</div>
+                          <div>ฝ่ายการเงิน: อนุมัติแล้ว</div>
+                        </div>
+                      </TableCell>
+                      <TableCell>{row.submittedDate}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-2">
+                          <Link href={`/director/payroll/${row.periodId}`}>
+                            <Button variant="outline" size="icon" className="h-8 w-8">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                            onClick={() => {
+                              setSelectedPayroll(row);
+                              setActionType('approve');
+                              setActionError(null);
+                            }}
+                          >
+                            <CheckCircle2 className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8 text-destructive border-destructive/30 hover:bg-destructive/10"
+                            onClick={() => {
+                              setSelectedPayroll(row);
+                              setActionType('reject');
+                              setActionError(null);
+                            }}
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Approved Payrolls */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-green-600" />
-            รอบจ่ายเงินที่อนุมัติแล้ว
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>รอบจ่าย</TableHead>
-                <TableHead>เดือน/ปี</TableHead>
-                <TableHead className="text-right">จำนวนคน</TableHead>
-                <TableHead className="text-right">ยอดรวม</TableHead>
-                <TableHead>สถานะ</TableHead>
-                <TableHead>วันที่อนุมัติ</TableHead>
-                <TableHead className="text-right">การดำเนินการ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {approvedPayrolls.map((payroll) => (
-                <TableRow key={payroll.id}>
-                  <TableCell className="font-mono">{payroll.id}</TableCell>
-                  <TableCell>
-                    <div className="font-medium">{payroll.month}</div>
-                    <div className="text-sm text-muted-foreground">{payroll.year}</div>
-                  </TableCell>
-                  <TableCell className="text-right">{payroll.totalPersons} คน</TableCell>
-                  <TableCell className="text-right font-semibold">
-                    {payroll.totalAmount.toLocaleString()} บาท
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="text-green-600 border-green-600">
-                      อนุมัติแล้ว
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{payroll.directorApprovedAt}</TableCell>
-                  <TableCell className="text-right">
-                    <Link href={`/director/payroll/${payroll.id}`}>
-                      <Button variant="ghost" size="sm">
-                        <Eye className="mr-1 h-4 w-4" />
-                        ดูรายละเอียด
-                      </Button>
-                    </Link>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+          </div>
         </CardContent>
       </Card>
 
-      {/* Approve Dialog */}
-      <Dialog open={showApproveDialog} onOpenChange={setShowApproveDialog}>
-        <DialogContent>
+      <Card className="border-border shadow-sm">
+        <CardHeader className="py-4 px-6 border-b bg-muted/10">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+            รอบจ่ายเงินที่อนุมัติแล้ว
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="relative overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-muted/40">
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="font-semibold w-[150px]">รหัสรอบ</TableHead>
+                  <TableHead className="font-semibold">เดือนงวด</TableHead>
+                  <TableHead className="font-semibold text-right">จำนวนคน</TableHead>
+                  <TableHead className="font-semibold text-right">ยอดรวม</TableHead>
+                  <TableHead className="font-semibold">สถานะ</TableHead>
+                  <TableHead className="font-semibold">วันที่อนุมัติ</TableHead>
+                  <TableHead className="font-semibold text-right w-[170px]">การดำเนินการ</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                      กำลังโหลดข้อมูล...
+                    </TableCell>
+                  </TableRow>
+                ) : closedRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                      ไม่มีรอบที่อนุมัติแล้ว
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  closedRows.map((row) => (
+                    <TableRow key={row.periodId} className="group hover:bg-muted/30 border-border">
+                      <TableCell className="font-mono text-sm">PAY-{row.periodCode}</TableCell>
+                      <TableCell className="font-medium">{row.periodLabel}</TableCell>
+                      <TableCell className="text-right">
+                        {formatThaiNumber(row.totalRecords)} คน
+                      </TableCell>
+                      <TableCell className="text-right font-semibold tabular-nums">
+                        {formatThaiNumber(row.totalAmount)} บาท
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant="outline"
+                          className="border-emerald-200 bg-emerald-50 text-emerald-700 font-normal"
+                        >
+                          อนุมัติแล้ว
+                        </Badge>
+                      </TableCell>
+                      <TableCell>{row.closedDate}</TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-2">
+                          <Link href={`/director/payroll/${row.periodId}`}>
+                            <Button variant="outline" size="icon" className="h-8 w-8">
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="flex justify-end border-t bg-muted/5 px-4 py-3 text-xs text-muted-foreground">
+            แสดงทั้งหมด {rows.length} รายการ
+          </div>
+        </CardContent>
+      </Card>
+
+      <Dialog
+        open={!!selectedPayroll && !!actionType}
+        onOpenChange={() => {
+          setSelectedPayroll(null);
+          setActionType(null);
+          setComment('');
+          setActionError(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>ยืนยันการอนุมัติรอบจ่าย</DialogTitle>
+            <DialogTitle
+              className={`flex items-center gap-2 ${
+                actionType === 'approve' ? 'text-emerald-600' : 'text-destructive'
+              }`}
+            >
+              {actionType === 'approve' && <CheckCircle2 className="h-5 w-5" />}
+              {actionType === 'reject' && <XCircle className="h-5 w-5" />}
+              {actionType === 'approve' ? 'ยืนยันการอนุมัติ' : 'ยืนยันการปฏิเสธ'}
+            </DialogTitle>
             <DialogDescription>
-              คุณต้องการอนุมัติรอบจ่าย {selectedPayroll} หรือไม่?
-              <br />
-              <br />
               {selectedPayroll && (
-                <span className="font-medium">
-                  ยอดรวม:{" "}
-                  {pendingPayrolls
-                    .find((p) => p.id === selectedPayroll)
-                    ?.totalAmount.toLocaleString()}{" "}
-                  บาท (
-                  {pendingPayrolls.find((p) => p.id === selectedPayroll)?.totalPersons}{" "}
-                  คน)
-                </span>
+                <div className="mt-3 rounded-md bg-secondary/50 p-3 text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">รหัสรอบ:</span>
+                    <span className="font-mono font-medium">PAY-{selectedPayroll.periodCode}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">รอบจ่าย:</span>
+                    <span className="font-medium">{selectedPayroll.periodLabel}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ยอดรวม:</span>
+                    <span className="font-medium">
+                      {formatThaiNumber(selectedPayroll.totalAmount)} บาท
+                    </span>
+                  </div>
+                </div>
               )}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowApproveDialog(false)}>
-              ยกเลิก
-            </Button>
-            <Button onClick={handleApprove} className="bg-green-600 hover:bg-green-700">
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-              ยืนยันอนุมัติ
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      {/* Reject Dialog */}
-      <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ปฏิเสธรอบจ่าย</DialogTitle>
-            <DialogDescription>
-              กรุณาระบุเหตุผลในการปฏิเสธรอบจ่าย {selectedPayroll}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Textarea
-              placeholder="ระบุเหตุผล..."
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              rows={4}
-            />
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                {actionType === 'approve' ? 'หมายเหตุ (ไม่บังคับ)' : 'เหตุผลการปฏิเสธ'}
+                {actionType === 'reject' && <span className="text-destructive ml-1">*</span>}
+              </label>
+              <Textarea
+                placeholder={
+                  actionType === 'approve'
+                    ? 'ระบุหมายเหตุเพิ่มเติม (ถ้ามี)'
+                    : 'โปรดระบุเหตุผลที่ปฏิเสธ...'
+                }
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                className="resize-none min-h-[100px]"
+              />
+              {actionError && (
+                <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {actionError}
+                </p>
+              )}
+            </div>
           </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRejectDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedPayroll(null);
+                setActionType(null);
+                setComment('');
+              }}
+            >
               ยกเลิก
             </Button>
             <Button
-              onClick={handleReject}
-              variant="destructive"
-              disabled={!rejectReason.trim()}
+              onClick={handleAction}
+              disabled={approveByDirector.isPending || rejectPeriod.isPending}
+              className={
+                actionType === 'approve'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-destructive hover:bg-destructive/90 text-white'
+              }
             >
-              <XCircle className="mr-2 h-4 w-4" />
-              ยืนยันปฏิเสธ
+              {actionType === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

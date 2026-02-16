@@ -19,6 +19,8 @@ export const PROFESSION_LABELS: Record<string, string> = {
   CLINICAL_PSYCHOLOGIST: "นักจิตวิทยาคลินิก",
   CARDIO_THORACIC_TECH: "นักเทคโนโลยีหัวใจและทรวงอก",
   SPEECH_THERAPIST: "นักแก้ไขการพูด",
+  ALLIED: "สหวิชาชีพ",
+  SPECIAL_EDU: "การศึกษาพิเศษ",
 };
 
 export function normalizeProfessionCode(value?: string | null): string {

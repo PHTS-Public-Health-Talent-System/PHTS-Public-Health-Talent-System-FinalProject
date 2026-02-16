@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build --webpack",
+    "dev": "TZ=Asia/Bangkok next dev",
+    "build": "TZ=Asia/Bangkok next build --webpack",
     "test": "vitest",
     "typecheck": "tsc --noEmit",
-    "start": "next start",
+    "start": "TZ=Asia/Bangkok next start",
     "lint": "eslint"
   },
   "dependencies": {

@@ -15,11 +15,12 @@ export interface NormalizedRate {
 }
 
 function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat("th-TH").format(amount)
+  return formatThaiNumber(amount)
 }
 
 export function normalizeMasterRates(input: Array<Record<string, unknown>>): NormalizedRate[] {
   return input
+    // If upstream provides is_active, treat falsy (0/false) as inactive and exclude from UI lists by default.
     .filter((row) => Boolean(row.is_active ?? true))
     .map((row) => {
       const professionCode = String(row.profession_code ?? "")
@@ -32,6 +33,7 @@ export function normalizeMasterRates(input: Array<Record<string, unknown>>): Nor
       const code = codeParts.filter(Boolean).join("-")
       const amount = Number(row.amount ?? 0)
       const conditionDesc = String(row.condition_desc ?? "")
+      const detailedDesc = String(row.detailed_desc ?? "")
       return {
         id: Number(row.rate_id ?? 0),
         professionCode,
@@ -42,10 +44,11 @@ export function normalizeMasterRates(input: Array<Record<string, unknown>>): Nor
         name: conditionDesc || `อัตรา ${formatCurrency(amount)} บาท/เดือน`,
         amount,
         description: conditionDesc || "-",
-        requirements: conditionDesc || "-",
+        requirements: detailedDesc || conditionDesc || "-",
         isActive: Boolean(row.is_active ?? true),
         effectiveDate: String(row.created_at ?? ""),
-        eligibleCount: 0,
+        eligibleCount: Number(row.eligible_count ?? 0),
       }
     })
 }
+import { formatThaiNumber } from "@/shared/utils/thai-locale"

@@ -11,11 +11,13 @@ import {
   createLeavePayException,
   createLeaveReturnReport,
   createPeriod,
+  deletePeriod,
   deleteLeavePayException,
   deleteLeaveReturnReport,
   downloadPeriodReport,
   getPeriodDetail,
   getPeriodPayouts,
+  getPayoutDetail,
   getPeriodReviewProgress,
   getPeriodSummaryByProfession,
   listPeriods,
@@ -26,13 +28,54 @@ import {
   searchPayouts,
   setPeriodProfessionReview,
   submitToHR,
+  updatePayout,
 } from './api';
+
+const invalidateNavigation = (qc: ReturnType<typeof useQueryClient>) =>
+  qc.invalidateQueries({ queryKey: ['navigation'] });
 
 export function usePeriodPayouts(periodId: number | string | undefined) {
   return useQuery({
     queryKey: ['payroll-period-payouts', periodId],
     queryFn: () => getPeriodPayouts(periodId!),
     enabled: !!periodId,
+  });
+}
+
+export function usePayoutDetail(payoutId: number | string | undefined) {
+  return useQuery({
+    queryKey: ['payroll-payout-detail', payoutId],
+    queryFn: () => getPayoutDetail(payoutId!),
+    enabled: !!payoutId,
+  });
+}
+
+export function useUpdatePayout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      payoutId,
+      payload,
+    }: {
+      payoutId: number | string;
+      payload: {
+        eligible_days?: number;
+        deducted_days?: number;
+        retroactive_amount?: number;
+        remark?: string | null;
+      };
+    }) => updatePayout(payoutId, payload),
+    onSuccess: () => {
+      // Some pages pass periodId as string (from route params), but API returns number.
+      // Invalidate by prefix to avoid queryKey mismatches (e.g. "20" vs 20).
+      qc.invalidateQueries({ queryKey: ['payroll-period-payouts'] });
+      qc.invalidateQueries({ queryKey: ['payroll-period-review-progress'] });
+      qc.invalidateQueries({ queryKey: ['payroll-period-detail'] });
+      qc.invalidateQueries({ queryKey: ['payroll-period-summary'] });
+      qc.invalidateQueries({ queryKey: ['payroll-periods'] });
+      qc.invalidateQueries({ queryKey: ['payroll-payout-detail'] });
+      invalidateNavigation(qc);
+    },
   });
 }
 
@@ -71,7 +114,25 @@ export function useCreatePeriod() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createPeriod,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['payroll-periods'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payroll-periods'] });
+      invalidateNavigation(qc);
+    },
+  });
+}
+
+export function useDeletePeriod() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (periodId: number | string) => deletePeriod(periodId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['payroll-periods'] });
+      qc.invalidateQueries({ queryKey: ['payroll-period-detail'] });
+      qc.invalidateQueries({ queryKey: ['payroll-period-payouts'] });
+      qc.invalidateQueries({ queryKey: ['payroll-period-review-progress'] });
+      qc.invalidateQueries({ queryKey: ['payroll-period-summary'] });
+      invalidateNavigation(qc);
+    },
   });
 }
 
@@ -83,6 +144,7 @@ export function useAddPeriodItems() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['payroll-period-detail', variables.periodId] });
       qc.invalidateQueries({ queryKey: ['payroll-periods'] });
+      invalidateNavigation(qc);
     },
   });
 }
@@ -95,6 +157,7 @@ export function useRemovePeriodItem() {
     onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ['payroll-period-detail', variables.periodId] });
       qc.invalidateQueries({ queryKey: ['payroll-periods'] });
+      invalidateNavigation(qc);
     },
   });
 }
@@ -120,8 +183,18 @@ export function useCalculateOnDemand() {
 }
 
 export function useCalculatePeriod() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (periodId: number | string) => calculatePeriod(periodId),
+    onSuccess: (_data, periodId) => {
+      // Recalculate affects payouts list + progress + totals shown in period detail.
+      qc.invalidateQueries({ queryKey: ['payroll-period-payouts', periodId] });
+      qc.invalidateQueries({ queryKey: ['payroll-period-review-progress', periodId] });
+      qc.invalidateQueries({ queryKey: ['payroll-period-detail', periodId] });
+      qc.invalidateQueries({ queryKey: ['payroll-period-summary', periodId] });
+      qc.invalidateQueries({ queryKey: ['payroll-periods'] });
+      invalidateNavigation(qc);
+    },
   });
 }
 
@@ -133,6 +206,7 @@ export function useSubmitToHR() {
       qc.invalidateQueries({ queryKey: ['payroll-periods'] });
       qc.invalidateQueries({ queryKey: ['payroll-period-review-progress', periodId] });
       qc.invalidateQueries({ queryKey: ['payroll-period-detail', periodId] });
+      invalidateNavigation(qc);
     },
   });
 }
@@ -157,32 +231,41 @@ export function useSetPeriodProfessionReview() {
       qc.invalidateQueries({
         queryKey: ['payroll-period-review-progress', variables.periodId],
       });
+      invalidateNavigation(qc);
     },
   });
 }
 
 export function useApproveByHR() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (periodId: number | string) => approveByHR(periodId),
+    onSuccess: () => invalidateNavigation(qc),
   });
 }
 
 export function useApproveByDirector() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (periodId: number | string) => approveByDirector(periodId),
+    onSuccess: () => invalidateNavigation(qc),
   });
 }
 
 export function useApproveByHeadFinance() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: (periodId: number | string) => approveByHeadFinance(periodId),
+    onSuccess: () => invalidateNavigation(qc),
   });
 }
 
 export function useRejectPeriod() {
+  const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ periodId, payload }: { periodId: number | string; payload: { reason: string } }) =>
       rejectPeriod(periodId, payload),
+    onSuccess: () => invalidateNavigation(qc),
   });
 }
 

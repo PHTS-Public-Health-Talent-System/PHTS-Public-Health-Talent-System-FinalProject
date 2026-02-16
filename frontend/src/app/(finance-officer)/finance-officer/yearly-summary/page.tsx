@@ -1,12 +1,13 @@
-"use client"
-export const dynamic = 'force-dynamic'
+'use client';
 
+export const dynamic = 'force-dynamic';
 
-import { useState, useMemo } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Skeleton } from "@/components/ui/skeleton"
+import { useMemo, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Progress } from '@/components/ui/progress';
 import {
   Table,
   TableBody,
@@ -14,433 +15,355 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from '@/components/ui/table';
 import {
-  TrendingUp,
-  TrendingDown,
-  Calendar,
-  Download,
-  Users,
-  DollarSign,
-  BarChart3,
-  Building2,
-} from "lucide-react"
-import { YearPicker } from "@/components/month-year-picker"
-import { useFinanceYearlySummary } from "@/features/finance/hooks"
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useFinanceSummary } from '@/features/finance/hooks';
+import { toast } from 'sonner';
+import { Download, TrendingUp, Users, Wallet, Landmark, PieChart } from 'lucide-react';
+import {
+  formatThaiCurrency,
+  formatThaiMonthYear,
+  formatThaiNumber,
+  toBuddhistYear,
+  toGregorianYear,
+} from '@/shared/utils/thai-locale';
 
-type YearlyMonthlyRow = {
-  month: string
-  amount: number
-  payouts: number
-  avgAmount: number
-}
+type MonthlySummaryRow = {
+  period_id: number;
+  period_month: number;
+  period_year: number;
+  period_status: string;
+  is_frozen: boolean | number;
+  total_employees: number;
+  total_amount: number;
+  paid_amount: number;
+  pending_amount: number;
+  pending_count: number;
+};
 
-type YearlyProfessionRow = {
-  profession: string
-  amount: number
-  payouts: number
-  percentage: number
-}
-
-type YearlyDepartmentRow = {
-  department: string
-  amount: number
-  payouts: number
-  percentage: number
-}
-
-type YearComparisonRow = {
-  year: number
-  amount: number
-  payouts: number
-}
-
-type YearlySummaryData = {
-  year: number
-  totalAmount: number
-  totalPayouts: number
-  totalEmployees: number
-  growthRate: number
-  monthlyBreakdown: YearlyMonthlyRow[]
-  byProfession: YearlyProfessionRow[]
-  byDepartment: YearlyDepartmentRow[]
-  yearComparison: YearComparisonRow[]
-}
-
-type YearlySummaryApi = {
-  year?: number
-  total_amount?: number | string
-  total_payouts?: number | string
-  total_employees?: number | string
-  growth_rate?: number | string
-  monthly_breakdown?: YearlyMonthlyRow[]
-  by_profession?: YearlyProfessionRow[]
-  by_department?: YearlyDepartmentRow[]
-  year_comparison?: YearComparisonRow[]
-}
-
-// Fallback data
-const defaultYearlyData: YearlySummaryData = {
-  year: 2568,
-  totalAmount: 18500000,
-  totalPayouts: 1856,
-  totalEmployees: 165,
-  growthRate: 8.2,
-  
-  monthlyBreakdown: [
-    { month: "มกราคม", amount: 1850000, payouts: 142, avgAmount: 13028 },
-    { month: "กุมภาพันธ์", amount: 1920000, payouts: 148, avgAmount: 12973 },
-    { month: "มีนาคม", amount: 2100000, payouts: 155, avgAmount: 13548 },
-    { month: "เมษายน", amount: 1780000, payouts: 138, avgAmount: 12899 },
-    { month: "พฤษภาคม", amount: 2050000, payouts: 152, avgAmount: 13487 },
-    { month: "มิถุนายน", amount: 2200000, payouts: 160, avgAmount: 13750 },
-    { month: "กรกฎาคม", amount: 2350000, payouts: 165, avgAmount: 14242 },
-    { month: "สิงหาคม", amount: 2450000, payouts: 156, avgAmount: 15705 },
-    { month: "กันยายน", amount: 1800000, payouts: 140, avgAmount: 12857 },
-    { month: "ตุลาคม", amount: 0, payouts: 0, avgAmount: 0 },
-    { month: "พฤศจิกายน", amount: 0, payouts: 0, avgAmount: 0 },
-    { month: "ธันวาคม", amount: 0, payouts: 0, avgAmount: 0 },
-  ],
-  
-  byProfession: [
-    { profession: "พยาบาลวิชาชีพ", amount: 7500000, payouts: 750, percentage: 40.5 },
-    { profession: "แพทย์", amount: 4200000, payouts: 350, percentage: 22.7 },
-    { profession: "เภสัชกร", amount: 2100000, payouts: 210, percentage: 11.4 },
-    { profession: "นักเทคนิคการแพทย์", amount: 1800000, payouts: 180, percentage: 9.7 },
-    { profession: "นักกายภาพบำบัด", amount: 1500000, payouts: 150, percentage: 8.1 },
-    { profession: "รังสีเทคนิค", amount: 1400000, payouts: 216, percentage: 7.6 },
-  ],
-  
-  byDepartment: [
-    { department: "อายุรกรรม", amount: 3200000, payouts: 280, percentage: 17.3 },
-    { department: "ศัลยกรรม", amount: 2800000, payouts: 245, percentage: 15.1 },
-    { department: "กุมารเวชกรรม", amount: 2400000, payouts: 210, percentage: 13.0 },
-    { department: "สูติ-นรีเวช", amount: 2200000, payouts: 195, percentage: 11.9 },
-    { department: "ห้องผ่าตัด", amount: 1900000, payouts: 165, percentage: 10.3 },
-    { department: "ฉุกเฉิน", amount: 1800000, payouts: 160, percentage: 9.7 },
-    { department: "อื่นๆ", amount: 4200000, payouts: 601, percentage: 22.7 },
-  ],
-  
-  yearComparison: [
-    { year: 2565, amount: 14200000, payouts: 1450 },
-    { year: 2566, amount: 15800000, payouts: 1580 },
-    { year: 2567, amount: 17100000, payouts: 1720 },
-    { year: 2568, amount: 18500000, payouts: 1856 },
-  ],
-}
+const escapeCsv = (value: string | number) => {
+  const text = String(value ?? '');
+  if (/[",\n]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+};
 
 export default function YearlySummaryPage() {
-  const [selectedYear, setSelectedYear] = useState(2568)
-  const { data: apiData, isLoading } = useFinanceYearlySummary({ year: selectedYear })
+  const currentYear = toGregorianYear(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState(currentYear);
 
-  const yearlyData = useMemo<YearlySummaryData>(() => {
-    if (!apiData || typeof apiData !== "object") return defaultYearlyData
-    const data = apiData as YearlySummaryApi
-    return {
-      year: data.year ?? selectedYear,
-      totalAmount: Number(data.total_amount) || 0,
-      totalPayouts: Number(data.total_payouts) || 0,
-      totalEmployees: Number(data.total_employees) || 0,
-      growthRate: Number(data.growth_rate) || 0,
-      monthlyBreakdown: Array.isArray(data.monthly_breakdown) ? data.monthly_breakdown : defaultYearlyData.monthlyBreakdown,
-      byProfession: Array.isArray(data.by_profession) ? data.by_profession : defaultYearlyData.byProfession,
-      byDepartment: Array.isArray(data.by_department) ? data.by_department : defaultYearlyData.byDepartment,
-      yearComparison: Array.isArray(data.year_comparison) ? data.year_comparison : defaultYearlyData.yearComparison,
+  const summaryQuery = useFinanceSummary();
+
+  const allPeriods = useMemo<MonthlySummaryRow[]>(() => {
+    if (!Array.isArray(summaryQuery.data)) return [];
+    return (summaryQuery.data as MonthlySummaryRow[]).map((row) => ({
+      period_id: Number(row.period_id ?? 0),
+      period_month: Number(row.period_month ?? 0),
+      period_year: toGregorianYear(Number(row.period_year ?? 0)),
+      period_status: String(row.period_status ?? ''),
+      is_frozen: row.is_frozen ?? 0,
+      total_employees: Number(row.total_employees ?? 0),
+      total_amount: Number(row.total_amount ?? 0),
+      paid_amount: Number(row.paid_amount ?? 0),
+      pending_amount: Number(row.pending_amount ?? 0),
+      pending_count: Number(row.pending_count ?? 0),
+    }));
+  }, [summaryQuery.data]);
+
+  const reportablePeriods = useMemo(
+    () =>
+      allPeriods.filter(
+        (row) => row.period_status === 'CLOSED' && (row.is_frozen === true || row.is_frozen === 1),
+      ),
+    [allPeriods],
+  );
+
+  const availableYears = useMemo(
+    () => Array.from(new Set(reportablePeriods.map((row) => row.period_year))).sort((a, b) => b - a),
+    [reportablePeriods],
+  );
+
+  const resolvedSelectedYear = useMemo(() => {
+    if (availableYears.length === 0) return selectedYear;
+    return availableYears.includes(selectedYear) ? selectedYear : availableYears[0];
+  }, [availableYears, selectedYear]);
+
+  const monthlyRows = useMemo<MonthlySummaryRow[]>(() => {
+    return reportablePeriods
+      .filter((row) => row.period_year === resolvedSelectedYear)
+      .sort((a, b) => b.period_month - a.period_month);
+  }, [reportablePeriods, resolvedSelectedYear]);
+
+  const annualFinance = useMemo(() => {
+    return monthlyRows.reduce(
+      (acc, row) => {
+        acc.totalEmployees += row.total_employees;
+        acc.totalAmount += row.total_amount;
+        acc.paidAmount += row.paid_amount;
+        acc.pendingAmount += row.pending_amount;
+        return acc;
+      },
+      { totalEmployees: 0, totalAmount: 0, paidAmount: 0, pendingAmount: 0 },
+    );
+  }, [monthlyRows]);
+
+  const paidRatio =
+    annualFinance.totalAmount > 0
+      ? (annualFinance.paidAmount / annualFinance.totalAmount) * 100
+      : 0;
+
+  const yearlyTotals = useMemo(() => {
+    const map = new Map<number, { totalAmount: number }>();
+    for (const row of reportablePeriods) {
+      const existing = map.get(row.period_year) ?? { totalAmount: 0 };
+      existing.totalAmount += row.total_amount;
+      map.set(row.period_year, existing);
     }
-  }, [apiData, selectedYear])
+    return Array.from(map.entries())
+      .map(([year, totals]) => ({ year, totalAmount: totals.totalAmount }))
+      .sort((a, b) => b.year - a.year);
+  }, [reportablePeriods]);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat("th-TH").format(amount)
-  }
+  const growthRate = useMemo(() => {
+    const idx = yearlyTotals.findIndex((entry) => entry.year === resolvedSelectedYear);
+    if (idx < 0) return 0;
+    const current = yearlyTotals[idx];
+    const previous = yearlyTotals[idx + 1];
+    if (!previous || previous.totalAmount <= 0) return 0;
+    return ((current.totalAmount - previous.totalAmount) / previous.totalAmount) * 100;
+  }, [yearlyTotals, resolvedSelectedYear]);
 
-  if (isLoading) {
+  const handleExport = () => {
+    if (monthlyRows.length === 0) {
+      toast.error('ไม่พบข้อมูลสำหรับปีที่เลือก');
+      return;
+    }
+
+    const rows = [
+      ['ปี (พ.ศ.)', toBuddhistYear(resolvedSelectedYear)],
+      ['จำนวนผู้รับเงิน', annualFinance.totalEmployees],
+      ['งบประมาณรวม', annualFinance.totalAmount],
+      ['เบิกจ่ายแล้ว', annualFinance.paidAmount],
+      ['ภาระผูกพันคงค้าง', annualFinance.pendingAmount],
+      ['สัดส่วนการเบิกจ่าย (%)', paidRatio.toFixed(2)],
+    ];
+    const csv =
+      '\uFEFF' + ['หัวข้อ,ค่า', ...rows.map((line) => line.map(escapeCsv).join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `finance-yearly-summary-${toBuddhistYear(resolvedSelectedYear)}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+    toast.success('ส่งออกรายงานสำเร็จ');
+  };
+
+  if (summaryQuery.isLoading) {
     return (
-      <div className="p-8">
-        <div className="mb-8">
-          <Skeleton className="h-10 w-48 mb-4" />
-          <Skeleton className="h-5 w-96" />
+      <div className="p-8 space-y-6">
+        <div className="flex justify-between items-center">
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-10 w-32" />
         </div>
         <div className="grid gap-4 lg:grid-cols-4">
-          {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-24" />)}
+          {[1, 2, 3, 4].map((i) => (
+            <Skeleton key={i} className="h-32 rounded-xl" />
+          ))}
         </div>
+        <Skeleton className="h-96 rounded-xl" />
       </div>
-    )
+    );
   }
 
   return (
-    <div className="p-8">
+    <div className="p-8 space-y-8 pb-20">
       {/* Header */}
-      <div className="mb-8 flex items-start justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">สรุปรายปี</h1>
-          <p className="mt-2 text-muted-foreground">
-            ภาพรวมการจ่ายเงิน พ.ต.ส. ประจำปี
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <PieChart className="h-6 w-6 text-primary" /> สรุปการเงินรายปี
+          </h1>
+          <p className="text-muted-foreground mt-1">แสดงเฉพาะงวดที่ผู้บริหารอนุมัติแล้วและปิดรอบสมบูรณ์</p>
         </div>
         <div className="flex gap-3">
-          <YearPicker
-            value={selectedYear}
-            onChange={setSelectedYear}
-            minYear={2550}
-            maxYear={2600}
-          />
-          <Button variant="outline">
+          <Select
+            value={String(resolvedSelectedYear)}
+            onValueChange={(value) => setSelectedYear(Number(value))}
+            disabled={availableYears.length === 0}
+          >
+            <SelectTrigger className="w-[160px] bg-background">
+              <SelectValue placeholder="เลือกปี (พ.ศ.)" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableYears.map((year) => (
+                <SelectItem key={year} value={String(year)}>
+                  พ.ศ. {toBuddhistYear(year)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button variant="outline" onClick={handleExport} className="bg-background">
             <Download className="mr-2 h-4 w-4" />
-            Export รายงาน
+            ส่งออก CSV
           </Button>
         </div>
       </div>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4 mb-8">
-        <Card className="border-green-200 bg-green-50/50">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">ยอดจ่ายรวมทั้งปี</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {(yearlyData.totalAmount / 1000000).toFixed(1)}M
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {formatCurrency(yearlyData.totalAmount)} บาท
-                </p>
+      {/* Stats Cards */}
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <Card className="border-border shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              งบประมาณรวมทั้งปี
+            </CardTitle>
+            <Landmark className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-primary">
+              {formatThaiCurrency(annualFinance.totalAmount)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              ปีงบประมาณ {toBuddhistYear(resolvedSelectedYear)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-border shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              เบิกจ่ายแล้ว
+            </CardTitle>
+            <Wallet className="h-4 w-4 text-emerald-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-emerald-600">
+              {formatThaiCurrency(annualFinance.paidAmount)}
+            </div>
+            <div className="mt-2 space-y-1">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted-foreground">ความคืบหน้า</span>
+                <span className="font-medium text-emerald-600">{paidRatio.toFixed(1)}%</span>
               </div>
-              <DollarSign className="h-8 w-8 text-green-600" />
+              <Progress value={paidRatio} className="h-1.5 bg-emerald-100" />
             </div>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">จำนวนรายการจ่าย</p>
-                <p className="text-2xl font-bold">{formatCurrency(yearlyData.totalPayouts)}</p>
-                <p className="text-xs text-muted-foreground mt-1">รายการ</p>
-              </div>
-              <BarChart3 className="h-8 w-8 text-primary" />
+        <Card className="border-border shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              ภาระผูกพันคงค้าง
+            </CardTitle>
+            <TrendingUp className="h-4 w-4 text-amber-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-amber-600">
+              {formatThaiCurrency(annualFinance.pendingAmount)}
             </div>
+            <p className="text-xs text-muted-foreground mt-1">รอการดำเนินการจ่าย</p>
           </CardContent>
         </Card>
 
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">จำนวนผู้รับเงิน</p>
-                <p className="text-2xl font-bold">{yearlyData.totalEmployees}</p>
-                <p className="text-xs text-muted-foreground mt-1">คน</p>
-              </div>
-              <Users className="h-8 w-8 text-primary" />
+        <Card className="border-border shadow-sm">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              จำนวนบุคลากร
+            </CardTitle>
+            <Users className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-600">
+              {formatThaiNumber(annualFinance.totalEmployees)}
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">อัตราเติบโต</p>
-                <p className="text-2xl font-bold text-green-600">+{yearlyData.growthRate}%</p>
-                <p className="text-xs text-muted-foreground mt-1">เทียบปีก่อน</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-green-600" />
-            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              เติบโตเทียบปีก่อน {growthRate >= 0 ? '+' : ''}
+              {growthRate.toFixed(1)}%
+            </p>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Monthly Breakdown */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-primary" />
-              สรุปรายเดือน ปี {yearlyData.year}
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
+      {/* Monthly Breakdown Table */}
+      <Card className="border-border shadow-sm">
+        <CardHeader className="border-b bg-muted/10 py-4 px-6">
+          <CardTitle className="text-lg font-semibold flex items-center gap-2">
+            <Wallet className="h-5 w-5 text-muted-foreground" />
+            รายละเอียดรายเดือน
+          </CardTitle>
+          <CardDescription>
+            แสดงรายการเบิกจ่ายแยกตามเดือน ประจำปีงบประมาณ {toBuddhistYear(resolvedSelectedYear)}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader className="bg-muted/30">
+              <TableRow>
+                <TableHead className="w-[200px]">เดือน/ปี</TableHead>
+                <TableHead className="text-right">จำนวนผู้รับเงิน</TableHead>
+                <TableHead className="text-right">ยอดรวม (บาท)</TableHead>
+                <TableHead className="text-right text-emerald-600">จ่ายแล้ว (บาท)</TableHead>
+                <TableHead className="text-right text-amber-600">คงค้าง (บาท)</TableHead>
+                <TableHead className="text-center w-[150px]">สถานะ</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {monthlyRows.length === 0 ? (
                 <TableRow>
-                  <TableHead>เดือน</TableHead>
-                  <TableHead className="text-right">ยอดจ่าย</TableHead>
-                  <TableHead className="text-right">จำนวนราย</TableHead>
-                  <TableHead className="text-right">เฉลี่ย/ราย</TableHead>
-                  <TableHead className="text-right">สัดส่วน</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {yearlyData.monthlyBreakdown.map((month) => (
-                  <TableRow key={month.month}>
-                    <TableCell className="font-medium">{month.month}</TableCell>
-                    <TableCell className="text-right">
-                      {month.amount > 0 ? (
-                        <span className="text-green-600 font-medium">
-                          {formatCurrency(month.amount)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {month.payouts > 0 ? month.payouts : "-"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {month.avgAmount > 0 ? formatCurrency(month.avgAmount) : "-"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {month.amount > 0 ? (
-                        <Badge variant="outline">
-                          {((month.amount / yearlyData.totalAmount) * 100).toFixed(1)}%
-                        </Badge>
-                      ) : (
-                        "-"
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                <TableRow className="bg-muted/50 font-bold">
-                  <TableCell>รวมทั้งปี</TableCell>
-                  <TableCell className="text-right text-green-600">
-                    {formatCurrency(yearlyData.totalAmount)}
-                  </TableCell>
-                  <TableCell className="text-right">{yearlyData.totalPayouts}</TableCell>
-                  <TableCell className="text-right">
-                    {formatCurrency(Math.round(yearlyData.totalAmount / yearlyData.totalPayouts))}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Badge>100%</Badge>
+                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                    ไม่มีข้อมูลการเบิกจ่ายในปีนี้
                   </TableCell>
                 </TableRow>
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-
-        {/* By Profession */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              สรุปตามวิชาชีพ
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {yearlyData.byProfession.map((item) => (
-                <div key={item.profession} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{item.profession}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {item.payouts} ราย
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-primary rounded-full"
-                        style={{ width: `${item.percentage}%` }}
-                      />
-                    </div>
-                    <span className="text-sm font-medium w-20 text-right text-green-600">
-                      {(item.amount / 1000000).toFixed(1)}M
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* By Department */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Building2 className="h-5 w-5 text-primary" />
-              สรุปตามหน่วยงาน
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {yearlyData.byDepartment.map((item) => (
-                <div key={item.department} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium">{item.department}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {item.payouts} ราย
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-amber-500 rounded-full"
-                        style={{ width: `${item.percentage}%` }}
-                      />
-                    </div>
-                    <span className="text-sm font-medium w-20 text-right text-green-600">
-                      {(item.amount / 1000000).toFixed(1)}M
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Year Comparison */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-primary" />
-              เปรียบเทียบรายปี
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-              {yearlyData.yearComparison.map((year, index) => {
-                const prevYear = yearlyData.yearComparison[index - 1]
-                const growth = prevYear
-                  ? ((year.amount - prevYear.amount) / prevYear.amount) * 100
-                  : 0
-
-                return (
-                  <Card
-                    key={year.year}
-                    className={year.year === yearlyData.year ? "border-primary" : ""}
-                  >
-                    <CardContent className="pt-6">
-                      <div className="text-center">
-                        <p className="text-sm text-muted-foreground">ปี {year.year}</p>
-                        <p className="text-2xl font-bold mt-1">
-                          {(year.amount / 1000000).toFixed(1)}M
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {formatCurrency(year.payouts)} รายการ
-                        </p>
-                        {growth !== 0 && (
-                          <div
-                            className={`flex items-center justify-center gap-1 mt-2 text-sm ${
-                              growth > 0 ? "text-green-600" : "text-red-600"
-                            }`}
+              ) : (
+                monthlyRows.map((row) => {
+                  const isFullyPaid = row.pending_amount <= 0 && row.pending_count <= 0;
+                  return (
+                    <TableRow key={row.period_id} className="hover:bg-muted/20 transition-colors">
+                      <TableCell className="font-medium text-foreground">
+                        {formatThaiMonthYear(row.period_month, row.period_year)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {formatThaiNumber(row.total_employees)}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {formatThaiCurrency(row.total_amount)}
+                      </TableCell>
+                      <TableCell className="text-right text-emerald-600 font-medium">
+                        {formatThaiCurrency(row.paid_amount)}
+                      </TableCell>
+                      <TableCell className="text-right text-amber-600 font-medium">
+                        {formatThaiCurrency(row.pending_amount)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {isFullyPaid ? (
+                          <Badge
+                            variant="outline"
+                            className="bg-emerald-50 text-emerald-700 border-emerald-200 font-normal"
                           >
-                            {growth > 0 ? (
-                              <TrendingUp className="h-4 w-4" />
-                            ) : (
-                              <TrendingDown className="h-4 w-4" />
-                            )}
-                            <span>{growth > 0 ? "+" : ""}{growth.toFixed(1)}%</span>
-                          </div>
+                            จ่ายครบแล้ว
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="bg-amber-50 text-amber-700 border-amber-200 font-normal"
+                          >
+                            มีรายการคงค้าง
+                          </Badge>
                         )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
-  )
+  );
 }

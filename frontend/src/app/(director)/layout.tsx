@@ -1,4 +1,4 @@
-import { DirectorSidebar } from "@/components/director-sidebar"
+import { DirectorSidebar } from "@/features/navigation/components/director-sidebar"
 
 export default function DirectorLayout({
   children,
@@ -6,7 +6,7 @@ export default function DirectorLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="role-theme-director min-h-screen bg-background">
       <DirectorSidebar />
       <main className="ml-64 min-h-screen overflow-auto">
         {children}

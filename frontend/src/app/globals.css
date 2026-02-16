@@ -33,7 +33,7 @@ body {
     --destructive-foreground: 210 40% 98%;
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --ring: 215 16% 47%;
     --radius: 0.5rem;
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
@@ -78,7 +78,7 @@ body {
     --destructive-foreground: 210 20% 98%;
     --border: 220 13% 18%;
     --input: 220 13% 18%;
-    --ring: 217 91% 60%;
+    --ring: 215 20% 65%;
     --chart-1: 217 91% 60%;
     --chart-2: 160 84% 39%;
     --chart-3: 43 96% 56%;
@@ -109,5 +109,50 @@ body {
   }
   body {
     @apply bg-background text-foreground;
+  }
+
+  .role-theme-admin {
+    --primary: 346 77% 49%;
+    --primary-foreground: 0 0% 100%;
+  }
+
+  .role-theme-director {
+    --primary: 271 81% 56%;
+    --primary-foreground: 0 0% 100%;
+  }
+
+  .role-theme-finance-officer {
+    --primary: 38 92% 50%;
+    --primary-foreground: 0 0% 100%;
+  }
+
+  .role-theme-head-hr {
+    --primary: 160 84% 39%;
+    --primary-foreground: 0 0% 100%;
+  }
+
+  .role-theme-head-ward {
+    --primary: 192 91% 36%;
+    --primary-foreground: 0 0% 100%;
+  }
+
+  .role-theme-head-dept {
+    --primary: 243 75% 59%;
+    --primary-foreground: 0 0% 100%;
+  }
+
+  .role-theme-head-finance {
+    --primary: 24 95% 53%;
+    --primary-foreground: 0 0% 100%;
+  }
+
+  .role-theme-pts-officer {
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+  }
+
+  .role-theme-user {
+    --primary: 200 98% 39%;
+    --primary-foreground: 0 0% 100%;
   }
 }

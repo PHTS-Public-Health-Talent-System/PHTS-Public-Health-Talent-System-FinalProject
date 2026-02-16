@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { useRouter } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import api from "@/shared/api/axios"
 import { User } from "@/types/auth"
 import type { ApiResponse } from "@/shared/api/types"
@@ -20,10 +20,36 @@ interface AuthContextType {
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined)
 
+function getRoleHomePath(role: User["role"]): string {
+  switch (role) {
+    case "USER":
+      return "/user"
+    case "HEAD_WARD":
+      return "/head-ward"
+    case "HEAD_DEPT":
+      return "/head-dept"
+    case "PTS_OFFICER":
+      return "/pts-officer"
+    case "DIRECTOR":
+      return "/director"
+    case "HEAD_HR":
+      return "/head-hr"
+    case "HEAD_FINANCE":
+      return "/head-finance"
+    case "FINANCE_OFFICER":
+      return "/finance-officer"
+    case "ADMIN":
+      return "/admin"
+    default:
+      return "/"
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<User | null>(null)
   const [isLoading, setIsLoading] = React.useState(true)
   const router = useRouter()
+  const pathname = usePathname()
   const tokenKey = "phts_token"
   const userKey = "phts_user"
 
@@ -34,36 +60,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push("/login")
   }, [router, tokenKey, userKey])
 
+  const refreshCurrentUser = React.useCallback(async () => {
+    const token = localStorage.getItem(tokenKey)
+    if (!token) {
+      setUser(null)
+      return null
+    }
+
+    const { data } = await api.get<ApiResponse<User>>("/auth/me")
+    if (!data.success || !data.data) {
+      throw new Error("Failed to fetch user")
+    }
+
+    setUser(data.data)
+    localStorage.setItem(userKey, JSON.stringify(data.data))
+    return data.data
+  }, [tokenKey, userKey])
+
   // 1. Check User on Mount
   React.useEffect(() => {
     const initAuth = async () => {
-      const token = localStorage.getItem(tokenKey)
-
-      if (token) {
-        try {
-          // Verify token with backend
-          const { data } = await api.get<ApiResponse<User>>('/auth/me')
-          if (data.success) {
-             setUser(data.data)
-             localStorage.setItem(userKey, JSON.stringify(data.data))
-          } else {
-             throw new Error("Failed to fetch user");
-          }
-        } catch (error) {
-          console.error("Token expired or invalid:", error)
-          logout()
-        }
-      } else {
-        // No token found
-        setUser(null)
+      try {
+        await refreshCurrentUser()
+      } catch (error) {
+        console.error("Token expired or invalid:", error)
+        logout()
+      } finally {
+        setIsLoading(false)
       }
-      setIsLoading(false)
     }
 
-    initAuth()
-  }, [logout])
+    void initAuth()
+  }, [logout, refreshCurrentUser])
 
-  // 2. Login Function
+  // 2. Refresh user on tab focus / visibility to detect role changes from backend.
+  React.useEffect(() => {
+    const shouldSkip = !localStorage.getItem(tokenKey) || isLoading
+    if (shouldSkip) return
+
+    const syncUser = async () => {
+      try {
+        await refreshCurrentUser()
+      } catch {
+        logout()
+      }
+    }
+
+    const onFocus = () => {
+      void syncUser()
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void syncUser()
+      }
+    }
+
+    window.addEventListener("focus", onFocus)
+    document.addEventListener("visibilitychange", onVisibility)
+    return () => {
+      window.removeEventListener("focus", onFocus)
+      document.removeEventListener("visibilitychange", onVisibility)
+    }
+  }, [isLoading, logout, refreshCurrentUser, tokenKey])
+
+  // 3. Enforce route by current role so layout/sidebar always match active user.
+  React.useEffect(() => {
+    if (isLoading || !user) return
+    const roleHome = getRoleHomePath(user.role)
+    if (pathname === "/login") {
+      router.replace(roleHome)
+      return
+    }
+    if (pathname !== roleHome && !pathname.startsWith(`${roleHome}/`)) {
+      router.replace(roleHome)
+    }
+  }, [isLoading, pathname, router, user])
+
+  // 4. Login Function
   const login = async (credentials: LoginCredentials) => {
     try {
       // credentials should contain { citizen_id, password }
@@ -82,17 +155,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         setUser(user)
 
-        // Redirect based on Role (route groups without /dashboard prefix)
-        const role = user.role
-        if (role === 'USER') router.push('/user')
-        else if (role === 'HEAD_WARD') router.push('/head-ward')
-        else if (role === 'PTS_OFFICER') router.push('/pts-officer')
-        else if (role === 'DIRECTOR') router.push('/director')
-        else if (role === 'HEAD_HR') router.push('/head-hr')
-        else if (role === 'HEAD_FINANCE') router.push('/head-finance')
-        else if (role === 'FINANCE_OFFICER') router.push('/finance-officer')
-        else if (role === 'ADMIN') router.push('/admin')
-        else router.push('/') // Default
+        // Redirect based on current role
+        router.push(getRoleHomePath(user.role))
       } else {
          throw new Error(data.error || "Login failed");
       }

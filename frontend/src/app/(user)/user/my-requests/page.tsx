@@ -1,7 +1,8 @@
 'use client';
+export const dynamic = 'force-dynamic';
 
 import { useMemo, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -33,6 +34,8 @@ import {
   XCircle,
   AlertCircle,
   Filter,
+  FilePen,
+  List,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -49,11 +52,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { formatThaiDate, formatThaiNumber } from '@/shared/utils/thai-locale';
 
+// Helper: Status Icons & Colors
 const getStatusIcon = (status: string) => {
   switch (status) {
     case 'DRAFT':
-      return <Edit className="h-4 w-4" />;
+      return <FilePen className="h-4 w-4" />;
     case 'PENDING':
       return <Clock className="h-4 w-4" />;
     case 'APPROVED':
@@ -70,17 +76,17 @@ const getStatusIcon = (status: string) => {
 const getStatusColor = (status: string) => {
   switch (status) {
     case 'DRAFT':
-      return 'bg-muted text-muted-foreground';
+      return 'bg-secondary text-muted-foreground border-border';
     case 'PENDING':
-      return 'bg-warning/10 text-warning border-warning/20';
+      return 'bg-amber-500/10 text-amber-600 border-amber-200';
     case 'APPROVED':
-      return 'bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/20';
+      return 'bg-emerald-500/10 text-emerald-600 border-emerald-200';
     case 'REJECTED':
       return 'bg-destructive/10 text-destructive border-destructive/20';
     case 'RETURNED':
-      return 'bg-orange-500/10 text-orange-500 border-orange-500/20';
+      return 'bg-orange-500/10 text-orange-600 border-orange-200';
     default:
-      return 'bg-muted text-muted-foreground';
+      return 'bg-muted text-muted-foreground border-border';
   }
 };
 
@@ -123,13 +129,40 @@ const getPendingStepLabel = (step?: number | null) => {
 };
 
 const statusOptions = [
-  { value: 'all', label: 'ทั้งหมด' },
+  { value: 'all', label: 'สถานะ: ทั้งหมด' },
   { value: 'DRAFT', label: 'แบบร่าง' },
   { value: 'PENDING', label: 'รอดำเนินการ' },
   { value: 'APPROVED', label: 'อนุมัติแล้ว' },
   { value: 'RETURNED', label: 'ถูกส่งกลับ' },
   { value: 'REJECTED', label: 'ไม่อนุมัติ' },
 ];
+
+// Helper Component: Stat Card
+type StatCardProps = {
+  title: string;
+  value: number;
+  unit?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  colorClass: string;
+  bgClass: string;
+};
+
+const StatCard = ({ title, value, unit = 'รายการ', icon: Icon, colorClass, bgClass }: StatCardProps) => (
+  <Card className="border-border shadow-sm">
+    <CardContent className="p-6 flex items-center justify-between">
+      <div>
+        <p className="text-sm font-medium text-muted-foreground">{title}</p>
+        <div className="text-2xl font-bold mt-1">
+          {formatThaiNumber(value)}{' '}
+          <span className="text-xs font-normal text-muted-foreground">{unit}</span>
+        </div>
+      </div>
+      <div className={`p-3 rounded-full ${bgClass} ${colorClass}`}>
+        <Icon className="h-5 w-5" />
+      </div>
+    </CardContent>
+  </Card>
+);
 
 export default function MyRequestsPage() {
   const { data, isLoading } = useMyRequests();
@@ -173,9 +206,7 @@ export default function MyRequestsPage() {
 
   const handleSubmitRequest = (id: string | number) => {
     submitRequest.mutate(id, {
-      onSuccess: () => {
-        toast.success('ส่งคำขอสำเร็จ');
-      },
+      onSuccess: () => toast.success('ส่งคำขอสำเร็จ'),
       onError: (error: unknown) => {
         const message = error instanceof Error ? error.message : 'เกิดข้อผิดพลาด';
         toast.error(message);
@@ -198,236 +229,260 @@ export default function MyRequestsPage() {
   };
 
   return (
-    <div className="p-6 lg:p-8">
-      {/* Header */}
-      <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">คำขอของฉัน</h1>
-          <p className="mt-1 text-muted-foreground">จัดการและติดตามคำขอเงิน พ.ต.ส. ของคุณ</p>
-        </div>
-        <Link href="/user/my-requests/new">
-          <Button size="lg">
-            <Plus className="mr-2 h-4 w-4" />
-            สร้างคำขอใหม่
-          </Button>
-        </Link>
-      </div>
-
-      {/* Stats */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">ทั้งหมด</p>
-                <p className="text-2xl font-bold">{stats.total}</p>
-              </div>
-              <FileText className="h-8 w-8 text-muted-foreground/50" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">แบบร่าง</p>
-                <p className="text-2xl font-bold text-muted-foreground">{stats.draft}</p>
-              </div>
-              <Edit className="h-8 w-8 text-muted-foreground/50" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">รอดำเนินการ</p>
-                <p className="text-2xl font-bold text-warning">{stats.pending}</p>
-              </div>
-              <Clock className="h-8 w-8 text-warning/50" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">อนุมัติแล้ว</p>
-                <p className="text-2xl font-bold text-[hsl(var(--success))]">{stats.approved}</p>
-              </div>
-              <CheckCircle2 className="h-8 w-8 text-[hsl(var(--success))]/50" />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-1 items-center gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input
-              placeholder="ค้นหาเลขที่คำขอ หรือ เดือน…"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10"
-              aria-label="ค้นหาเลขที่คำขอ หรือ เดือน"
-              name="request_search"
-              autoComplete="off"
-            />
+    <TooltipProvider>
+      <div className="p-8 space-y-8">
+        {/* Header */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">คำขอของฉัน</h1>
+            <p className="text-muted-foreground mt-1">
+              จัดการและติดตามสถานะคำขอเบิกเงิน พ.ต.ส. ของคุณ
+            </p>
           </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px]" aria-label="กรองตามสถานะ">
-              <Filter className="mr-2 h-4 w-4" aria-hidden="true" />
-              <SelectValue placeholder="สถานะ" />
-            </SelectTrigger>
-            <SelectContent>
-              {statusOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Link href="/user/my-requests/new">
+            <Button className="shadow-sm">
+              <Plus className="mr-2 h-4 w-4" />
+              สร้างคำขอใหม่
+            </Button>
+          </Link>
         </div>
-      </div>
 
-      {/* Requests Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>รายการคำขอ</CardTitle>
-          <CardDescription>พบ {filteredRequests.length} รายการ</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="h-12 w-full rounded-md bg-muted/40" />
-              ))}
+        {/* Stats Dashboard */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <StatCard
+            title="ทั้งหมด"
+            value={stats.total}
+            icon={List}
+            colorClass="text-primary"
+            bgClass="bg-primary/10"
+          />
+          <StatCard
+            title="แบบร่าง"
+            value={stats.draft}
+            icon={FilePen}
+            colorClass="text-muted-foreground"
+            bgClass="bg-secondary"
+          />
+          <StatCard
+            title="รอดำเนินการ"
+            value={stats.pending}
+            icon={Clock}
+            colorClass="text-amber-600"
+            bgClass="bg-amber-500/10"
+          />
+          <StatCard
+            title="อนุมัติแล้ว"
+            value={stats.approved}
+            icon={CheckCircle2}
+            colorClass="text-emerald-600"
+            bgClass="bg-emerald-500/10"
+          />
+        </div>
+
+        {/* Main Content */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="py-4 px-6 border-b bg-muted/10">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <FileText className="h-5 w-5 text-muted-foreground" />
+                รายการคำขอ
+              </CardTitle>
+
+              <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
+                <div className="relative w-full sm:w-64">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="ค้นหาเลขที่คำขอ..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="bg-background pl-9 h-9"
+                  />
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-full sm:w-[160px] bg-background h-9">
+                    <div className="flex items-center gap-2 truncate">
+                      <Filter className="h-3.5 w-3.5 text-muted-foreground" />
+                      <SelectValue placeholder="สถานะ" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {statusOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>เลขที่คำขอ</TableHead>
-                  <TableHead className="text-right">จำนวนเงิน</TableHead>
-                  <TableHead>สถานะ</TableHead>
-                  <TableHead>ขั้นตอน</TableHead>
-                  <TableHead>วันที่สร้าง</TableHead>
-                  <TableHead className="text-right">การดำเนินการ</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredRequests.map((request) => (
-                  <TableRow key={request.id}>
-                    <TableCell>
-                      <Link
-                        href={`/user/my-requests/${request.id}`}
-                        className="font-medium text-primary hover:underline"
-                      >
-                        {request.displayId}
-                      </Link>
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {request.amount?.toLocaleString() || '-'} บาท
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className={`gap-1 ${getStatusColor(request.status)}`}>
-                        <span aria-hidden="true">{getStatusIcon(request.status)}</span>
-                        {request.status === 'PENDING'
-                          ? getPendingStepLabel(request.current_step)
-                          : getStatusLabel(request.status)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {request.current_step ? (
-                        <span className="text-sm text-muted-foreground">Step {request.current_step}/6</span>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {request.created_at &&
-                        new Date(request.created_at).toLocaleDateString('th-TH', {
-                          day: 'numeric',
-                          month: 'short',
-                          year: 'numeric',
-                        })}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center justify-end gap-1">
-                        <Link href={`/user/my-requests/${request.id}`}>
-                          <Button variant="ghost" size="icon" title="ดูรายละเอียด" aria-label="ดูรายละเอียด">
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                        {request.status === 'DRAFT' && (
-                          <Link href={`/user/my-requests/${request.id}/edit`}>
-                            <Button variant="ghost" size="icon" title="แก้ไข" aria-label="แก้ไขคำขอ">
-                              <Edit className="h-4 w-4" />
-                            </Button>
-                          </Link>
-                        )}
-                        {request.status === 'DRAFT' && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="ส่งคำขอ"
-                            onClick={() => handleSubmitRequest(request.id)}
-                            disabled={submitRequest.isPending}
-                            aria-label="ส่งคำขอ"
-                          >
-                            <Send className="h-4 w-4 text-primary" />
-                          </Button>
-                        )}
-                        {(request.status === 'PENDING' || request.status === 'RETURNED') && (
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            title="ยกเลิก"
-                            onClick={() => setCancelTargetId(request.id)}
-                            disabled={cancelRequest.isPending}
-                            aria-label="ยกเลิกคำขอ"
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
-                        )}
-                      </div>
-                    </TableCell>
+          </CardHeader>
+
+          <CardContent className="p-0">
+            <div className="relative overflow-x-auto">
+              <Table>
+                <TableHeader className="bg-muted/40">
+                  <TableRow className="border-border hover:bg-transparent">
+                    <TableHead className="w-[180px] font-semibold">เลขที่คำขอ</TableHead>
+                    <TableHead className="font-semibold text-right">จำนวนเงิน (บาท)</TableHead>
+                    <TableHead className="font-semibold text-center">สถานะ</TableHead>
+                    <TableHead className="font-semibold">ขั้นตอนปัจจุบัน</TableHead>
+                    <TableHead className="font-semibold">วันที่สร้าง</TableHead>
+                    <TableHead className="text-right font-semibold w-[140px]">จัดการ</TableHead>
                   </TableRow>
-                ))}
-            </TableBody>
-          </Table>
-          )}
+                </TableHeader>
+                <TableBody>
+                  {isLoading ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                        กำลังโหลดข้อมูล...
+                      </TableCell>
+                    </TableRow>
+                  ) : filteredRequests.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                        ไม่พบรายการคำขอ
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredRequests.map((request) => (
+                      <TableRow
+                        key={request.id}
+                        className="group hover:bg-muted/30 border-border transition-colors"
+                      >
+                        <TableCell className="font-mono text-sm font-medium">
+                          <Link
+                            href={`/user/my-requests/${request.id}`}
+                            className="hover:underline text-primary transition-colors"
+                          >
+                            {request.displayId}
+                          </Link>
+                        </TableCell>
+                        <TableCell className="text-right font-medium tabular-nums">
+                          {formatThaiNumber(request.amount ?? 0)}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge
+                            variant="outline"
+                            className={`gap-1.5 font-normal ${getStatusColor(request.status)}`}
+                          >
+                            {getStatusIcon(request.status)}
+                            {getStatusLabel(request.status)}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {request.status === 'PENDING'
+                            ? getPendingStepLabel(request.current_step)
+                            : '-'}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {request.created_at ? formatThaiDate(request.created_at) : '-'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-primary"
+                                  asChild
+                                >
+                                  <Link href={`/user/my-requests/${request.id}`}>
+                                    <Eye className="h-4 w-4" />
+                                  </Link>
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent>ดูรายละเอียด</TooltipContent>
+                            </Tooltip>
 
-          {!isLoading && filteredRequests.length === 0 && (
-            <div className="py-12 text-center">
-              <FileText className="mx-auto h-12 w-12 text-muted-foreground/50" />
-              <p className="mt-4 text-muted-foreground">ไม่พบรายการคำขอ</p>
+                            {request.status === 'DRAFT' && (
+                              <>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                                      asChild
+                                    >
+                                      <Link href={`/user/my-requests/${request.id}/edit`}>
+                                        <Edit className="h-4 w-4" />
+                                      </Link>
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>แก้ไข</TooltipContent>
+                                </Tooltip>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-primary hover:bg-primary/10"
+                                      onClick={() => handleSubmitRequest(request.id)}
+                                      disabled={submitRequest.isPending}
+                                    >
+                                      <Send className="h-4 w-4" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>ส่งคำขอ</TooltipContent>
+                                </Tooltip>
+                              </>
+                            )}
+
+                            {(request.status === 'PENDING' || request.status === 'RETURNED') && (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                    onClick={() => setCancelTargetId(request.id)}
+                                    disabled={cancelRequest.isPending}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </TooltipTrigger>
+                                <TooltipContent>ยกเลิกคำขอ</TooltipContent>
+                              </Tooltip>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <div className="flex justify-end border-t bg-muted/5 px-4 py-3 text-xs text-muted-foreground">
+              แสดง {filteredRequests.length} รายการ
+            </div>
+          </CardContent>
+        </Card>
 
-      <AlertDialog open={cancelTargetId !== null} onOpenChange={(open) => (!open ? setCancelTargetId(null) : null)}>
-        <AlertDialogContent className="bg-card border-border">
-          <AlertDialogHeader>
-            <AlertDialogTitle>ยืนยันการยกเลิกคำขอ</AlertDialogTitle>
-            <AlertDialogDescription>
-              เมื่อยกเลิกแล้ว จะไม่สามารถส่งคำขอนี้ต่อได้ ต้องการยืนยันหรือไม่?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>ยกเลิก</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleCancelRequest}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              ยืนยันยกเลิก
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+        {/* Cancel Confirmation Dialog */}
+        <AlertDialog
+          open={cancelTargetId !== null}
+          onOpenChange={(open) => (!open ? setCancelTargetId(null) : null)}
+        >
+          <AlertDialogContent className="bg-card border-border">
+            <AlertDialogHeader>
+              <AlertDialogTitle>ยืนยันการยกเลิกคำขอ</AlertDialogTitle>
+              <AlertDialogDescription>
+                เมื่อยกเลิกแล้ว จะไม่สามารถส่งคำขอนี้ต่อได้ ต้องการยืนยันหรือไม่?
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>ปิด</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleCancelRequest}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                ยืนยันยกเลิก
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    </TooltipProvider>
   );
 }

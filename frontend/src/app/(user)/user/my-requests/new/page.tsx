@@ -2,7 +2,7 @@
 
 import { ArrowLeft } from "lucide-react"
 import Link from "next/link"
-import { RequestWizard } from "@/components/request/wizard/request-wizard"
+import { RequestWizard } from "@/features/request/components/wizard/request-wizard"
 
 export default function NewRequestPage() {
   return (

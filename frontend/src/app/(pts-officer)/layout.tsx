@@ -1,5 +1,5 @@
 import React from "react"
-import { AppSidebar } from "@/components/app-sidebar"
+import { PtsOfficerSidebar } from "@/features/navigation/components/pts-officer-sidebar"
 
 export const dynamic = 'force-dynamic'
 
@@ -9,8 +9,8 @@ export default function PTSOfficerLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="min-h-screen bg-background">
-      <AppSidebar />
+    <div className="role-theme-pts-officer min-h-screen bg-background">
+      <PtsOfficerSidebar />
       <main className="ml-64 min-h-screen overflow-auto">
         {children}
       </main>

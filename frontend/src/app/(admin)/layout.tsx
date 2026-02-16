@@ -1,4 +1,4 @@
-import { AdminSidebar } from "@/components/admin-sidebar"
+import { AdminSidebar } from "@/features/navigation/components/admin-sidebar"
 
 export default function AdminLayout({
   children,
@@ -6,7 +6,7 @@ export default function AdminLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="role-theme-admin min-h-screen bg-background">
       <AdminSidebar />
       <main className="ml-64 min-h-screen overflow-auto">
         {children}

@@ -33,6 +33,16 @@ export type LeaveRecordApiRow = {
   note?: string | null
 }
 
+export type LeavePersonnelRow = {
+  citizen_id: string
+  title?: string | null
+  first_name?: string | null
+  last_name?: string | null
+  position_name?: string | null
+  department?: string | null
+  profession_code?: string | null
+}
+
 export type LeaveRecordListResponse = {
   items: LeaveRecordApiRow[]
   total: number
@@ -107,6 +117,11 @@ export async function listLeaveRecords(params?: {
     limit: res.data.meta?.limit ?? null,
     offset: res.data.meta?.offset ?? 0,
   } satisfies LeaveRecordListResponse
+}
+
+export async function listLeavePersonnel(params?: { q?: string; limit?: number }) {
+  const res = await api.get<ApiResponse<LeavePersonnelRow[]>>('/leave-records/personnel', { params })
+  return res.data.data ?? []
 }
 
 export async function createLeaveRecord(payload: LeaveRecordCreatePayload) {

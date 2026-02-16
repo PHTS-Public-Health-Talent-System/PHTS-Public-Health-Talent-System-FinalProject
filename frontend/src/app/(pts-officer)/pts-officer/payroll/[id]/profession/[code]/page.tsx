@@ -2,50 +2,48 @@
 export const dynamic = 'force-dynamic'
 
 import { use } from "react"
-import { PayrollDetailContent } from "@/components/payroll/PayrollDetailContent"
-import { toast } from "sonner"
-import { useSubmitToHR } from "@/features/payroll/hooks"
+import Link from "next/link"
+import { PayrollDetailContent } from "@/features/payroll/components/PayrollDetailContent"
 import { usePayrollReviewProgress } from "@/features/payroll/usePayrollReviewProgress"
-import { useState } from "react"
+import { Button } from "@/components/ui/button"
+import { Users } from "lucide-react"
 
 type PageParams = Promise<{ id: string; code: string }>
 
 export default function PTSOfficerPayrollProfessionPage({ params }: { params: PageParams }) {
   const { id, code } = use(params)
-  const submitToHR = useSubmitToHR()
   const { reviewedCodes, setProfessionReviewed } = usePayrollReviewProgress(id)
-  const [availableProfessions, setAvailableProfessions] = useState<{ code: string; label: string }[]>([])
-
-  const handleSubmitForReview = async () => {
-    const normalizedReviewed = new Set(reviewedCodes.map((item) => item.toUpperCase()))
-    const missing = availableProfessions.filter(
-      (profession) => !normalizedReviewed.has(profession.code.toUpperCase()),
-    )
-    if (missing.length > 0) {
-      toast.error(`ยังตรวจไม่ครบทุกวิชาชีพ: ${missing.map((item) => item.label).join(", ")}`)
-      return
-    }
-
-    await submitToHR.mutateAsync(id)
-    toast.success("ส่งรอบให้ HR เรียบร้อย")
-  }
 
   return (
-    <PayrollDetailContent
-      periodId={id}
-      selectedProfession={code}
-      basePath={`/pts-officer/payroll/${id}`}
-      backHref={`/pts-officer/payroll/${id}`}
-      compactView
-      showSelector={false}
-      showSummary
-      showTable
-      allowApprovalActions={false}
-      reviewedProfessionCodes={reviewedCodes}
-      onSetProfessionReviewed={setProfessionReviewed}
-      onSubmitForReview={handleSubmitForReview}
-      isSubmittingForReview={submitToHR.isPending}
-      onAvailableProfessionsChange={setAvailableProfessions}
-    />
+    <div className="min-h-screen bg-background pb-12">
+      <div className="flex items-center justify-between border-b bg-muted/20 px-6 py-4 md:px-8">
+        <div>
+          <h1 className="text-lg font-semibold text-foreground">ตรวจสอบรายละเอียดรายวิชาชีพ</h1>
+          <p className="text-xs text-muted-foreground">
+            โปรดตรวจสอบความถูกต้องและยืนยันสถานะการตรวจ
+          </p>
+        </div>
+        <Button asChild variant="outline" size="sm" className="hidden md:flex">
+          <Link href={`/pts-officer/payroll/${id}`}>
+            <Users className="mr-2 h-4 w-4" />
+            กลับไปหน้าภาพรวมงวด
+          </Link>
+        </Button>
+      </div>
+
+      <PayrollDetailContent
+        periodId={id}
+        selectedProfession={code}
+        basePath={`/pts-officer/payroll/${id}`}
+        backHref={`/pts-officer/payroll/${id}`}
+        compactView
+        showSelector={false}
+        showSummary={true}
+        showTable={true}
+        allowApprovalActions={false}
+        reviewedProfessionCodes={reviewedCodes}
+        onSetProfessionReviewed={setProfessionReviewed}
+      />
+    </div>
   )
 }

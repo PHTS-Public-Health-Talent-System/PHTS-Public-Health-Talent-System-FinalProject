@@ -3,7 +3,7 @@
 import { use } from "react"
 import { ArrowLeft, AlertCircle } from "lucide-react"
 import Link from "next/link"
-import { RequestWizard } from "@/components/request/wizard/request-wizard"
+import { RequestWizard } from "@/features/request/components/wizard/request-wizard"
 import { useRequestDetail } from "@/features/request/hooks"
 import type { RequestWithDetails } from "@/types/request.types"
 

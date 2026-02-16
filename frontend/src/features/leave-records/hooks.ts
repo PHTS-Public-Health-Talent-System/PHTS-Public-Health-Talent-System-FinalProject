@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   addLeaveRecordDocuments,
   deleteLeaveRecordDocument,
+  listLeavePersonnel,
   listLeaveRecordDocuments,
   listLeaveRecords,
   deleteLeaveRecordExtension,
@@ -11,6 +12,7 @@ import {
   createLeaveRecord,
   type LeaveRecordExtensionPayload,
   type LeaveRecordListResponse,
+  type LeavePersonnelRow,
   getLeaveRecordStats,
   type LeaveRecordStats,
   type LeaveRecordCreatePayload,
@@ -103,5 +105,17 @@ export function useLeaveRecordStats() {
   return useQuery<LeaveRecordStats>({
     queryKey: ['leave-records', 'stats'],
     queryFn: () => getLeaveRecordStats(),
+  })
+}
+
+export function useLeavePersonnel(
+  params?: { q?: string; limit?: number },
+  options?: { enabled?: boolean },
+) {
+  return useQuery<LeavePersonnelRow[]>({
+    queryKey: ['leave-records', 'personnel', params ?? {}],
+    queryFn: () => listLeavePersonnel(params),
+    enabled: options?.enabled ?? true,
+    placeholderData: (prev) => prev,
   })
 }

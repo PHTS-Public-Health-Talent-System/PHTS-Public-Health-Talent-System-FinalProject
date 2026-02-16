@@ -1,17 +1,16 @@
-"use client"
+'use client';
 
-import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
+import { useMemo, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select"
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -19,7 +18,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table"
+} from '@/components/ui/table';
 import {
   Dialog,
   DialogContent,
@@ -27,440 +26,733 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Textarea } from "@/components/ui/textarea"
+} from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Search,
-  Filter,
   CheckCircle2,
   XCircle,
-  RotateCcw,
+  RefreshCw,
   Clock,
   Eye,
+  FileText,
+  AlertTriangle,
+  AlertCircle,
+  MoreHorizontal,
   CheckCheck,
-} from "lucide-react"
-import Link from "next/link"
+  type LucideIcon,
+} from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import Link from 'next/link';
+import { usePendingApprovals, useProcessAction } from '@/features/request/hooks';
+import { usePendingWithSla } from '@/features/sla/hooks';
+import { mapRequestToFormData } from '@/features/request/components/hooks/request-form-mapper';
+import type { RequestWithDetails } from '@/types/request.types';
+import {
+  normalizeRateMapping,
+  resolveRateMappingDisplay,
+} from '@/features/request/detail/requestDetail.rateMapping';
+import { useRateHierarchy } from '@/features/master-data/hooks';
+import { Badge } from '@/components/ui/badge';
+import { toast } from 'sonner';
+import { formatThaiDate, formatThaiNumber } from '@/shared/utils/thai-locale';
 
-const requests = [
-  {
-    id: "REQ-2568-001234",
-    name: "นางสาวสมหญิง ใจดี",
-    position: "พยาบาลวิชาชีพชำนาญการ",
-    department: "ICU",
-    amount: 12500,
-    submittedAt: "28 ม.ค. 68",
-    currentStep: 6,
-    slaStatus: "normal",
-    daysInQueue: 1,
-    approvedBy: "หัวหน้าการเงิน",
-  },
-  {
-    id: "REQ-2568-001235",
-    name: "นายสมชาย รักงาน",
-    position: "พยาบาลวิชาชีพชำนาญการพิเศษ",
-    department: "ER",
-    amount: 15800,
-    submittedAt: "27 ม.ค. 68",
-    currentStep: 6,
-    slaStatus: "warning",
-    daysInQueue: 2,
-    approvedBy: "หัวหน้าการเงิน",
-  },
-  {
-    id: "REQ-2568-001236",
-    name: "นางมาลี รักษ์พยาบาล",
-    position: "พยาบาลวิชาชีพชำนาญการ",
-    department: "OPD",
-    amount: 11200,
-    submittedAt: "25 ม.ค. 68",
-    currentStep: 6,
-    slaStatus: "overdue",
-    daysInQueue: 4,
-    approvedBy: "หัวหน้าการเงิน",
-  },
-  {
-    id: "REQ-2568-001237",
-    name: "นางสาวพิมพ์ใจ ดีเสมอ",
-    position: "พยาบาลวิชาชีพปฏิบัติการ",
-    department: "Ward 5",
-    amount: 9800,
-    submittedAt: "26 ม.ค. 68",
-    currentStep: 6,
-    slaStatus: "normal",
-    daysInQueue: 3,
-    approvedBy: "หัวหน้าการเงิน",
-  },
-  {
-    id: "REQ-2568-001238",
-    name: "นายวิชัย มั่นคง",
-    position: "พยาบาลวิชาชีพชำนาญการ",
-    department: "OR",
-    amount: 13500,
-    submittedAt: "24 ม.ค. 68",
-    currentStep: 6,
-    slaStatus: "warning",
-    daysInQueue: 5,
-    approvedBy: "หัวหน้าการเงิน",
-  },
-]
+function getSlaStatusBadge(status: string, remaining: number) {
+  switch (status) {
+    case 'normal':
+      return (
+        <Badge
+          variant="outline"
+          className="bg-emerald-50 text-emerald-700 border-emerald-200 font-normal gap-1"
+        >
+          <Clock className="w-3 h-3" /> {remaining} วัน
+        </Badge>
+      );
+    case 'warning':
+      return (
+        <Badge
+          variant="outline"
+          className="bg-amber-50 text-amber-700 border-amber-200 font-normal gap-1"
+        >
+          <AlertTriangle className="w-3 h-3" /> เหลือ {remaining} วัน
+        </Badge>
+      );
+    case 'danger':
+      return (
+        <Badge variant="destructive" className="font-normal gap-1">
+          <AlertCircle className="w-3 h-3" /> เกิน {Math.abs(remaining)} วัน
+        </Badge>
+      );
+    default:
+      return <span className="text-muted-foreground">-</span>;
+  }
+}
+
+type SlaInfo = {
+  request_id: number;
+  is_approaching_sla: boolean;
+  is_overdue: boolean;
+  days_until_sla: number;
+  days_overdue: number;
+};
+
+type RequestRow = {
+  id: number;
+  requestNo: string;
+  name: string;
+  position: string;
+  department: string;
+  groupNo: string;
+  itemNo: string;
+  subItemNo?: string;
+  mappingDisplay: string;
+  rateItemHint?: string;
+  amount: number;
+  submittedDate: string;
+  slaStatus: 'normal' | 'warning' | 'danger' | 'unknown';
+  slaRemaining: number | null;
+  raw: RequestWithDetails;
+};
+
+const sanitizeRatePart = (value: unknown): string => {
+  const text = String(value ?? '').trim();
+  if (!text || text === '__NONE__' || text === 'NONE' || text === 'null' || text === 'undefined') {
+    return '-';
+  }
+  return text;
+};
+
+const formatDate = (value?: string | Date | null) => {
+  return formatThaiDate(value);
+};
+
+type StatCardProps = {
+  title: string;
+  value: number;
+  icon: LucideIcon;
+  colorClass: string;
+  bgClass: string;
+};
+
+const StatCard = ({ title, value, icon: Icon, colorClass, bgClass }: StatCardProps) => (
+  <Card className="border-border shadow-sm">
+    <CardContent className="p-6 flex items-center justify-between">
+      <div>
+        <p className="text-sm font-medium text-muted-foreground">{title}</p>
+        <div className={`text-2xl font-bold mt-1 ${colorClass}`}>{value}</div>
+      </div>
+      <div
+        className={`p-3 rounded-full ${bgClass} ${colorClass.replace('text-', 'bg-').split(' ')[0]}/10`}
+      >
+        <Icon className="h-6 w-6" />
+      </div>
+    </CardContent>
+  </Card>
+);
 
 export default function DirectorRequestsPage() {
-  const [selectedRequests, setSelectedRequests] = useState<string[]>([])
-  const [searchQuery, setSearchQuery] = useState("")
-  const [filterSLA, setFilterSLA] = useState("all")
-  const [showBatchApproveDialog, setShowBatchApproveDialog] = useState(false)
-  const [showRejectDialog, setShowRejectDialog] = useState(false)
-  const [showReturnDialog, setShowReturnDialog] = useState(false)
-  const [selectedRequest, setSelectedRequest] = useState<string | null>(null)
-  const [rejectReason, setRejectReason] = useState("")
-  const [returnReason, setReturnReason] = useState("")
+  const [selectedRequest, setSelectedRequest] = useState<RequestRow | null>(null);
+  const [selectedRequests, setSelectedRequests] = useState<number[]>([]);
+  const [actionType, setActionType] = useState<'approve' | 'reject' | 'return' | null>(null);
+  const [batchApproveOpen, setBatchApproveOpen] = useState(false);
+  const [batchComment, setBatchComment] = useState('');
+  const [comment, setComment] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [slaFilter, setSlaFilter] = useState('all');
+  const [groupFilter, setGroupFilter] = useState('all');
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const filteredRequests = requests.filter((request) => {
-    const matchesSearch =
-      request.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      request.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      request.department.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesSLA = filterSLA === "all" || request.slaStatus === filterSLA
-    return matchesSearch && matchesSLA
-  })
+  const pendingQuery = usePendingApprovals();
+  const slaQuery = usePendingWithSla();
+  const rateHierarchyQuery = useRateHierarchy();
+  const actionMutation = useProcessAction();
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedRequests(filteredRequests.map((r) => r.id))
-    } else {
-      setSelectedRequests([])
+  const slaMap = useMemo(() => {
+    const map = new Map<number, SlaInfo>();
+    const data = (slaQuery.data as SlaInfo[] | undefined) ?? [];
+    for (const row of data) {
+      map.set(row.request_id, row);
     }
-  }
+    return map;
+  }, [slaQuery.data]);
 
-  const handleSelectRequest = (id: string, checked: boolean) => {
+  const rows = useMemo<RequestRow[]>(() => {
+    const pending = (pendingQuery.data ?? []) as RequestWithDetails[];
+    return pending
+      .filter((request) => request.current_step === 6)
+      .map((request) => {
+        const formData = mapRequestToFormData(request);
+        const rateMapping = normalizeRateMapping(request.submission_data ?? null);
+        const rateDisplay = rateMapping
+          ? resolveRateMappingDisplay(rateMapping, rateHierarchyQuery.data)
+          : null;
+        const criteriaLabel = rateDisplay?.criteriaLabel;
+        const subCriteriaLabel = rateDisplay?.subCriteriaLabel;
+        const name =
+          [formData.title, formData.firstName, formData.lastName].filter(Boolean).join(' ').trim() ||
+          request.citizen_id;
+        const position =
+          formData.positionName || (request as { position_name?: string }).position_name || '-';
+        const department =
+          formData.subDepartment || formData.department || request.current_department || '-';
+        const groupNo = sanitizeRatePart(rateMapping?.groupId ?? formData.rateMapping?.groupId);
+        const itemId = rateMapping?.itemId ?? formData.rateMapping?.itemId;
+        const subItemId = rateMapping?.subItemId ?? formData.rateMapping?.subItemId;
+        const amount = formData.rateMapping?.amount ?? request.requested_amount ?? 0;
+        const itemNo = sanitizeRatePart(itemId);
+        const subItemNo = sanitizeRatePart(subItemId);
+        const mappingDisplay =
+          subItemNo !== '-' ? `${groupNo}/${itemNo}/${subItemNo}` : `${groupNo}/${itemNo}`;
+        const requestNo = request.request_no ?? String(request.request_id);
+        const sla = slaMap.get(request.request_id);
+        let slaStatus: RequestRow['slaStatus'] = 'unknown';
+        let slaRemaining: number | null = null;
+        if (sla) {
+          if (sla.is_overdue) {
+            slaStatus = 'danger';
+            slaRemaining = -Math.abs(sla.days_overdue);
+          } else if (sla.is_approaching_sla) {
+            slaStatus = 'warning';
+            slaRemaining = sla.days_until_sla;
+          } else {
+            slaStatus = 'normal';
+            slaRemaining = sla.days_until_sla;
+          }
+        }
+        return {
+          id: request.request_id,
+          requestNo,
+          name,
+          position,
+          department,
+          groupNo,
+          itemNo,
+          subItemNo: subItemNo === '-' ? undefined : subItemNo,
+          mappingDisplay,
+          rateItemHint: [criteriaLabel, subCriteriaLabel].filter(Boolean).join(' / ') || undefined,
+          amount,
+          submittedDate: formatDate(request.created_at),
+          slaStatus,
+          slaRemaining,
+          raw: request,
+        };
+      });
+  }, [pendingQuery.data, slaMap, rateHierarchyQuery.data]);
+
+  const filteredRows = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase();
+    return rows.filter((row) => {
+      const matchesSearch =
+        !keyword ||
+        row.requestNo.toLowerCase().includes(keyword) ||
+        row.name.toLowerCase().includes(keyword);
+      const matchesSla =
+        slaFilter === 'all' ||
+        (slaFilter === 'normal' && row.slaStatus === 'normal') ||
+        (slaFilter === 'warning' && row.slaStatus === 'warning') ||
+        (slaFilter === 'danger' && row.slaStatus === 'danger');
+      const matchesGroup = groupFilter === 'all' || row.groupNo === groupFilter;
+      return matchesSearch && matchesSla && matchesGroup;
+    });
+  }, [rows, searchTerm, slaFilter, groupFilter]);
+
+  const summaryCounts = useMemo(() => {
+    const base = { total: rows.length, normal: 0, warning: 0, danger: 0 };
+    return rows.reduce((acc, row) => {
+      if (row.slaStatus === 'normal') acc.normal += 1;
+      if (row.slaStatus === 'warning') acc.warning += 1;
+      if (row.slaStatus === 'danger') acc.danger += 1;
+      return acc;
+    }, base);
+  }, [rows]);
+
+  const filteredRowIds = useMemo(() => filteredRows.map((row) => row.id), [filteredRows]);
+  const selectedFilteredCount = useMemo(
+    () => filteredRowIds.filter((id) => selectedRequests.includes(id)).length,
+    [filteredRowIds, selectedRequests],
+  );
+  const isAllFilteredSelected =
+    filteredRows.length > 0 && selectedFilteredCount === filteredRows.length;
+
+  const handleSelectAllFiltered = (checked: boolean) => {
     if (checked) {
-      setSelectedRequests([...selectedRequests, id])
-    } else {
-      setSelectedRequests(selectedRequests.filter((r) => r !== id))
+      const merged = Array.from(new Set([...selectedRequests, ...filteredRowIds]));
+      setSelectedRequests(merged);
+      return;
     }
-  }
+    setSelectedRequests(selectedRequests.filter((id) => !filteredRowIds.includes(id)));
+  };
 
-  const handleBatchApprove = () => {
-    // Implement batch approve logic
-    setShowBatchApproveDialog(false)
-    setSelectedRequests([])
-  }
+  const handleSelectRequest = (id: number, checked: boolean) => {
+    if (checked) {
+      setSelectedRequests((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      return;
+    }
+    setSelectedRequests((prev) => prev.filter((item) => item !== id));
+  };
 
-  const handleReject = () => {
-    // Implement reject logic
-    setShowRejectDialog(false)
-    setSelectedRequest(null)
-    setRejectReason("")
-  }
+  const handleAction = async () => {
+    if (!selectedRequest || !actionType) return;
+    const trimmed = comment.trim();
+    const isCommentRequired = actionType !== 'approve';
+    if (isCommentRequired && !trimmed) {
+      setActionError('กรุณาระบุเหตุผลก่อนดำเนินการ');
+      return;
+    }
+    setActionError(null);
+    const actionMap = {
+      approve: 'APPROVE',
+      reject: 'REJECT',
+      return: 'RETURN',
+    } as const;
+    try {
+      await actionMutation.mutateAsync({
+        id: selectedRequest.id,
+        payload: { action: actionMap[actionType], comment: trimmed || undefined },
+      });
+      toast.success('บันทึกผลการพิจารณาเรียบร้อยแล้ว');
+      setSelectedRequest(null);
+      setActionType(null);
+      setComment('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'ไม่สามารถดำเนินการได้';
+      toast.error(message);
+      setActionError(message);
+    }
+  };
 
-  const handleReturn = () => {
-    // Implement return logic
-    setShowReturnDialog(false)
-    setSelectedRequest(null)
-    setReturnReason("")
-  }
+  const handleBatchApprove = async () => {
+    const targetIds = selectedRequests.filter((id) => rows.some((row) => row.id === id));
+    if (targetIds.length === 0) {
+      toast.error('กรุณาเลือกรายการอย่างน้อย 1 รายการ');
+      return;
+    }
 
-  const totalAmount = selectedRequests.reduce((sum, id) => {
-    const request = requests.find((r) => r.id === id)
-    return sum + (request?.amount || 0)
-  }, 0)
+    try {
+      await Promise.all(
+        targetIds.map((id) =>
+          actionMutation.mutateAsync({
+            id,
+            payload: { action: 'APPROVE', comment: batchComment.trim() || undefined },
+          }),
+        ),
+      );
+      toast.success(`อนุมัติคำขอเรียบร้อย ${targetIds.length} รายการ`);
+      setBatchApproveOpen(false);
+      setBatchComment('');
+      setSelectedRequests([]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'ไม่สามารถอนุมัติรายการทั้งหมดได้';
+      toast.error(message);
+    }
+  };
+
+  const isLoading = pendingQuery.isLoading || slaQuery.isLoading;
+  const isError = pendingQuery.isError;
+  const errorMessage =
+    pendingQuery.error instanceof Error ? pendingQuery.error.message : 'ไม่สามารถโหลดรายการคำขอได้';
 
   return (
-    <div className="p-8">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-foreground">คำขอรออนุมัติ</h1>
-        <p className="mt-1 text-muted-foreground">
-          คำขอที่ผ่านการอนุมัติจากหัวหน้าการเงินแล้ว รอ Director อนุมัติ (Step 6 - ขั้นสุดท้าย)
+    <div className="p-8 space-y-8 pb-20">
+      <div className="flex flex-col gap-2">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">อนุมัติคำขอ (ผู้อำนวยการ)</h1>
+        <p className="text-muted-foreground">
+          ตรวจสอบและอนุมัติคำขอ พ.ต.ส. ขั้นสุดท้าย ที่ผ่านหัวหน้าการเงินแล้ว
         </p>
       </div>
 
-      {/* Stats */}
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-sm text-muted-foreground">รอดำเนินการ</div>
-            <div className="text-2xl font-bold">{requests.length}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-sm text-muted-foreground">เกิน SLA</div>
-            <div className="text-2xl font-bold text-red-600">
-              {requests.filter((r) => r.slaStatus === "overdue").length}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-sm text-muted-foreground">ใกล้ครบกำหนด</div>
-            <div className="text-2xl font-bold text-amber-600">
-              {requests.filter((r) => r.slaStatus === "warning").length}
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="text-sm text-muted-foreground">เลือกแล้ว</div>
-            <div className="text-2xl font-bold text-primary">
-              {selectedRequests.length}
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard
+          title="ทั้งหมด"
+          value={summaryCounts.total}
+          icon={FileText}
+          colorClass="text-primary"
+          bgClass="bg-primary/10"
+        />
+        <StatCard
+          title="ปกติ (ตามกำหนดเวลา)"
+          value={summaryCounts.normal}
+          icon={CheckCircle2}
+          colorClass="text-emerald-600"
+          bgClass="bg-emerald-500/10"
+        />
+        <StatCard
+          title="ใกล้ครบกำหนด"
+          value={summaryCounts.warning}
+          icon={AlertTriangle}
+          colorClass="text-amber-600"
+          bgClass="bg-amber-500/10"
+        />
+        <StatCard
+          title="เกินกำหนด"
+          value={summaryCounts.danger}
+          icon={XCircle}
+          colorClass="text-destructive"
+          bgClass="bg-destructive/10"
+        />
       </div>
 
-      {/* Filters and Actions */}
-      <Card className="mb-6">
-        <CardContent className="p-4">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex flex-1 items-center gap-4">
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <Card className="border-border shadow-sm">
+        <CardHeader className="py-4 px-6 border-b bg-muted/10">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Clock className="h-5 w-5 text-muted-foreground" />
+              รายการรอดำเนินการ
+            </CardTitle>
+
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full md:w-auto">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="ค้นหาชื่อ, เลขคำขอ, แผนก..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
+                  placeholder="ค้นหาชื่อ, เลขที่คำขอ..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="bg-background pl-9 h-9"
                 />
               </div>
-              <Select value={filterSLA} onValueChange={setFilterSLA}>
-                <SelectTrigger className="w-40">
-                  <Filter className="mr-2 h-4 w-4" />
-                  <SelectValue placeholder="สถานะ SLA" />
+              <Select value={slaFilter} onValueChange={setSlaFilter}>
+                <SelectTrigger className="w-full sm:w-[160px] bg-background h-9">
+                  <SelectValue placeholder="สถานะกำหนดเวลา" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">ทั้งหมด</SelectItem>
+                  <SelectItem value="all">ทุกสถานะกำหนดเวลา</SelectItem>
                   <SelectItem value="normal">ปกติ</SelectItem>
                   <SelectItem value="warning">ใกล้ครบกำหนด</SelectItem>
-                  <SelectItem value="overdue">เกิน SLA</SelectItem>
+                  <SelectItem value="danger">เกินกำหนด</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            {selectedRequests.length > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">
-                  เลือก {selectedRequests.length} รายการ (รวม {totalAmount.toLocaleString()} บาท)
-                </span>
+              <Select value={groupFilter} onValueChange={setGroupFilter}>
+                <SelectTrigger className="w-full sm:w-[160px] bg-background h-9">
+                  <SelectValue placeholder="กลุ่มตำแหน่ง" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">ทุกกลุ่มตำแหน่ง</SelectItem>
+                  <SelectItem value="1">กลุ่มที่ 1</SelectItem>
+                  <SelectItem value="2">กลุ่มที่ 2</SelectItem>
+                  <SelectItem value="3">กลุ่มที่ 3</SelectItem>
+                </SelectContent>
+              </Select>
+              {selectedRequests.length > 0 && (
                 <Button
-                  onClick={() => setShowBatchApproveDialog(true)}
-                  className="bg-green-600 hover:bg-green-700"
+                  className="h-9 bg-emerald-600 hover:bg-emerald-700 text-white"
+                  onClick={() => setBatchApproveOpen(true)}
                 >
                   <CheckCheck className="mr-2 h-4 w-4" />
-                  อนุมัติทั้งหมด
+                  อนุมัติทั้งหมด ({selectedRequests.length})
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Requests Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>รายการคำขอ</CardTitle>
         </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-12">
-                  <Checkbox
-                    checked={selectedRequests.length === filteredRequests.length && filteredRequests.length > 0}
-                    onCheckedChange={handleSelectAll}
-                  />
-                </TableHead>
-                <TableHead>เลขคำขอ</TableHead>
-                <TableHead>ผู้ขอ</TableHead>
-                <TableHead>แผนก</TableHead>
-                <TableHead className="text-right">จำนวนเงิน</TableHead>
-                <TableHead>สถานะ SLA</TableHead>
-                <TableHead>รออยู่</TableHead>
-                <TableHead className="text-right">การดำเนินการ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredRequests.map((request) => (
-                <TableRow key={request.id}>
-                  <TableCell>
+        <CardContent className="p-0">
+          {isError && (
+            <div className="p-8 text-center text-destructive">
+              <AlertCircle className="mx-auto h-8 w-8 mb-2" />
+              <p>{errorMessage}</p>
+            </div>
+          )}
+
+          <div className="relative overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-muted/40">
+                <TableRow className="border-border hover:bg-transparent">
+                  <TableHead className="w-[56px]">
                     <Checkbox
-                      checked={selectedRequests.includes(request.id)}
-                      onCheckedChange={(checked) =>
-                        handleSelectRequest(request.id, checked as boolean)
-                      }
+                      checked={isAllFilteredSelected}
+                      onCheckedChange={(value) => handleSelectAllFiltered(Boolean(value))}
+                      aria-label="เลือกทั้งหมด"
                     />
-                  </TableCell>
-                  <TableCell className="font-mono text-sm">{request.id}</TableCell>
-                  <TableCell>
-                    <div>
-                      <div className="font-medium">{request.name}</div>
-                      <div className="text-sm text-muted-foreground">{request.position}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>{request.department}</TableCell>
-                  <TableCell className="text-right font-semibold">
-                    {request.amount.toLocaleString()} บาท
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={
-                        request.slaStatus === "overdue"
-                          ? "destructive"
-                          : request.slaStatus === "warning"
-                          ? "secondary"
-                          : "outline"
-                      }
-                    >
-                      {request.slaStatus === "overdue"
-                        ? "เกิน SLA"
-                        : request.slaStatus === "warning"
-                        ? "ใกล้ครบ"
-                        : "ปกติ"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                      <Clock className="h-3 w-3" />
-                      {request.daysInQueue} วัน
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1">
-                      <Link href={`/director/requests/${request.id}`}>
-                        <Button variant="ghost" size="sm">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                      </Link>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-green-600 hover:text-green-700"
-                        onClick={() => {
-                          setSelectedRequest(request.id)
-                          setShowBatchApproveDialog(true)
-                        }}
-                      >
-                        <CheckCircle2 className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-amber-600 hover:text-amber-700"
-                        onClick={() => {
-                          setSelectedRequest(request.id)
-                          setShowReturnDialog(true)
-                        }}
-                      >
-                        <RotateCcw className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-600 hover:text-red-700"
-                        onClick={() => {
-                          setSelectedRequest(request.id)
-                          setShowRejectDialog(true)
-                        }}
-                      >
-                        <XCircle className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+                  </TableHead>
+                  <TableHead className="font-semibold w-[150px]">เลขที่คำขอ</TableHead>
+                  <TableHead className="font-semibold min-w-[200px]">ชื่อ-สกุล / ตำแหน่ง</TableHead>
+                  <TableHead className="font-semibold">หน่วยงาน</TableHead>
+                  <TableHead className="font-semibold text-center">กลุ่ม/ข้อ</TableHead>
+                  <TableHead className="font-semibold text-right">อัตรา (บาท)</TableHead>
+                  <TableHead className="font-semibold text-center">กำหนดเวลา</TableHead>
+                  <TableHead className="font-semibold text-right w-[140px]">จัดการ</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                      กำลังโหลดข้อมูล...
+                    </TableCell>
+                  </TableRow>
+                ) : filteredRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                      ไม่พบรายการคำขอ
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  filteredRows.map((request) => (
+                    <TableRow
+                      key={request.id}
+                      className="group hover:bg-muted/30 border-border transition-colors"
+                    >
+                      <TableCell>
+                        <Checkbox
+                          checked={selectedRequests.includes(request.id)}
+                          onCheckedChange={(value) =>
+                            handleSelectRequest(request.id, Boolean(value))
+                          }
+                          aria-label={`เลือกรายการ ${request.requestNo}`}
+                        />
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">{request.requestNo}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium text-foreground">{request.name}</span>
+                          <span
+                            className="text-xs text-muted-foreground truncate max-w-[200px]"
+                            title={request.position}
+                          >
+                            {request.position}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {request.department}
+                      </TableCell>
+                      <TableCell className="text-center text-sm">
+                        <Badge
+                          variant="secondary"
+                          className="font-normal"
+                          title={request.rateItemHint}
+                        >
+                          {request.mappingDisplay}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right font-medium tabular-nums text-foreground">
+                        {formatThaiNumber(request.amount)}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {request.slaStatus === 'unknown' || request.slaRemaining === null ? (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        ) : (
+                          getSlaStatusBadge(request.slaStatus, request.slaRemaining)
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Link href={`/director/requests/${request.id}`}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-primary"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </Link>
+
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                className="text-emerald-600 focus:text-emerald-700 cursor-pointer"
+                                onClick={() => {
+                                  setSelectedRequest(request);
+                                  setActionType('approve');
+                                  setActionError(null);
+                                }}
+                              >
+                                <CheckCircle2 className="mr-2 h-4 w-4" /> อนุมัติ
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-amber-600 focus:text-amber-700 cursor-pointer"
+                                onClick={() => {
+                                  setSelectedRequest(request);
+                                  setActionType('return');
+                                  setActionError(null);
+                                }}
+                              >
+                                <RefreshCw className="mr-2 h-4 w-4" /> ส่งกลับแก้ไข
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                className="text-destructive focus:text-destructive cursor-pointer"
+                                onClick={() => {
+                                  setSelectedRequest(request);
+                                  setActionType('reject');
+                                  setActionError(null);
+                                }}
+                              >
+                                <XCircle className="mr-2 h-4 w-4" /> ไม่อนุมัติ
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <div className="flex justify-end border-t bg-muted/5 px-4 py-3 text-xs text-muted-foreground">
+            แสดง {filteredRows.length} รายการ
+          </div>
         </CardContent>
       </Card>
 
-      {/* Batch Approve Dialog */}
-      <Dialog open={showBatchApproveDialog} onOpenChange={setShowBatchApproveDialog}>
-        <DialogContent>
+      <Dialog
+        open={!!selectedRequest && !!actionType}
+        onOpenChange={() => {
+          setSelectedRequest(null);
+          setActionType(null);
+          setComment('');
+          setActionError(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>ยืนยันการอนุมัติ</DialogTitle>
+            <DialogTitle
+              className={`flex items-center gap-2 ${
+                actionType === 'approve'
+                  ? 'text-emerald-600'
+                  : actionType === 'return'
+                    ? 'text-amber-600'
+                    : 'text-destructive'
+              }`}
+            >
+              {actionType === 'approve' && <CheckCircle2 className="h-5 w-5" />}
+              {actionType === 'reject' && <XCircle className="h-5 w-5" />}
+              {actionType === 'return' && <RefreshCw className="h-5 w-5" />}
+
+              {actionType === 'approve' && 'ยืนยันการอนุมัติ'}
+              {actionType === 'reject' && 'ยืนยันการไม่อนุมัติ'}
+              {actionType === 'return' && 'ยืนยันการส่งกลับแก้ไข'}
+            </DialogTitle>
             <DialogDescription>
-              {selectedRequest
-                ? "คุณต้องการอนุมัติคำขอนี้หรือไม่?"
-                : `คุณต้องการอนุมัติคำขอทั้ง ${selectedRequests.length} รายการ รวม ${totalAmount.toLocaleString()} บาท หรือไม่?`}
+              {selectedRequest && (
+                <div className="mt-3 rounded-md bg-secondary/50 p-3 text-sm space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">คำขอเลขที่:</span>
+                    <span className="font-mono font-medium">{selectedRequest.requestNo}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">ผู้ยื่น:</span>
+                    <span className="font-medium">{selectedRequest.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">จำนวนเงิน:</span>
+                    <span className="font-medium">
+                      {formatThaiNumber(selectedRequest.amount)} บาท
+                    </span>
+                  </div>
+                </div>
+              )}
             </DialogDescription>
           </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                {actionType === 'approve' ? 'หมายเหตุ (ไม่บังคับ)' : 'เหตุผลการดำเนินการ'}
+                {actionType !== 'approve' && <span className="text-destructive ml-1">*</span>}
+              </label>
+              <Textarea
+                placeholder={
+                  actionType === 'approve'
+                    ? 'ระบุหมายเหตุเพิ่มเติม (ถ้ามี)'
+                    : actionType === 'reject'
+                      ? 'โปรดระบุเหตุผลที่ไม่อนุมัติ...'
+                      : 'โปรดระบุสิ่งที่ต้องแก้ไข...'
+                }
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                className="resize-none min-h-[100px]"
+              />
+              {actionError && (
+                <p className="text-xs text-destructive flex items-center gap-1 mt-1">
+                  <AlertCircle className="w-3 h-3" /> {actionError}
+                </p>
+              )}
+            </div>
+          </div>
+
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowBatchApproveDialog(false)}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedRequest(null);
+                setActionType(null);
+                setComment('');
+              }}
+            >
               ยกเลิก
             </Button>
-            <Button onClick={handleBatchApprove} className="bg-green-600 hover:bg-green-700">
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-              ยืนยันอนุมัติ
+            <Button
+              onClick={handleAction}
+              disabled={actionMutation.isPending}
+              className={
+                actionType === 'approve'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : actionType === 'reject'
+                    ? 'bg-destructive hover:bg-destructive/90 text-white'
+                    : 'bg-amber-500 hover:bg-amber-600 text-white'
+              }
+            >
+              {actionMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยัน'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Reject Dialog */}
-      <Dialog open={showRejectDialog} onOpenChange={setShowRejectDialog}>
-        <DialogContent>
+      <Dialog
+        open={batchApproveOpen}
+        onOpenChange={(open) => {
+          setBatchApproveOpen(open);
+          if (!open) setBatchComment('');
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>ไม่อนุมัติคำขอ</DialogTitle>
+            <DialogTitle className="flex items-center gap-2 text-emerald-600">
+              <CheckCheck className="h-5 w-5" />
+              ยืนยันอนุมัติหลายรายการ
+            </DialogTitle>
             <DialogDescription>
-              กรุณาระบุเหตุผลในการไม่อนุมัติคำขอนี้
+              คุณกำลังจะอนุมัติคำขอจำนวน {selectedRequests.length} รายการ
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
+          <div className="space-y-2 py-2">
+            <label className="text-sm font-medium text-foreground">หมายเหตุ (ไม่บังคับ)</label>
             <Textarea
-              placeholder="ระบุเหตุผล..."
-              value={rejectReason}
-              onChange={(e) => setRejectReason(e.target.value)}
-              rows={4}
+              value={batchComment}
+              onChange={(e) => setBatchComment(e.target.value)}
+              placeholder="ระบุหมายเหตุเพิ่มเติม (ถ้ามี)"
+              className="resize-none min-h-[100px]"
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowRejectDialog(false)}>
+            <Button variant="outline" onClick={() => setBatchApproveOpen(false)}>
               ยกเลิก
             </Button>
             <Button
-              onClick={handleReject}
-              variant="destructive"
-              disabled={!rejectReason.trim()}
+              onClick={handleBatchApprove}
+              disabled={actionMutation.isPending || selectedRequests.length === 0}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
-              <XCircle className="mr-2 h-4 w-4" />
-              ยืนยันไม่อนุมัติ
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Return Dialog */}
-      <Dialog open={showReturnDialog} onOpenChange={setShowReturnDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>ส่งกลับแก้ไข</DialogTitle>
-            <DialogDescription>
-              กรุณาระบุเหตุผลในการส่งคำขอกลับให้แก้ไข
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <Textarea
-              placeholder="ระบุสิ่งที่ต้องแก้ไข..."
-              value={returnReason}
-              onChange={(e) => setReturnReason(e.target.value)}
-              rows={4}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowReturnDialog(false)}>
-              ยกเลิก
-            </Button>
-            <Button
-              onClick={handleReturn}
-              className="bg-amber-600 hover:bg-amber-700"
-              disabled={!returnReason.trim()}
-            >
-              <RotateCcw className="mr-2 h-4 w-4" />
-              ส่งกลับแก้ไข
+              {actionMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันอนุมัติทั้งหมด'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

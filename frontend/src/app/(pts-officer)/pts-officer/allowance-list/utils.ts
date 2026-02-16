@@ -3,6 +3,7 @@ import {
   normalizeProfessionCode,
   resolveProfessionLabel,
 } from "@/shared/constants/profession"
+import { formatThaiDate } from "@/shared/utils/thai-locale"
 
 export interface AllowancePerson {
   id: number
@@ -23,10 +24,7 @@ export interface AllowancePerson {
 export { normalizeProfessionCode, resolveProfessionLabel }
 
 function formatDate(value?: string | null): string {
-  if (!value) return "-"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return "-"
-  return date.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })
+  return formatThaiDate(value)
 }
 
 export function mapEligibility(row: EligibilityRecord): AllowancePerson {

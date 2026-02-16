@@ -27,11 +27,10 @@ export function ModeToggle() {
       <Switch
         checked={isDark}
         onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
-        aria-label="Toggle theme"
+        aria-label="สลับธีม"
       />
       <Moon className="h-4 w-4 text-muted-foreground" />
     </div>
   )
 }
-
 

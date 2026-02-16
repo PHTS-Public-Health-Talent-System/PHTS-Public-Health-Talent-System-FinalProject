@@ -62,7 +62,7 @@ export async function listMySupportTickets() {
 export async function listSupportTickets(params?: {
   status?: SupportTicketStatus;
   page?: number;
-  pageSize?: number;
+  limit?: number;
 }) {
   const res = await api.get<{ success: boolean; data: { rows: SupportTicket[]; total: number } }>(
     "/support/tickets",

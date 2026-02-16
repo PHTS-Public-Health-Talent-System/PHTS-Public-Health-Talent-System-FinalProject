@@ -1,13 +1,29 @@
 import api from '@/shared/api/axios';
 import { ApiPayload, ApiParams, ApiResponse } from '@/shared/api/types';
 
+export type HolidayType = 'national' | 'special' | 'substitution';
+
+export interface HolidayApiRow {
+  holiday_date: string;
+  holiday_name: string;
+  holiday_type?: HolidayType | null;
+}
+
 export async function getHolidays(params?: ApiParams) {
-  const res = await api.get<ApiResponse<ApiPayload>>('/config/holidays', { params });
+  const res = await api.get<ApiResponse<HolidayApiRow[]>>('/config/holidays', { params });
   return res.data.data;
 }
 
-export async function addHoliday(payload: { date: string; name: string }) {
+export async function addHoliday(payload: { date: string; name: string; type?: HolidayType }) {
   const res = await api.post<ApiResponse<ApiPayload>>('/config/holidays', payload);
+  return res.data.data;
+}
+
+export async function updateHoliday(
+  originalDate: string,
+  payload: { date: string; name: string; type?: HolidayType },
+) {
+  const res = await api.put<ApiResponse<ApiPayload>>(`/config/holidays/${originalDate}`, payload);
   return res.data.data;
 }
 

@@ -1,5 +1,5 @@
 import React from "react"
-import { HeadHRSidebar } from "@/components/head-hr-sidebar"
+import { HeadHRSidebar } from "@/features/navigation/components/head-hr-sidebar"
 
 export default function HeadHRLayout({
   children,
@@ -7,7 +7,7 @@ export default function HeadHRLayout({
   children: React.ReactNode
 }) {
   return (
-    <div className="min-h-screen bg-background">
+    <div className="role-theme-head-hr min-h-screen bg-background">
       <HeadHRSidebar />
       <main className="ml-64 min-h-screen overflow-auto">
         {children}

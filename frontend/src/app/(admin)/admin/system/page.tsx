@@ -1,12 +1,11 @@
-"use client"
+'use client';
 
-import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
-import { Progress } from "@/components/ui/progress"
+import { useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -14,402 +13,586 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog"
+} from '@/components/ui/dialog';
 import {
   Server,
   Database,
-  HardDrive,
   RefreshCw,
   Power,
   Download,
   Activity,
-  CheckCircle2,
-  AlertTriangle,
-  Cpu,
-  MemoryStick,
-  Calendar,
-} from "lucide-react"
+  FileWarning,
+  Layers,
+  Tag,
+  History,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import {
+  useBackupHistory,
+  useMaintenanceStatus,
+  useSystemJobStatus,
+  useSystemVersionInfo,
+  useToggleMaintenance,
+  useTriggerBackup,
+  useTriggerSync,
+} from '@/features/system';
+import { Progress } from '@/components/ui/progress';
+import { formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
 
-// TODO: add icons when system telemetry expands: Clock, Wifi
+// --- Types ---
+type JobStatus = 'RUNNING' | 'IDLE' | 'FAILED' | 'DEGRADED' | 'UNKNOWN';
 
-const systemServices = [
-  { name: "API Server", status: "online", uptime: "45 วัน 12 ชม.", latency: "45ms", version: "2.1.0" },
-  { name: "PostgreSQL", status: "online", uptime: "45 วัน 12 ชม.", latency: "12ms", version: "15.4" },
-  { name: "Redis Cache", status: "online", uptime: "45 วัน 12 ชม.", latency: "3ms", version: "7.2" },
-  { name: "Queue Worker", status: "online", uptime: "45 วัน 12 ชม.", latency: "N/A", version: "2.1.0" },
-  { name: "Cron Jobs", status: "online", uptime: "45 วัน 12 ชม.", latency: "N/A", version: "2.1.0" },
-]
+type JobStatusResponse = {
+  partial: boolean;
+  errors: Array<{ source: string; message: string }>;
+  summary: {
+    notifications: {
+      pending: number;
+      processing: number;
+      failed: number;
+      sent: number;
+      total: number;
+    };
+    payroll: {
+      openPeriods: number;
+    };
+  };
+  jobs: Array<{
+    key: string;
+    name: string;
+    status: JobStatus;
+    detail?: Record<string, unknown>;
+  }>;
+};
 
-const backupHistory = [
-  { id: 1, type: "Full Backup", status: "success", size: "2.4 GB", timestamp: "02/02/2568 03:00" },
-  { id: 2, type: "Incremental", status: "success", size: "156 MB", timestamp: "01/02/2568 03:00" },
-  { id: 3, type: "Incremental", status: "success", size: "142 MB", timestamp: "31/01/2568 03:00" },
-  { id: 4, type: "Full Backup", status: "success", size: "2.3 GB", timestamp: "26/01/2568 03:00" },
-]
+type VersionResponse = {
+  version?: string;
+  commit?: string;
+  env?: string;
+};
 
-const syncHistory = [
-  { id: 1, type: "HRMS Full Sync", status: "success", records: 1234, timestamp: "02/02/2568 12:00" },
-  { id: 2, type: "HRMS Incremental", status: "success", records: 15, timestamp: "02/02/2568 06:00" },
-  { id: 3, type: "HRMS Incremental", status: "success", records: 8, timestamp: "01/02/2568 18:00" },
-]
+type MaintenanceResponse = {
+  enabled?: boolean;
+};
+
+// --- Helpers ---
+const toStatusClass = (status: JobStatus) => {
+  if (status === 'IDLE') return 'bg-emerald-500';
+  if (status === 'RUNNING') return 'bg-blue-500';
+  if (status === 'DEGRADED') return 'bg-amber-500';
+  if (status === 'FAILED') return 'bg-red-500';
+  return 'bg-muted-foreground';
+};
+
+const toStatusBadge = (status: JobStatus) => {
+  if (status === 'IDLE') return 'ออนไลน์';
+  if (status === 'RUNNING') return 'กำลังทำงาน';
+  if (status === 'DEGRADED') return 'มีความเสี่ยง';
+  if (status === 'FAILED') return 'ผิดพลาด';
+  return 'ไม่ทราบสถานะ';
+};
+
+const getErrorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error && error.message ? error.message : fallback;
+
+const formatDateTime = (value: string) => {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return formatThaiDateTime(date);
+};
+
+const formatBytes = (bytes: number | null) => {
+  if (!bytes || bytes <= 0) return '-';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let size = bytes;
+  let unit = 0;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size.toFixed(1)} ${units[unit]}`;
+};
 
 export default function SystemPage() {
-  const [maintenanceMode, setMaintenanceMode] = useState(false)
-  const [isMaintenanceDialogOpen, setIsMaintenanceDialogOpen] = useState(false)
-  const [isBackupDialogOpen, setIsBackupDialogOpen] = useState(false)
-  const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false)
+  // --- State ---
+  const [isMaintenanceDialogOpen, setIsMaintenanceDialogOpen] = useState(false);
+  const [isBackupDialogOpen, setIsBackupDialogOpen] = useState(false);
+  const [isSyncDialogOpen, setIsSyncDialogOpen] = useState(false);
 
-  const handleMaintenanceToggle = () => {
-    if (!maintenanceMode) {
-      setIsMaintenanceDialogOpen(true)
-    } else {
-      setMaintenanceMode(false)
+  const queryClient = useQueryClient();
+
+  // --- Data Fetching ---
+  const { data: backupHistory = [], isLoading: isBackupHistoryLoading } = useBackupHistory(5); // Limit to 5 for cleaner UI
+  const jobsQuery = useSystemJobStatus();
+  const versionQuery = useSystemVersionInfo();
+  const maintenanceQuery = useMaintenanceStatus();
+
+  // --- Mutations ---
+  const triggerBackupMutation = useTriggerBackup();
+  const triggerSyncMutation = useTriggerSync();
+  const toggleMaintenanceMutation = useToggleMaintenance();
+
+  // --- Data Processing ---
+  const jobStatus = (jobsQuery.data ?? {
+    partial: false,
+    errors: [],
+    summary: {
+      notifications: { pending: 0, processing: 0, failed: 0, sent: 0, total: 0 },
+      payroll: { openPeriods: 0 },
+    },
+    jobs: [],
+  }) as JobStatusResponse;
+
+  const versionInfo = (versionQuery.data ?? {}) as VersionResponse;
+  const maintenance = (maintenanceQuery.data ?? {}) as MaintenanceResponse;
+  const maintenanceEnabled = Boolean(maintenance.enabled);
+
+  const backlogCount =
+    Number(jobStatus.summary.notifications.pending ?? 0) +
+    Number(jobStatus.summary.notifications.processing ?? 0) +
+    Number(jobStatus.summary.notifications.failed ?? 0);
+
+  const serviceRows = useMemo(() => {
+    return jobStatus.jobs.map((job) => ({
+      name: job.name,
+      status: job.status,
+      key: job.key,
+      detail: job.detail ?? {},
+    }));
+  }, [jobStatus.jobs]);
+
+  const syncRows = useMemo(
+    () => [
+      {
+        id: 'notification',
+        type: 'คิวแจ้งเตือน (Notifications Queue)',
+        status:
+          jobStatus.summary.notifications.failed > 0
+            ? 'failed'
+            : backlogCount > 0
+              ? 'running'
+              : 'success',
+        records: backlogCount,
+        details: `${jobStatus.summary.notifications.failed} Failed / ${jobStatus.summary.notifications.pending} Pending`,
+      },
+      {
+        id: 'payroll',
+        type: 'งวดการจ่ายเงิน (Open Payroll Periods)',
+        status: jobStatus.summary.payroll.openPeriods > 0 ? 'running' : 'success',
+        records: Number(jobStatus.summary.payroll.openPeriods ?? 0),
+        details: 'งวดที่ยังไม่ได้ปิด',
+      },
+    ],
+    [jobStatus.summary.notifications, jobStatus.summary.payroll.openPeriods, backlogCount],
+  );
+
+  // --- Handlers ---
+  const handleMaintenanceSwitch = async (next: boolean) => {
+    if (next) {
+      setIsMaintenanceDialogOpen(true);
+      return;
     }
-  }
+    try {
+      await toggleMaintenanceMutation.mutateAsync({ enabled: false });
+      toast.success('ปิดโหมดปิดปรับปรุงแล้ว ผู้ใช้สามารถเข้าใช้งานได้ตามปกติ');
+      await queryClient.invalidateQueries({ queryKey: ['system-maintenance'] });
+    } catch {
+      toast.error('ไม่สามารถปิดโหมดปิดปรับปรุงได้');
+    }
+  };
+
+  const handleTriggerBackup = async () => {
+    try {
+      const result = await triggerBackupMutation.mutateAsync();
+      if (!result?.enabled) {
+        toast.info('ระบบปิดการสำรองข้อมูลไว้ในการตั้งค่า');
+      } else if (result?.status === 'SUCCESS') {
+        toast.success(`สำรองข้อมูลสำเร็จ (Job #${result.jobId ?? '-'})`);
+      } else {
+        toast.warning(`เริ่มสำรองข้อมูลแล้วแต่ยังไม่เสร็จสมบูรณ์ (Job #${result?.jobId ?? '-'})`);
+      }
+      await queryClient.invalidateQueries({ queryKey: ['system-backup-history'] });
+      setIsBackupDialogOpen(false);
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error, 'สำรองข้อมูลไม่สำเร็จ'));
+    }
+  };
 
   return (
-    <div className="p-8 space-y-6">
+    <div className="p-6 lg:p-8 space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">ตั้งค่าระบบ</h1>
-          <p className="text-muted-foreground">
-            จัดการและตรวจสอบสถานะระบบ
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <Server className="h-6 w-6 text-primary" /> ตั้งค่าระบบ
+          </h1>
+          <p className="text-muted-foreground mt-1">
+            จัดการสถานะเซิร์ฟเวอร์ การบำรุงรักษา และการสำรองข้อมูล
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={() => setIsSyncDialogOpen(true)}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Sync HRMS
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsSyncDialogOpen(true)}
+            className="gap-2"
+          >
+            <RefreshCw className="h-4 w-4" /> ซิงก์ข้อมูล HRMS
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setIsBackupDialogOpen(true)}>
-            <Download className="mr-2 h-4 w-4" />
-            Backup Now
+          <Button
+            variant="default"
+            size="sm"
+            onClick={() => setIsBackupDialogOpen(true)}
+            className="gap-2"
+          >
+            <Download className="h-4 w-4" /> สำรองข้อมูลทันที
           </Button>
         </div>
       </div>
 
-      {/* System Status Overview */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Card className="bg-card">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">CPU Usage</p>
-                <p className="text-2xl font-bold text-foreground">23%</p>
-              </div>
-              <div className="h-10 w-10 rounded-full bg-[hsl(var(--success))]/10 flex items-center justify-center">
-                <Cpu className="h-5 w-5 text-[hsl(var(--success))]" />
-              </div>
-            </div>
-            <Progress value={23} className="mt-3 h-1" />
-          </CardContent>
-        </Card>
-        <Card className="bg-card">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Memory</p>
-                <p className="text-2xl font-bold text-foreground">4.2 GB</p>
-              </div>
-              <div className="h-10 w-10 rounded-full bg-[hsl(var(--success))]/10 flex items-center justify-center">
-                <MemoryStick className="h-5 w-5 text-[hsl(var(--success))]" />
-              </div>
-            </div>
-            <Progress value={52} className="mt-3 h-1" />
-            <p className="text-xs text-muted-foreground mt-1">52% of 8 GB</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Storage</p>
-                <p className="text-2xl font-bold text-foreground">45 GB</p>
-              </div>
-              <div className="h-10 w-10 rounded-full bg-[hsl(var(--warning))]/10 flex items-center justify-center">
-                <HardDrive className="h-5 w-5 text-[hsl(var(--warning))]" />
-              </div>
-            </div>
-            <Progress value={45} className="mt-3 h-1" />
-            <p className="text-xs text-muted-foreground mt-1">45% of 100 GB</p>
-          </CardContent>
-        </Card>
-        <Card className="bg-card">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-muted-foreground">Uptime</p>
-                <p className="text-2xl font-bold text-[hsl(var(--success))]">45d 12h</p>
-              </div>
-              <div className="h-10 w-10 rounded-full bg-[hsl(var(--success))]/10 flex items-center justify-center">
-                <Activity className="h-5 w-5 text-[hsl(var(--success))]" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Services Status */}
-        <Card className="bg-card">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Server className="h-5 w-5" />
-                สถานะบริการ
-              </CardTitle>
-              <Badge variant="outline" className="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))] border-[hsl(var(--success))]/30">
-                All Systems Online
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {systemServices.map((service) => (
-              <div key={service.name} className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div className="flex items-center gap-3">
-                  <div className={`h-2.5 w-2.5 rounded-full ${
-                    service.status === "online" 
-                      ? "bg-[hsl(var(--success))] animate-pulse" 
-                      : "bg-destructive"
-                  }`} />
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{service.name}</p>
-                    <p className="text-xs text-muted-foreground">v{service.version}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                  <span>{service.latency}</span>
-                  <span>{service.uptime}</span>
-                  <CheckCircle2 className="h-4 w-4 text-[hsl(var(--success))]" />
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Maintenance Mode */}
-        <Card className="bg-card">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Power className="h-5 w-5" />
-              Maintenance Mode
+      {/* System Status Cards */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        {/* Version Info */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              เวอร์ชันระบบ
             </CardTitle>
-            <CardDescription>
-              เปิดโหมดปรับปรุงระบบจะทำให้ผู้ใช้ไม่สามารถเข้าใช้งานได้
-            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="flex items-center justify-between rounded-lg border border-border p-4">
+          <CardContent>
+            <div className="flex items-center justify-between">
               <div>
-                <Label className="text-base">เปิด Maintenance Mode</Label>
-                <p className="text-sm text-muted-foreground">
-                  ผู้ใช้จะเห็นหน้าแจ้งปรับปรุงระบบแทน
-                </p>
-              </div>
-              <Switch checked={maintenanceMode} onCheckedChange={handleMaintenanceToggle} />
-            </div>
-
-            {maintenanceMode && (
-              <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4">
-                <div className="flex items-center gap-2 text-destructive">
-                  <AlertTriangle className="h-5 w-5" />
-                  <span className="font-medium">Maintenance Mode Active</span>
+                <div className="text-2xl font-bold">{versionInfo.version || '-'}</div>
+                <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span>สภาพแวดล้อม:</span>
+                  <Badge variant="secondary" className="text-[10px] h-4 px-1">
+                    {versionInfo.env || 'ไม่ระบุ'}
+                  </Badge>
                 </div>
-                <p className="text-sm text-destructive/80 mt-1">
-                  ระบบกำลังอยู่ในโหมดปรับปรุง ผู้ใช้ทั่วไปไม่สามารถเข้าใช้งานได้
+              </div>
+              <div className="p-3 bg-primary/10 rounded-full">
+                <Tag className="h-5 w-5 text-primary" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Maintenance Status */}
+        <Card
+          className={`border-border shadow-sm ${maintenanceEnabled ? 'border-destructive/50 bg-destructive/5' : ''}`}
+        >
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              โหมดปิดปรับปรุง
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <div
+                  className={`text-2xl font-bold ${maintenanceEnabled ? 'text-destructive' : 'text-emerald-600'}`}
+                >
+                  {maintenanceEnabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {maintenanceEnabled ? 'ผู้ใช้ทั่วไปเข้าไม่ได้' : 'ระบบเปิดใช้งานปกติ'}
                 </p>
               </div>
-            )}
+              <Switch
+                checked={maintenanceEnabled}
+                onCheckedChange={handleMaintenanceSwitch}
+                disabled={maintenanceQuery.isLoading || toggleMaintenanceMutation.isPending}
+              />
+            </div>
+          </CardContent>
+        </Card>
 
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-foreground">Last Maintenance</p>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Calendar className="h-4 w-4" />
-                15 ม.ค. 2568 22:00 - 06:00 (8 ชม.)
+        {/* Job Queue Status */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">คิวงานระบบ</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl font-bold">{formatThaiNumber(backlogCount)}</div>
+                <p className="text-xs text-muted-foreground mt-1">งานที่ค้างในระบบ</p>
+              </div>
+              <div
+                className={`p-3 rounded-full ${backlogCount > 100 ? 'bg-amber-100' : 'bg-secondary'}`}
+              >
+                <Layers
+                  className={`h-5 w-5 ${backlogCount > 100 ? 'text-amber-600' : 'text-muted-foreground'}`}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Failed Jobs */}
+        <Card className="border-border shadow-sm">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">งานที่ล้มเหลว</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <div
+                  className={`text-2xl font-bold ${jobStatus.summary.notifications.failed > 0 ? 'text-destructive' : 'text-foreground'}`}
+                >
+                  {formatThaiNumber(jobStatus.summary.notifications.failed)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">งานที่ล้มเหลว</p>
+              </div>
+              <div
+                className={`p-3 rounded-full ${jobStatus.summary.notifications.failed > 0 ? 'bg-destructive/10' : 'bg-secondary'}`}
+              >
+                <FileWarning
+                  className={`h-5 w-5 ${jobStatus.summary.notifications.failed > 0 ? 'text-destructive' : 'text-muted-foreground'}`}
+                />
               </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Backup History */}
-        <Card className="bg-card">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Database className="h-5 w-5" />
-                ประวัติ Backup
-              </CardTitle>
-              <Button variant="ghost" size="sm">
-                ดูทั้งหมด
-              </Button>
-            </div>
-            <CardDescription>
-              Backup อัตโนมัติทุกวัน 03:00 น.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {backupHistory.map((backup) => (
-              <div key={backup.id} className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div className="flex items-center gap-3">
-                  <div className={`h-2 w-2 rounded-full ${
-                    backup.status === "success" ? "bg-[hsl(var(--success))]" : "bg-destructive"
-                  }`} />
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{backup.type}</p>
-                    <p className="text-xs text-muted-foreground">{backup.timestamp}</p>
-                  </div>
+      {/* Main Content Sections */}
+      <div className="grid gap-6 lg:grid-cols-3">
+        {/* Left Column: Services & Sync Status */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Service Status */}
+          <Card className="border-border shadow-sm">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <CardTitle className="flex items-center gap-2">
+                    <Activity className="h-5 w-5 text-muted-foreground" /> สถานะบริการ
+                  </CardTitle>
+                  <CardDescription>สถานะการทำงานของบริการย่อยในระบบ</CardDescription>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Badge variant="outline">{backup.size}</Badge>
-                  <Button variant="ghost" size="sm">
-                    <Download className="h-4 w-4" />
-                  </Button>
-                </div>
+                <Badge
+                  variant={jobStatus.partial ? 'destructive' : 'outline'}
+                  className={
+                    !jobStatus.partial ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''
+                  }
+                >
+                  {jobStatus.partial ? 'มีความเสี่ยง' : 'ปกติ'}
+                </Badge>
               </div>
-            ))}
-          </CardContent>
-        </Card>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              {serviceRows.map((service) => (
+                <div
+                  key={service.key}
+                  className="flex items-center justify-between p-3 border rounded-lg bg-card"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`h-2.5 w-2.5 rounded-full ${toStatusClass(service.status)} ring-2 ring-opacity-20 ring-current`}
+                    />
+                    <span className="font-medium text-sm">{service.name}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {toStatusBadge(service.status)}
+                  </span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
 
-        {/* Sync History */}
-        <Card className="bg-card">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg flex items-center gap-2">
-                <RefreshCw className="h-5 w-5" />
-                ประวัติ Sync HRMS
+          {/* Sync & Queue Status */}
+          <Card className="border-border shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <RefreshCw className="h-5 w-5 text-muted-foreground" /> งานประมวลผล (Background
+                Jobs)
               </CardTitle>
-              <Button variant="ghost" size="sm">
-                ดูทั้งหมด
-              </Button>
-            </div>
-            <CardDescription>
-              Sync อัตโนมัติทุก 6 ชม.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {syncHistory.map((sync) => (
-              <div key={sync.id} className="flex items-center justify-between rounded-lg border border-border p-3">
-                <div className="flex items-center gap-3">
-                  <div className={`h-2 w-2 rounded-full ${
-                    sync.status === "success" ? "bg-[hsl(var(--success))]" : "bg-destructive"
-                  }`} />
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{sync.type}</p>
-                    <p className="text-xs text-muted-foreground">{sync.timestamp}</p>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {syncRows.map((row) => (
+                <div key={row.id} className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="font-medium">{row.type}</span>
+                    <span
+                      className={
+                        row.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'
+                      }
+                    >
+                      {formatThaiNumber(row.records)} รายการ
+                    </span>
                   </div>
+                  <Progress
+                    value={row.records > 0 ? 100 : 0}
+                    className={`h-2 ${row.status === 'failed' ? 'bg-destructive/20 [&>div]:bg-destructive' : row.status === 'running' ? 'bg-blue-100 [&>div]:bg-blue-500 animate-pulse' : ''}`}
+                  />
+                  <p className="text-xs text-muted-foreground">{row.details}</p>
                 </div>
-                <Badge variant="outline">{sync.records} records</Badge>
+              ))}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right Column: Backup History */}
+        <div className="lg:col-span-1">
+          <Card className="border-border shadow-sm h-full flex flex-col">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Database className="h-5 w-5 text-muted-foreground" /> ประวัติการสำรองข้อมูล
+              </CardTitle>
+              <CardDescription>5 รายการล่าสุด</CardDescription>
+            </CardHeader>
+            <CardContent className="flex-1">
+              <div className="space-y-4">
+                {isBackupHistoryLoading ? (
+                  <p className="text-sm text-center text-muted-foreground py-8">
+                    กำลังโหลดข้อมูล...
+                  </p>
+                ) : backupHistory.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <History className="h-8 w-8 mx-auto mb-2 opacity-20" />
+                    <p className="text-sm">ยังไม่มีประวัติการสำรองข้อมูล</p>
+                  </div>
+                ) : (
+                  <div className="relative border-l border-muted ml-3 space-y-6 py-2">
+                    {backupHistory.map((backup) => (
+                      <div key={backup.job_id} className="relative pl-6">
+                        <div
+                          className={`absolute -left-[5px] top-1 h-2.5 w-2.5 rounded-full border-2 border-background ${
+                            backup.status === 'SUCCESS'
+                              ? 'bg-emerald-500'
+                              : backup.status === 'RUNNING'
+                                ? 'bg-blue-500'
+                                : 'bg-destructive'
+                          }`}
+                        />
+                        <div className="flex flex-col gap-1">
+                          <span className="text-sm font-medium leading-none">
+                            {formatDateTime(backup.created_at)}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {backup.trigger_source === 'SCHEDULED'
+                              ? 'สำรองข้อมูลอัตโนมัติ'
+                              : 'สำรองข้อมูลด้วยตนเอง'}
+                          </span>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="secondary" className="text-[10px] h-4 px-1 font-normal">
+                              {formatBytes(backup.backup_file_size_bytes)}
+                            </Badge>
+                            {backup.status !== 'SUCCESS' && (
+                              <span className="text-[10px] text-destructive uppercase font-bold">
+                                {backup.status}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-            ))}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
-      {/* Maintenance Dialog */}
+      {/* Dialogs */}
       <Dialog open={isMaintenanceDialogOpen} onOpenChange={setIsMaintenanceDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle className="text-destructive">เปิด Maintenance Mode?</DialogTitle>
-            <DialogDescription>
-              การเปิด Maintenance Mode จะทำให้ผู้ใช้ทุกคนไม่สามารถเข้าใช้งานระบบได้
+            <div className="mx-auto bg-destructive/10 p-3 rounded-full mb-3">
+              <Power className="h-6 w-6 text-destructive" />
+            </div>
+            <DialogTitle className="text-center">ยืนยันการเปิดโหมดปรับปรุง?</DialogTitle>
+            <DialogDescription className="text-center">
+              เมื่อเปิดใช้งาน ผู้ใช้งานทั่วไปจะไม่สามารถเข้าสู่ระบบได้จนกว่าคุณจะปิดโหมดนี้
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <div className="rounded-lg border border-[hsl(var(--warning))]/30 bg-[hsl(var(--warning))]/10 p-4">
-              <p className="text-sm text-[hsl(var(--warning))]">
-                คุณแน่ใจหรือไม่ว่าต้องการเปิด Maintenance Mode? กรุณาตรวจสอบว่าไม่มีการทำงานสำคัญที่กำลังดำเนินการอยู่
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
+          <DialogFooter className="sm:justify-center gap-2">
             <Button variant="outline" onClick={() => setIsMaintenanceDialogOpen(false)}>
               ยกเลิก
             </Button>
             <Button
               variant="destructive"
-              onClick={() => {
-                setMaintenanceMode(true)
-                setIsMaintenanceDialogOpen(false)
+              onClick={async () => {
+                try {
+                  await toggleMaintenanceMutation.mutateAsync({ enabled: true });
+                  toast.success('ระบบเข้าสู่โหมดปิดปรับปรุงแล้ว');
+                  await queryClient.invalidateQueries({ queryKey: ['system-maintenance'] });
+                  setIsMaintenanceDialogOpen(false);
+                } catch {
+                  toast.error('เกิดข้อผิดพลาดในการเปิดโหมดปรับปรุง');
+                }
               }}
+              disabled={toggleMaintenanceMutation.isPending}
             >
-              <Power className="mr-2 h-4 w-4" />
-              เปิด Maintenance Mode
+              ยืนยันเปิดโหมดปรับปรุง
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Backup Dialog */}
       <Dialog open={isBackupDialogOpen} onOpenChange={setIsBackupDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>สร้าง Backup ใหม่</DialogTitle>
+            <DialogTitle>สำรองข้อมูล</DialogTitle>
             <DialogDescription>
-              สร้าง backup ฐานข้อมูลทันที
+              การสำรองข้อมูลอาจใช้เวลาสักครู่ ระบบจะทำงานในเบื้องหลัง
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="rounded-lg border border-border p-4">
-              <p className="text-sm text-foreground font-medium">Full Backup</p>
-              <p className="text-xs text-muted-foreground">
-                Backup ข้อมูลทั้งหมดในฐานข้อมูล (ประมาณ 2-3 GB)
-              </p>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              ใช้เวลาประมาณ 5-10 นาที ระบบจะยังคงทำงานได้ปกติระหว่าง backup
-            </p>
+          <div className="bg-secondary/50 p-4 rounded-lg text-sm border border-border">
+            <p className="font-medium mb-1">สิ่งที่จะถูกสำรอง:</p>
+            <ul className="list-disc list-inside text-muted-foreground space-y-1">
+              <li>ฐานข้อมูลผู้ใช้และสิทธิ์</li>
+              <li>ประวัติการทำธุรกรรม</li>
+              <li>การตั้งค่าระบบ</li>
+            </ul>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsBackupDialogOpen(false)}>
+            <Button variant="ghost" onClick={() => setIsBackupDialogOpen(false)}>
               ยกเลิก
             </Button>
-            <Button onClick={() => setIsBackupDialogOpen(false)}>
-              <Download className="mr-2 h-4 w-4" />
-              เริ่ม Backup
+            <Button onClick={handleTriggerBackup} disabled={triggerBackupMutation.isPending}>
+              {triggerBackupMutation.isPending ? 'กำลังเริ่ม...' : 'เริ่มสำรองข้อมูล'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Sync Dialog */}
       <Dialog open={isSyncDialogOpen} onOpenChange={setIsSyncDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Sync ข้อมูลจาก HRMS</DialogTitle>
+            <DialogTitle>ซิงค์ข้อมูล HRMS</DialogTitle>
             <DialogDescription>
-              ดึงข้อมูลล่าสุดจากระบบ HRMS
+              ดึงข้อมูลพนักงานล่าสุดจากระบบ HRMS เพื่ออัปเดตฐานข้อมูล
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="space-y-3">
-              <div className="rounded-lg border border-border p-4">
-                <p className="text-sm text-foreground font-medium">Full Sync</p>
-                <p className="text-xs text-muted-foreground">
-                  Sync ข้อมูลทั้งหมด (ใช้เวลานาน)
-                </p>
-              </div>
-              <div className="rounded-lg border border-primary p-4 bg-primary/5">
-                <p className="text-sm text-foreground font-medium">Incremental Sync (แนะนำ)</p>
-                <p className="text-xs text-muted-foreground">
-                  Sync เฉพาะข้อมูลที่เปลี่ยนแปลง
-                </p>
-              </div>
-            </div>
+          <div className="py-4 text-center">
+            <RefreshCw className="h-12 w-12 text-blue-500 mx-auto mb-4 animate-spin-slow" />
+            <p className="text-sm text-muted-foreground">
+              กระบวนการนี้จะทำงานในเบื้องหลัง คุณสามารถปิดหน้าต่างนี้ได้
+            </p>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsSyncDialogOpen(false)}>
               ยกเลิก
             </Button>
-            <Button onClick={() => setIsSyncDialogOpen(false)}>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              เริ่ม Sync
+            <Button
+              onClick={async () => {
+                try {
+                  await triggerSyncMutation.mutateAsync();
+                  toast.success('ส่งคำสั่งซิงค์ข้อมูลแล้ว');
+                  setIsSyncDialogOpen(false);
+                } catch {
+                  toast.error('ไม่สามารถเริ่มการซิงค์ได้');
+                }
+              }}
+              disabled={triggerSyncMutation.isPending}
+            >
+              ยืนยันการซิงค์
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }

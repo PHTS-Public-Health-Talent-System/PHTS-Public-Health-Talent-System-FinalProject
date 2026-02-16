@@ -1,9 +1,11 @@
 'use client';
 export const dynamic = 'force-dynamic';
 
-import { use, useMemo, useState, type ReactNode } from 'react';
+import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -22,8 +24,6 @@ import {
   ArrowLeft,
   FileText,
   User,
-  Calendar,
-  Clock,
   CheckCircle2,
   XCircle,
   AlertCircle,
@@ -34,48 +34,149 @@ import {
   Briefcase,
   Building2,
   RotateCcw,
-  type LucideIcon,
+  Check,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react';
-import { useProcessAction, useRequestDetail } from '@/features/request/hooks';
+import {
+  useCreateVerificationSnapshot,
+  useProcessAction,
+  useRequestDetail,
+} from '@/features/request/hooks';
 import { useRateHierarchy } from '@/features/master-data/hooks';
 import { AttachmentPreviewDialog } from '@/components/common/attachment-preview-dialog';
 import { toRequestDisplayId } from '@/shared/utils/public-id';
 import type { RequestWithDetails } from '@/types/request.types';
+import { formatThaiDate, formatThaiDateTime, toDateOnly } from '@/features/request/detail/requestDetail.format';
+import { getStatusColor, getStatusLabel } from '@/features/request/detail/requestDetail.status';
+import { getAttachmentLabel } from '@/features/request/detail/requestDetail.attachmentsLabel';
+import { InfoItem, SectionHeader } from '@/features/request/detail/requestDetail.ui';
+import { ApprovalTimelineCard } from '@/features/request/detail/components/ApprovalTimelineCard';
 import {
   isEmptyRateMapping,
   normalizeRateMapping,
   resolveRateMappingDisplay,
-} from '../../../../(user)/user/request-detail-rate-mapping';
-import { buildAttachmentUrl, isPreviewableFile } from '../../../../(user)/user/request-detail-attachments';
+} from '@/features/request/detail/requestDetail.rateMapping';
+import {
+  buildAttachmentUrl,
+  isPreviewableFile,
+} from '@/features/request/detail/requestDetail.attachments';
+import { formatThaiNumber } from '@/shared/utils/thai-locale';
 
-const InfoItem = ({
-  label,
-  value,
-  icon: Icon,
+type AssessmentVerdict = 'correct' | 'incorrect';
+
+type MinimumChecklistItem = {
+  key: string;
+  label: string;
+  description: string;
+};
+
+const MinimumChecklist = ({
+  title,
+  items,
+  verdictMap,
+  onSelect,
   className,
 }: {
-  label: string;
-  value: ReactNode;
-  icon?: LucideIcon;
+  title: string;
+  verdictMap: Record<string, AssessmentVerdict | undefined>;
+  items: MinimumChecklistItem[];
+  onSelect: (key: string, verdict: AssessmentVerdict) => void;
   className?: string;
-}) => (
-  <div className={`flex flex-col gap-1 ${className ?? ''}`}>
-    <dt className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
-      {Icon && <Icon className="w-3.5 h-3.5 opacity-70" />}
-      {label}
-    </dt>
-    <dd className="text-sm font-medium text-foreground break-words">{value}</dd>
-  </div>
-);
+}) => {
+  const checkedCount = items.filter((i) => verdictMap[i.key]).length;
+  const isAllChecked = checkedCount === items.length;
+  const hasIncorrect = items.some((i) => verdictMap[i.key] === 'incorrect');
 
-const SectionHeader = ({ title, icon: Icon }: { title: string; icon: LucideIcon }) => (
-  <div className="flex items-center gap-2 mb-4">
-    <div className="p-2 rounded-lg bg-primary/10">
-      <Icon className="w-4 h-4 text-primary" />
+  return (
+    <div
+      className={`mt-6 rounded-lg border transition-colors ${
+        isAllChecked && !hasIncorrect
+          ? 'border-emerald-200 bg-emerald-50/30'
+          : hasIncorrect
+            ? 'border-rose-200 bg-rose-50/30'
+            : 'border-border/60 bg-muted/20'
+      } p-4 ${className ?? ''}`}
+    >
+      <div className="flex justify-between items-center mb-3">
+        <p
+          className={`text-xs font-semibold uppercase tracking-wide ${
+            isAllChecked && !hasIncorrect
+              ? 'text-emerald-700'
+              : hasIncorrect
+                ? 'text-rose-700'
+                : 'text-muted-foreground'
+          }`}
+        >
+          {title}
+        </p>
+        <span className="text-[10px] bg-background px-2 py-0.5 rounded-full border text-muted-foreground">
+          {checkedCount}/{items.length}
+        </span>
+      </div>
+
+      <div className="space-y-2">
+        {items.map((item) => {
+          const verdict = verdictMap[item.key];
+          return (
+            <div
+              key={item.key}
+              className={`rounded border p-3 transition-colors ${
+                verdict === 'correct'
+                  ? 'bg-emerald-50/50 border-emerald-100'
+                  : verdict === 'incorrect'
+                    ? 'bg-rose-50/50 border-rose-100'
+                    : 'bg-background/80 border-border/50'
+              }`}
+            >
+              <div className="flex justify-between items-start gap-4">
+                <div>
+                  <p className="text-sm font-medium text-foreground">{item.label}</p>
+                  <p className="text-xs text-muted-foreground mt-1">{item.description}</p>
+                </div>
+                {verdict === 'correct' && (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                )}
+                {verdict === 'incorrect' && <XCircle className="w-4 h-4 text-rose-500 shrink-0" />}
+              </div>
+
+              <div className="mt-3 flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={`h-7 px-3 text-xs ${
+                    verdict === 'correct'
+                      ? 'border-emerald-300 bg-emerald-100 text-emerald-700 hover:bg-emerald-200'
+                      : 'hover:bg-emerald-50 hover:text-emerald-600'
+                  }`}
+                  onClick={() => onSelect(item.key, 'correct')}
+                >
+                  ถูกต้อง
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={`h-7 px-3 text-xs ${
+                    verdict === 'incorrect'
+                      ? 'border-rose-300 bg-rose-100 text-rose-700 hover:bg-rose-200'
+                      : 'hover:bg-rose-50 hover:text-rose-600'
+                  }`}
+                  onClick={() => onSelect(item.key, 'incorrect')}
+                >
+                  ไม่ถูกต้อง
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
-    <h3 className="font-semibold text-base text-foreground">{title}</h3>
-  </div>
-);
+  );
+};
+
+// --- CONSTANTS ---
 
 const PERSONNEL_TYPE_LABELS: Record<string, string> = {
   CIVIL_SERVANT: 'ข้าราชการ',
@@ -85,7 +186,7 @@ const PERSONNEL_TYPE_LABELS: Record<string, string> = {
 };
 
 const REQUEST_TYPE_LABELS: Record<string, string> = {
-  NEW_ENTRY: 'ขอรับ พ.ต.ส. ครั้งแรก',
+  NEW_ENTRY: 'ขอรับสิทธิ พ.ต.ส. ครั้งแรก',
   EDIT_INFO_SAME_RATE: 'แก้ไขข้อมูล (อัตราเดิม)',
   EDIT_INFO_NEW_RATE: 'แก้ไขข้อมูล (อัตราใหม่)',
 };
@@ -94,17 +195,64 @@ const WORK_ATTRIBUTE_LABELS: Record<string, string> = {
   operation: 'ปฏิบัติการ',
   planning: 'วางแผน',
   coordination: 'ประสานงาน',
-  service: 'บริการ',
+  service: 'ให้บริการ',
 };
 
-const APPROVAL_STEPS = [
-  { step: 1, role: 'หัวหน้าตึก/หัวหน้างาน' },
-  { step: 2, role: 'หัวหน้ากลุ่มงาน' },
-  { step: 3, role: 'เจ้าหน้าที่ พ.ต.ส.' },
-  { step: 4, role: 'หัวหน้ากลุ่มงานทรัพยากรบุคคล' },
-  { step: 5, role: 'หัวหน้าการเงิน' },
-  { step: 6, role: 'ผู้อำนวยการ' },
+const EMPLOYEE_MINIMUM_CHECKLIST: MinimumChecklistItem[] = [
+  {
+    key: 'basic_form_data',
+    label: 'ข้อมูลในแบบคำขอครบและตรงกับข้อมูลบุคคล',
+    description: 'ชื่อ-สกุล ตำแหน่ง สังกัด สถานที่ปฏิบัติงาน กรอกครบถ้วน และตรงกับข้อมูลในระบบ',
+  },
 ];
+
+const ELIGIBILITY_MINIMUM_CHECKLIST: MinimumChecklistItem[] = [
+  {
+    key: 'healthcare_definition',
+    label: 'เข้าเกณฑ์ผู้ปฏิบัติงานด้านการสาธารณสุขตามระเบียบ',
+    description: 'สำเร็จการศึกษาตามเกณฑ์ มีใบอนุญาตฯ และใช้ใบอนุญาตในการให้บริการด้านสุขภาพ',
+  },
+  {
+    key: 'assignment_order_match',
+    label: 'มีคำสั่ง/หนังสือมอบหมายงาน',
+    description: 'มีหลักฐานการมอบหมายงาน และงานที่ปฏิบัติสอดคล้องกับกลุ่ม/ข้อที่ขอรับ',
+  },
+  {
+    key: 'rate_mapping_correct',
+    label: 'กลุ่ม/ข้อ/อัตราที่ขอรับถูกต้อง',
+    description: 'อัตราไม่เกินบัญชีท้ายระเบียบ และได้รับอัตราสูงสุดเพียงอัตราเดียว',
+  },
+  {
+    key: 'effective_date_correct',
+    label: 'วันที่เริ่มมีสิทธิถูกต้อง',
+    description: 'วันที่เริ่มมีผลสอดคล้องกับวันที่เริ่มปฏิบัติงาน/คำสั่งมอบหมายงาน',
+  },
+];
+
+const LICENSE_MINIMUM_CHECKLIST: MinimumChecklistItem[] = [
+  {
+    key: 'license_active',
+    label: 'ใบอนุญาตยังมีผลใช้บังคับ',
+    description: 'ตรวจวันหมดอายุ และประเภท/สาขาใบอนุญาตสอดคล้องกับงานที่ขอรับ',
+  },
+];
+
+const ATTACHMENT_MINIMUM_CHECKLIST: MinimumChecklistItem[] = [
+  {
+    key: 'minimum_documents',
+    label: 'เอกสารครบถ้วน',
+    description: 'มีหลักฐานคุณวุฒิ ใบอนุญาต คำสั่งมอบหมายงาน และเอกสารเงื่อนไขเฉพาะ',
+  },
+];
+
+const ALL_CHECKLIST_ITEMS = [
+  ...EMPLOYEE_MINIMUM_CHECKLIST,
+  ...ELIGIBILITY_MINIMUM_CHECKLIST,
+  ...LICENSE_MINIMUM_CHECKLIST,
+  ...ATTACHMENT_MINIMUM_CHECKLIST,
+];
+
+// --- HELPERS ---
 
 const parseSubmission = (value: RequestWithDetails['submission_data']) => {
   if (!value) return {};
@@ -129,109 +277,240 @@ const getSubmissionString = (
   return undefined;
 };
 
-const formatThaiDateTime = (value?: string | null) => {
-  if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
-  return date.toLocaleString('th-TH', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+const getLicenseStatusClass = (status?: string | null) => {
+  switch (status) {
+    case 'ACTIVE':
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    case 'EXPIRED':
+      return 'bg-rose-50 text-rose-700 border-rose-200';
+    case 'INACTIVE':
+      return 'bg-slate-100 text-slate-700 border-slate-200';
+    case 'UNKNOWN':
+      return 'bg-amber-50 text-amber-700 border-amber-200';
+    default:
+      return 'bg-muted text-muted-foreground border-border';
+  }
 };
 
-const getAttachmentLabel = (fileName: string, fileType?: string) => {
+const getLicenseStatusLabel = (status?: string | null) => {
+  switch (status) {
+    case 'ACTIVE':
+      return 'มีผลใช้บังคับ';
+    case 'EXPIRED':
+      return 'หมดอายุ';
+    case 'INACTIVE':
+      return 'ไม่อยู่ในสถานะใช้งาน';
+    case 'UNKNOWN':
+      return 'ไม่สามารถระบุสถานะ';
+    default:
+      return 'ไม่พบข้อมูล';
+  }
+};
+
+// --- MOCK OCR LOGIC ---
+
+type OcrFieldStatus = 'match' | 'mismatch' | 'missing';
+type OcrExtractField = {
+  key: string;
+  label: string;
+  extractedValue: string;
+  expectedValue: string;
+  confidence: number;
+  status: OcrFieldStatus;
+};
+type MockOcrResult = {
+  fileName: string;
+  documentType: string;
+  summary: string;
+  fields: OcrExtractField[];
+  checkedAt: string;
+};
+
+type MockOcrParams = {
+  fileName: string;
+  citizenId: string;
+  requesterName: string;
+  department: string;
+  subDepartment: string;
+};
+
+const getOcrStatusBadgeClass = (status: OcrFieldStatus) => {
+  switch (status) {
+    case 'match':
+      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    case 'mismatch':
+      return 'bg-rose-50 text-rose-700 border-rose-200';
+    default:
+      return 'bg-amber-50 text-amber-700 border-amber-200';
+  }
+};
+const getOcrStatusLabel = (status: OcrFieldStatus) => {
+  switch (status) {
+    case 'match':
+      return 'ตรง';
+    case 'mismatch':
+      return 'ไม่ตรง';
+    default:
+      return 'ไม่มีข้อมูล';
+  }
+};
+
+const detectMockDocumentType = (fileName: string) => {
   const lower = fileName.toLowerCase();
-  if (lower.endsWith('.pdf')) return 'PDF Document';
-  if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
-    return 'Image File';
-  }
-  return fileType || 'File';
+  if (lower.includes('license') || lower.includes('ใบอนุญาต')) return 'ใบอนุญาตประกอบวิชาชีพ';
+  if (lower.includes('id') || lower.includes('บัตรประชาชน')) return 'บัตรประจำตัวประชาชน';
+  if (lower.includes('request') || lower.includes('คำขอ')) return 'แบบคำขอ';
+  return 'เอกสารทั่วไป';
 };
 
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'DRAFT':
-      return 'bg-slate-100 text-slate-600 border-slate-200';
-    case 'PENDING':
-      return 'bg-amber-50 text-amber-600 border-amber-200';
-    case 'APPROVED':
-      return 'bg-emerald-50 text-emerald-600 border-emerald-200';
-    case 'REJECTED':
-      return 'bg-rose-50 text-rose-600 border-rose-200';
-    case 'RETURNED':
-      return 'bg-orange-50 text-orange-600 border-orange-200';
-    case 'CANCELLED':
-      return 'bg-slate-100 text-slate-500 border-slate-200';
-    default:
-      return 'bg-muted text-muted-foreground';
-  }
+const buildMockOcrResult = (params: MockOcrParams): MockOcrResult => {
+  const { fileName, citizenId, requesterName, department, subDepartment } = params;
+  const lower = fileName.toLowerCase();
+  const forceMismatch = lower.includes('mismatch') || lower.includes('ผิด');
+  const forceMissing = lower.includes('blur') || lower.includes('อ่านไม่ชัด');
+
+  const citizenExtracted = forceMissing
+    ? ''
+    : forceMismatch && citizenId?.length >= 2
+      ? `${citizenId.slice(0, citizenId.length - 2)}99`
+      : citizenId;
+  const nameExtracted = forceMissing ? '' : requesterName;
+  const departmentExtracted = forceMismatch ? `${department} (เอกสารเดิม)` : department;
+  const unitExtracted = forceMissing ? '' : subDepartment;
+
+  const fields: OcrExtractField[] = [
+    {
+      key: 'citizen_id',
+      label: 'เลขประจำตัวประชาชน',
+      extractedValue: citizenExtracted || '-',
+      expectedValue: citizenId || '-',
+      confidence: citizenExtracted ? (forceMismatch ? 87 : 97) : 41,
+      status: !citizenExtracted ? 'missing' : citizenExtracted === citizenId ? 'match' : 'mismatch',
+    },
+    {
+      key: 'full_name',
+      label: 'ชื่อ-นามสกุล',
+      extractedValue: nameExtracted || '-',
+      expectedValue: requesterName || '-',
+      confidence: nameExtracted ? 95 : 39,
+      status: !nameExtracted ? 'missing' : nameExtracted === requesterName ? 'match' : 'mismatch',
+    },
+    {
+      key: 'department',
+      label: 'กลุ่มงาน',
+      extractedValue: departmentExtracted || '-',
+      expectedValue: department || '-',
+      confidence: departmentExtracted ? (forceMismatch ? 84 : 93) : 45,
+      status: !departmentExtracted
+        ? 'missing'
+        : departmentExtracted === department
+          ? 'match'
+          : 'mismatch',
+    },
+    {
+      key: 'sub_department',
+      label: 'หน่วยงาน',
+      extractedValue: unitExtracted || '-',
+      expectedValue: subDepartment || '-',
+      confidence: unitExtracted ? 91 : 44,
+      status: !unitExtracted ? 'missing' : unitExtracted === subDepartment ? 'match' : 'mismatch',
+    },
+  ];
+
+  const matched = fields.filter((field) => field.status === 'match').length;
+  const mismatched = fields.filter((field) => field.status === 'mismatch').length;
+  const missing = fields.filter((field) => field.status === 'missing').length;
+
+  return {
+    fileName,
+    documentType: detectMockDocumentType(fileName),
+    summary: `ตรง ${matched} รายการ, ไม่ตรง ${mismatched} รายการ, ไม่มีข้อมูล ${missing} รายการ`,
+    fields,
+    checkedAt: new Date().toISOString(),
+  };
 };
 
-const getPendingStepLabel = (step?: number | null) => {
-  switch (step) {
-    case 1:
-      return 'รอหัวหน้าตึก/หัวหน้างาน';
-    case 2:
-      return 'รอหัวหน้ากลุ่มงาน';
-    case 3:
-      return 'รอเจ้าหน้าที่ พ.ต.ส.';
-    case 4:
-      return 'รอหัวหน้ากลุ่มงานทรัพยากรบุคคล';
-    case 5:
-      return 'รอหัวหน้าการเงิน';
-    case 6:
-      return 'รอผู้อำนวยการ';
-    default:
-      return 'รอดำเนินการ';
-  }
-};
-
-const getStatusLabel = (status: string, step?: number | null) => {
-  switch (status) {
-    case 'DRAFT':
-      return 'แบบร่าง';
-    case 'PENDING':
-      return getPendingStepLabel(step);
-    case 'APPROVED':
-      return 'อนุมัติแล้ว';
-    case 'REJECTED':
-      return 'ไม่อนุมัติ';
-    case 'RETURNED':
-      return 'ถูกส่งกลับ';
-    case 'CANCELLED':
-      return 'ยกเลิก';
-    default:
-      return status;
-  }
-};
+// --- MAIN PAGE ---
 
 export default function RequestDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const { data: request, isLoading } = useRequestDetail(id);
   const { data: rateHierarchy } = useRateHierarchy();
   const processAction = useProcessAction();
+  const createVerificationSnapshot = useCreateVerificationSnapshot();
 
   const [actionDialog, setActionDialog] = useState<'approve' | 'reject' | 'return' | null>(null);
   const [comment, setComment] = useState('');
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewUrl, setPreviewUrl] = useState('');
   const [previewName, setPreviewName] = useState('');
+  const [ocrDialogOpen, setOcrDialogOpen] = useState(false);
+  const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrResult, setOcrResult] = useState<MockOcrResult | null>(null);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [requestChecklistState, setRequestChecklistState] = useState<
+    Record<string, AssessmentVerdict | undefined>
+  >({});
+  const [hasChecklistInteraction, setHasChecklistInteraction] = useState(false);
+  const [lastSavedFingerprint, setLastSavedFingerprint] = useState('');
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
+  const [autosaveStatus, setAutosaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>(
+    'idle',
+  );
+
+  // --- Derived State for UX ---
+  const checklistStats = useMemo(() => {
+    const values = Object.values(requestChecklistState);
+    const checkedCount = values.length;
+    const totalCount = ALL_CHECKLIST_ITEMS.length;
+    const incorrectItems = ALL_CHECKLIST_ITEMS.filter(
+      (item) => requestChecklistState[item.key] === 'incorrect',
+    );
+    const incorrectCount = incorrectItems.length;
+
+    return {
+      checkedCount,
+      totalCount,
+      incorrectCount,
+      incorrectItems,
+      progress: Math.round((checkedCount / totalCount) * 100),
+      isComplete: checkedCount === totalCount,
+      hasIncorrect: incorrectCount > 0,
+      canApprove: checkedCount === totalCount && incorrectCount === 0,
+    };
+  }, [requestChecklistState]);
+  const checklistFingerprint = useMemo(
+    () =>
+      JSON.stringify(
+        ALL_CHECKLIST_ITEMS.map((item) => ({
+          key: item.key,
+          verdict: requestChecklistState[item.key] ?? null,
+        })),
+      ),
+    [requestChecklistState],
+  );
+
+  // Submission Parsing
   const submission = useMemo(
     () => parseSubmission(request?.submission_data) as Record<string, unknown>,
     [request?.submission_data],
   );
-
   const submissionTitle = getSubmissionString(submission, ['title']);
   const submissionFirstName = getSubmissionString(submission, ['first_name', 'firstName']);
   const submissionLastName = getSubmissionString(submission, ['last_name', 'lastName']);
   const submissionPositionName = getSubmissionString(submission, ['position_name', 'positionName']);
   const submissionDepartment = getSubmissionString(submission, ['department']);
-  const submissionSubDepartment = getSubmissionString(submission, ['sub_department', 'subDepartment']);
-  const submissionPositionNumber = getSubmissionString(submission, ['position_number', 'positionNumber']);
+  const submissionSubDepartment = getSubmissionString(submission, [
+    'sub_department',
+    'subDepartment',
+  ]);
+  const submissionPositionNumber = getSubmissionString(submission, [
+    'position_number',
+    'positionNumber',
+  ]);
 
   const requesterName = useMemo(() => {
     const firstName = submissionFirstName ?? request?.requester?.first_name;
@@ -258,12 +537,17 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
 
   const rateAmount = rateMapping?.amount ?? request?.requested_amount ?? null;
   const isRateMappingEmpty = useMemo(() => isEmptyRateMapping(rateMapping), [rateMapping]);
+  const licenseNo = request?.requester?.license_no?.trim() || '-';
+  const licenseName = request?.requester?.license_name?.trim() || '-';
+  const licenseValidFrom = request?.requester?.license_valid_from ?? null;
+  const licenseValidUntil = request?.requester?.license_valid_until ?? null;
+  const licenseStatus = request?.requester?.license_status ?? null;
 
   const personnelTypeLabel = request?.personnel_type
-    ? (PERSONNEL_TYPE_LABELS[request.personnel_type] || request.personnel_type)
+    ? PERSONNEL_TYPE_LABELS[request.personnel_type] || request.personnel_type
     : '-';
   const requestTypeLabel = request?.request_type
-    ? (REQUEST_TYPE_LABELS[request.request_type] || request.request_type)
+    ? REQUEST_TYPE_LABELS[request.request_type] || request.request_type
     : '-';
   const mainDuty = request?.main_duty || '-';
   const workAttributes = request?.work_attributes
@@ -272,16 +556,132 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
         .map(([key]) => WORK_ATTRIBUTE_LABELS[key] || key)
     : [];
   const effectiveDateLabel = request?.effective_date
-    ? new Date(request.effective_date).toLocaleDateString('th-TH', {
-        day: 'numeric',
-        month: 'long',
-        year: 'numeric',
-      })
+    ? formatThaiDate(request.effective_date)
     : null;
 
   const submitAction = (request?.actions ?? []).find((a) => a.action === 'SUBMIT');
-  const approvalActions = request?.actions ?? [];
   const canAct = request?.status === 'PENDING';
+  const hasVerificationSnapshot = Boolean(request?.has_verification_snapshot);
+
+  const isSubmitting = processAction.isPending;
+  const isSnapshotSaving = createVerificationSnapshot.isPending || autosaveStatus === 'saving';
+  const isActionBusy = isSubmitting || isSnapshotSaving;
+
+  const persistVerificationSnapshot = useCallback(
+    async ({
+      silent = false,
+      source = 'PTS_OFFICER_DETAIL_PAGE',
+    }: {
+      silent?: boolean;
+      source?: string;
+    } = {}) => {
+      if (!request) return false;
+      if (!rateMapping?.rateId) {
+        if (!silent) toast.error('ยังไม่พบข้อมูลอัตราที่ใช้ตรวจสอบ (rate_id)');
+        return false;
+      }
+      const effectiveDateOnly = toDateOnly(request.effective_date);
+      if (!effectiveDateOnly) {
+        if (!silent) toast.error('ยังไม่พบวันที่เริ่มมีผลสำหรับบันทึกการตรวจสอบ');
+        return false;
+      }
+
+      const checkedAt = new Date().toISOString();
+      const checklistItems = ALL_CHECKLIST_ITEMS.map((item) => ({
+        key: item.key,
+        label: item.label,
+        verdict: requestChecklistState[item.key] ?? null,
+        checked_at: checkedAt,
+      }));
+      const checkedCount = checklistItems.filter((item) => item.verdict !== null).length;
+      const correctCount = checklistItems.filter((item) => item.verdict === 'correct').length;
+      const incorrectCount = checklistItems.filter((item) => item.verdict === 'incorrect').length;
+
+      const snapshotData: Record<string, unknown> = {
+        request_no: request.request_no,
+        request_type: request.request_type,
+        personnel_type: request.personnel_type,
+        requested_amount: request.requested_amount,
+        verification_source: source,
+        rate_mapping: rateMapping,
+        ocr_result: ocrResult ?? null,
+        checklist: {
+          items: checklistItems,
+          summary: {
+            total: checklistItems.length,
+            checked: checkedCount,
+            correct: correctCount,
+            incorrect: incorrectCount,
+            unchecked: checklistItems.length - checkedCount,
+          },
+        },
+        checked_at: checkedAt,
+      };
+
+      try {
+        setAutosaveStatus('saving');
+        await createVerificationSnapshot.mutateAsync({
+          id,
+          payload: {
+            master_rate_id: rateMapping.rateId,
+            effective_date: effectiveDateOnly,
+            snapshot_data: snapshotData,
+          },
+        });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['request', String(id)] }),
+          queryClient.invalidateQueries({ queryKey: ['pending-approvals'] }),
+        ]);
+        setLastSavedFingerprint(checklistFingerprint);
+        setLastSavedAt(checkedAt);
+        setAutosaveStatus('saved');
+        if (!silent) toast.success('บันทึกการตรวจสอบเรียบร้อย');
+        return true;
+      } catch {
+        setAutosaveStatus('error');
+        if (!silent) toast.error('ไม่สามารถบันทึกการตรวจสอบได้');
+        return false;
+      }
+    },
+    [
+      checklistFingerprint,
+      createVerificationSnapshot,
+      id,
+      ocrResult,
+      queryClient,
+      rateMapping,
+      request,
+      requestChecklistState,
+    ],
+  );
+
+  useEffect(() => {
+    if (!hasChecklistInteraction) return;
+    if (checklistFingerprint === lastSavedFingerprint) return;
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+    }
+    autosaveTimerRef.current = setTimeout(() => {
+      void persistVerificationSnapshot({ silent: true, source: 'PTS_OFFICER_AUTOSAVE' });
+    }, 1500);
+
+    return () => {
+      if (autosaveTimerRef.current) {
+        clearTimeout(autosaveTimerRef.current);
+      }
+    };
+  }, [checklistFingerprint, hasChecklistInteraction, lastSavedFingerprint, persistVerificationSnapshot]);
+
+  const openActionDialog = (dialog: 'approve' | 'reject' | 'return' | null) => {
+    if (isActionBusy) return;
+    setActionDialog(dialog);
+    if ((dialog === 'return' || dialog === 'reject') && checklistStats.hasIncorrect) {
+      const issues = checklistStats.incorrectItems
+        .map((item) => `- ${item.label}: ${item.description}`)
+        .join('\n');
+      setComment((prev) => (prev ? prev : `พบข้อมูลไม่ถูกต้องตามรายการดังนี้:\n${issues}`));
+    }
+  };
 
   const handlePreview = (url: string, name: string) => {
     setPreviewUrl(url);
@@ -289,10 +689,32 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     setPreviewOpen(true);
   };
 
+  const setRequestChecklistVerdict = (key: string, verdict: AssessmentVerdict) => {
+    setHasChecklistInteraction(true);
+    setAutosaveStatus('idle');
+    setRequestChecklistState((prev) => ({
+      ...prev,
+      [key]: prev[key] === verdict ? undefined : verdict,
+    }));
+  };
+
   const handleAction = async (action: 'approve' | 'reject' | 'return') => {
     const trimmed = comment.trim();
     if ((action === 'reject' || action === 'return') && !trimmed) {
       toast.error('กรุณาระบุเหตุผล');
+      return;
+    }
+
+    if (autosaveTimerRef.current) {
+      clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    const saved = await persistVerificationSnapshot({
+      silent: true,
+      source: 'PTS_OFFICER_ACTION_SUBMIT',
+    });
+    if (!saved) {
+      toast.error('ไม่สามารถบันทึกการตรวจสอบก่อนดำเนินการคำขอได้');
       return;
     }
 
@@ -307,9 +729,30 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
       toast.success('ดำเนินการคำขอเรียบร้อย');
       setActionDialog(null);
       setComment('');
+      router.push('/pts-officer/requests');
     } catch {
       toast.error('ไม่สามารถดำเนินการคำขอได้');
     }
+  };
+
+  const runMockOcr = async (fileName: string) => {
+    setOcrDialogOpen(true);
+    setOcrLoading(true);
+    setOcrResult(null);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    const result = buildMockOcrResult({
+      fileName,
+      citizenId: request?.citizen_id ?? '',
+      requesterName,
+      department,
+      subDepartment,
+    });
+    setOcrResult(result);
+    setOcrLoading(false);
+  };
+
+  const isSectionComplete = (items: MinimumChecklistItem[]) => {
+    return items.every((item) => requestChecklistState[item.key] === 'correct');
   };
 
   if (isLoading) {
@@ -343,10 +786,13 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   }
 
   return (
-    <div className="container max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+    <div className="container max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 pb-24">
       <div className="mb-8">
         <nav className="flex items-center text-sm text-muted-foreground mb-4">
-          <Link href="/pts-officer/requests" className="hover:text-foreground transition-colors flex items-center gap-1">
+          <Link
+            href="/pts-officer/requests"
+            className="hover:text-foreground transition-colors flex items-center gap-1"
+          >
             <ArrowLeft className="h-3.5 w-3.5" />
             รายการคำขอ
           </Link>
@@ -358,44 +804,80 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           <div className="space-y-1.5">
             <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-3xl font-bold tracking-tight text-foreground">{displayId}</h1>
-              <Badge variant="outline" className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider ${getStatusColor(request.status)}`}>
+              <Badge
+                variant="outline"
+                className={`px-3 py-1 text-xs font-semibold uppercase tracking-wider ${getStatusColor(request.status)}`}
+              >
                 {getStatusLabel(request.status, request.current_step)}
               </Badge>
             </div>
-            <p className="text-muted-foreground text-sm">สร้างเมื่อ {formatThaiDateTime(request.created_at)}</p>
+            <p className="text-muted-foreground text-sm">
+              สร้างเมื่อ {formatThaiDateTime(request.created_at)}
+            </p>
           </div>
         </div>
       </div>
 
       <div className="grid gap-8 lg:grid-cols-12 items-start">
         <div className="space-y-8 lg:col-span-8">
-          <Card className="shadow-sm border-border/60">
+          <Card
+            className={`scroll-mt-20 shadow-sm transition-all duration-300 ${isSectionComplete(EMPLOYEE_MINIMUM_CHECKLIST) ? 'border-emerald-200/60 ring-1 ring-emerald-500/20' : 'border-border/60'}`}
+          >
             <CardContent className="p-6">
-              <SectionHeader title="ข้อมูลพนักงาน" icon={User} />
+              <SectionHeader
+                title="ข้อมูลผู้ยื่นคำขอ"
+                icon={User}
+                isComplete={isSectionComplete(EMPLOYEE_MINIMUM_CHECKLIST)}
+              />
               <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-y-6 gap-x-4">
-                <InfoItem label="ชื่อ-นามสกุล" value={requesterName} icon={User} className="sm:col-span-2" />
-                <InfoItem label="เลขบัตรประชาชน" value={request.citizen_id ?? '-'} />
+                <InfoItem
+                  label="ชื่อ-นามสกุล"
+                  value={requesterName}
+                  icon={User}
+                  className="sm:col-span-2"
+                />
+                <InfoItem label="เลขประจำตัวประชาชน" value={request.citizen_id ?? '-'} />
 
                 <div className="col-span-full border-t border-border/50 my-2"></div>
 
-                <InfoItem label="ตำแหน่ง" value={positionName} icon={Briefcase} className="sm:col-span-2" />
-                <InfoItem label="เลขที่ตำแหน่ง" value={submissionPositionNumber || request.current_position_number || '-'} />
+                <InfoItem
+                  label="ตำแหน่ง"
+                  value={positionName}
+                  icon={Briefcase}
+                  className="sm:col-span-2"
+                />
+                <InfoItem
+                  label="เลขที่ตำแหน่ง"
+                  value={submissionPositionNumber || request.current_position_number || '-'}
+                />
 
-                <InfoItem label="หน่วยงาน" value={subDepartment} icon={Building2} />
-                <InfoItem label="กลุ่มงาน" value={department} />
+                <InfoItem label="กลุ่มงาน" value={department} icon={Building2} />
+                <InfoItem label="หน่วยงาน" value={subDepartment} />
               </dl>
+              <MinimumChecklist
+                title="รายการตรวจสอบข้อมูลผู้ยื่นคำขอ"
+                items={EMPLOYEE_MINIMUM_CHECKLIST}
+                verdictMap={requestChecklistState}
+                onSelect={setRequestChecklistVerdict}
+              />
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm border-border/60">
+          <Card
+            className={`scroll-mt-20 shadow-sm transition-all duration-300 ${isSectionComplete(ELIGIBILITY_MINIMUM_CHECKLIST) ? 'border-emerald-200/60 ring-1 ring-emerald-500/20' : 'border-border/60'}`}
+          >
             <CardContent className="p-6">
-              <SectionHeader title="รายละเอียดการขอเบิก" icon={CreditCard} />
+              <SectionHeader
+                title="รายละเอียดสิทธิ พ.ต.ส."
+                icon={CreditCard}
+                isComplete={isSectionComplete(ELIGIBILITY_MINIMUM_CHECKLIST)}
+              />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4 mb-6">
                 <InfoItem label="ประเภทคำขอ" value={requestTypeLabel} className="sm:col-span-2" />
                 <InfoItem label="ประเภทบุคลากร" value={personnelTypeLabel} />
-                <InfoItem label="วันที่มีผล" value={effectiveDateLabel || '-'} />
-                <InfoItem label="ได้รับมอบหมายให้ปฏิบัติงาน" value={mainDuty} className="sm:col-span-2" />
+                <InfoItem label="วันที่เริ่มมีผล" value={effectiveDateLabel || '-'} />
+                <InfoItem label="งานที่ได้รับมอบหมาย" value={mainDuty} className="sm:col-span-2" />
                 <InfoItem
                   label="ลักษณะงาน"
                   value={workAttributes.length > 0 ? workAttributes.join(', ') : '-'}
@@ -406,36 +888,92 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
               <div className="bg-muted/30 rounded-lg p-5 border border-border/50">
                 <h4 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
                   <span className="w-1 h-4 bg-primary rounded-full"></span>
-                  ข้อมูลการคำนวณสิทธิ
+                  ผลการประเมินสิทธิ พ.ต.ส.
                 </h4>
 
                 {isRateMappingEmpty ? (
                   <div className="text-sm text-muted-foreground text-center py-4 italic">
-                    ยังไม่มีข้อมูลการประเมินจากเจ้าหน้าที่
+                    ยังไม่มีผลการประเมินสิทธิ
                   </div>
                 ) : (
                   <dl className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-4">
                     <InfoItem label="วิชาชีพ" value={rateDisplay?.professionLabel || '-'} />
-                    <InfoItem label="กลุ่มเป้าหมาย" value={rateDisplay?.groupLabel || '-'} />
-                    <InfoItem label="เงื่อนไขหลัก" value={rateDisplay?.criteriaLabel || '-'} className="sm:col-span-2" />
-                    <InfoItem label="เงื่อนไขย่อย" value={rateDisplay?.subCriteriaLabel || '-'} className="sm:col-span-2" />
+                    <InfoItem label="กลุ่ม" value={rateDisplay?.groupLabel || '-'} />
+                    <InfoItem
+                      label="เงื่อนไขหลัก"
+                      value={rateDisplay?.criteriaLabel || '-'}
+                      className="sm:col-span-2"
+                    />
+                    <InfoItem
+                      label="เงื่อนไขย่อย"
+                      value={rateDisplay?.subCriteriaLabel || '-'}
+                      className="sm:col-span-2"
+                    />
 
                     <div className="sm:col-span-2 mt-2 pt-4 border-t border-border/50 flex justify-between items-center">
-                      <span className="text-sm font-medium">ยอดเงินสุทธิ</span>
+                      <span className="text-sm font-medium">อัตราเงินตามสิทธิ</span>
                       <span className="text-lg font-bold text-primary">
-                        {rateAmount !== null && rateAmount !== undefined ? Number(rateAmount).toLocaleString() : '-'}
-                        <span className="text-sm font-normal text-muted-foreground ml-1">บาท</span>
+                          {rateAmount !== null && rateAmount !== undefined
+                            ? formatThaiNumber(Number(rateAmount))
+                            : '-'}
+                        <span className="text-sm font-normal text-muted-foreground ml-1">
+                          บาท/เดือน
+                        </span>
                       </span>
                     </div>
                   </dl>
                 )}
               </div>
+              <MinimumChecklist
+                title="รายการตรวจสอบการประเมินสิทธิ"
+                items={ELIGIBILITY_MINIMUM_CHECKLIST}
+                verdictMap={requestChecklistState}
+                onSelect={setRequestChecklistVerdict}
+              />
             </CardContent>
           </Card>
 
-          <Card className="shadow-sm border-border/60">
+          <Card
+            className={`scroll-mt-20 shadow-sm transition-all duration-300 ${isSectionComplete(LICENSE_MINIMUM_CHECKLIST) ? 'border-emerald-200/60 ring-1 ring-emerald-500/20' : 'border-border/60'}`}
+          >
             <CardContent className="p-6">
-              <SectionHeader title={`ไฟล์แนบ (${attachments.length})`} icon={FileText} />
+              <SectionHeader
+                title="ข้อมูลใบอนุญาตประกอบวิชาชีพ"
+                icon={FileText}
+                isComplete={isSectionComplete(LICENSE_MINIMUM_CHECKLIST)}
+              />
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-y-4 gap-x-4">
+                <InfoItem label="เลขที่ใบอนุญาต" value={licenseNo} />
+                <InfoItem label="ประเภท/สาขาวิชาชีพ" value={licenseName} />
+                <InfoItem label="วันที่เริ่มมีผล" value={formatThaiDate(licenseValidFrom)} />
+                <InfoItem label="วันที่หมดอายุ" value={formatThaiDate(licenseValidUntil)} />
+                <div className="sm:col-span-2">
+                  <dt className="text-xs font-medium text-muted-foreground mb-1">สถานะใบอนุญาต</dt>
+                  <dd>
+                    <Badge variant="outline" className={getLicenseStatusClass(licenseStatus)}>
+                      {getLicenseStatusLabel(licenseStatus)}
+                    </Badge>
+                  </dd>
+                </div>
+              </dl>
+              <MinimumChecklist
+                title="รายการตรวจสอบใบอนุญาตประกอบวิชาชีพ"
+                items={LICENSE_MINIMUM_CHECKLIST}
+                verdictMap={requestChecklistState}
+                onSelect={setRequestChecklistVerdict}
+              />
+            </CardContent>
+          </Card>
+
+          <Card
+            className={`scroll-mt-20 shadow-sm transition-all duration-300 ${isSectionComplete(ATTACHMENT_MINIMUM_CHECKLIST) ? 'border-emerald-200/60 ring-1 ring-emerald-500/20' : 'border-border/60'}`}
+          >
+            <CardContent className="p-6">
+              <SectionHeader
+                title={`ไฟล์แนบ (${attachments.length})`}
+                icon={FileText}
+                isComplete={isSectionComplete(ATTACHMENT_MINIMUM_CHECKLIST)}
+              />
 
               {attachments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground bg-muted/20 rounded-lg border border-dashed">
@@ -448,23 +986,45 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                     const fileUrl = buildAttachmentUrl(file.file_path);
                     const previewable = isPreviewableFile(file.file_name);
                     return (
-                      <div key={file.attachment_id} className="group relative flex items-start gap-3 p-3 rounded-lg border border-border bg-card hover:bg-muted/30 hover:border-primary/30 transition-all duration-200">
+                      <div
+                        key={file.attachment_id}
+                        className="group relative flex items-start gap-3 p-3 rounded-lg border border-border bg-card hover:bg-muted/30 hover:border-primary/30 transition-all duration-200"
+                      >
                         <div className="h-10 w-10 shrink-0 rounded bg-primary/10 flex items-center justify-center">
                           <FileText className="h-5 w-5 text-primary" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-foreground truncate pr-6" title={file.file_name}>
+                          <p
+                            className="text-sm font-medium text-foreground truncate pr-6"
+                            title={file.file_name}
+                          >
                             {file.file_name}
                           </p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{getAttachmentLabel(file.file_name, file.file_type)}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {getAttachmentLabel(file.file_name, file.file_type)}
+                          </p>
 
                           <div className="flex items-center gap-2 mt-2 opacity-60 group-hover:opacity-100 transition-opacity">
                             {previewable && (
-                              <button onClick={() => handlePreview(fileUrl, file.file_name)} className="text-xs flex items-center hover:text-primary transition-colors hover:underline">
+                              <button
+                                onClick={() => handlePreview(fileUrl, file.file_name)}
+                                className="text-xs flex items-center hover:text-primary transition-colors hover:underline"
+                              >
                                 <Eye className="w-3 h-3 mr-1" /> ดูตัวอย่าง
                               </button>
                             )}
-                            <a href={fileUrl} target="_blank" rel="noreferrer" className="text-xs flex items-center hover:text-primary transition-colors hover:underline">
+                            <button
+                              onClick={() => void runMockOcr(file.file_name)}
+                              className="text-xs flex items-center hover:text-primary transition-colors hover:underline"
+                            >
+                              <CheckCircle2 className="w-3 h-3 mr-1" /> ตรวจด้วย OCR
+                            </button>
+                            <a
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs flex items-center hover:text-primary transition-colors hover:underline"
+                            >
                               <ExternalLink className="w-3 h-3 mr-1" /> เปิดไฟล์
                             </a>
                           </div>
@@ -474,71 +1034,248 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                   })}
                 </div>
               )}
+              <MinimumChecklist
+                title="รายการตรวจไฟล์แนบ"
+                items={ATTACHMENT_MINIMUM_CHECKLIST}
+                verdictMap={requestChecklistState}
+                onSelect={setRequestChecklistVerdict}
+              />
             </CardContent>
           </Card>
         </div>
 
-        <div className="space-y-6 lg:col-span-4 sticky top-6">
+        <div className="hidden lg:block space-y-6 lg:col-span-4 sticky top-6">
           {canAct && (
-            <Card className="shadow-sm border-border/60">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-base">ดำเนินการคำขอ</CardTitle>
-                <CardDescription>สำหรับเจ้าหน้าที่ พ.ต.ส.</CardDescription>
+            <Card className="shadow-lg border-primary/20 ring-1 ring-primary/5">
+              <CardHeader className="pb-3 bg-muted/20 rounded-t-lg">
+                <CardTitle className="text-base flex items-center justify-between">
+                  <span>ดำเนินการคำขอ</span>
+                  {checklistStats.isComplete && !checklistStats.hasIncorrect && (
+                    <CheckCircle2 className="text-emerald-500 w-5 h-5" />
+                  )}
+                  {checklistStats.hasIncorrect && (
+                    <AlertTriangle className="text-rose-500 w-5 h-5" />
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  {checklistStats.hasIncorrect
+                    ? 'พบรายการไม่ถูกต้อง กรุณาส่งกลับ'
+                    : checklistStats.isComplete
+                      ? 'ตรวจสอบครบถ้วน พร้อมอนุมัติ'
+                      : 'กรุณาตรวจสอบให้ครบถ้วน'}
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-2">
-                <Dialog open={actionDialog === 'approve'} onOpenChange={(open) => setActionDialog(open ? 'approve' : null)}>
-                  <DialogTrigger asChild>
-                    <Button className="w-full bg-emerald-600 hover:bg-emerald-700">อนุมัติ</Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>ยืนยันการอนุมัติ</DialogTitle>
-                      <DialogDescription>คำขอ {displayId}</DialogDescription>
-                    </DialogHeader>
-                    <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="หมายเหตุ (ถ้ามี)" />
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setActionDialog(null)}>ยกเลิก</Button>
-                      <Button className="bg-emerald-600 hover:bg-emerald-700" onClick={() => handleAction('approve')}>ยืนยัน</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+              <CardContent className="space-y-2 pt-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between text-xs font-medium">
+                    <span className="text-muted-foreground">ความคืบหน้า</span>
+                    <span
+                      className={checklistStats.isComplete ? 'text-emerald-600' : 'text-foreground'}
+                    >
+                      {checklistStats.checkedCount} / {checklistStats.totalCount} รายการ
+                    </span>
+                  </div>
+                  <div className="h-2 w-full bg-secondary rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-500 ${checklistStats.hasIncorrect ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                      style={{ width: `${checklistStats.progress}%` }}
+                    />
+                  </div>
+                </div>
 
-                <Dialog open={actionDialog === 'return'} onOpenChange={(open) => setActionDialog(open ? 'return' : null)}>
-                  <DialogTrigger asChild>
-                    <Button variant="outline" className="w-full">
-                      <RotateCcw className="mr-2 h-4 w-4" />
-                      ส่งกลับแก้ไข
-                    </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>ส่งกลับแก้ไข</DialogTitle>
-                      <DialogDescription>กรุณาระบุเหตุผล</DialogDescription>
-                    </DialogHeader>
-                    <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="เหตุผลที่ส่งกลับแก้ไข" />
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setActionDialog(null)}>ยกเลิก</Button>
-                      <Button onClick={() => handleAction('return')}>ส่งกลับ</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                {checklistStats.hasIncorrect && (
+                  <div className="rounded-md bg-rose-50 border border-rose-200 p-3 flex gap-2 items-start mt-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 mt-0.5 shrink-0" />
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-rose-700">พบรายการไม่ถูกต้อง</p>
+                      <ul className="text-[10px] text-rose-600 list-disc list-inside">
+                        {checklistStats.incorrectItems.slice(0, 2).map((i) => (
+                          <li key={i.key} className="truncate max-w-[200px]">
+                            {i.label}
+                          </li>
+                        ))}
+                        {checklistStats.incorrectItems.length > 2 && (
+                          <li>และอีก {checklistStats.incorrectItems.length - 2} รายการ</li>
+                        )}
+                      </ul>
+                    </div>
+                  </div>
+                )}
 
-                <Dialog open={actionDialog === 'reject'} onOpenChange={(open) => setActionDialog(open ? 'reject' : null)}>
-                  <DialogTrigger asChild>
-                    <Button variant="destructive" className="w-full">ไม่อนุมัติ</Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>ยืนยันการไม่อนุมัติ</DialogTitle>
-                      <DialogDescription>กรุณาระบุเหตุผล</DialogDescription>
-                    </DialogHeader>
-                    <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="เหตุผลที่ไม่อนุมัติ" />
-                    <DialogFooter>
-                      <Button variant="outline" onClick={() => setActionDialog(null)}>ยกเลิก</Button>
-                      <Button variant="destructive" onClick={() => handleAction('reject')}>ยืนยัน</Button>
-                    </DialogFooter>
-                  </DialogContent>
-                </Dialog>
+                <div className="mb-3 rounded-md border border-border/60 bg-muted/20 p-3 mt-4">
+                  <p className="text-xs text-muted-foreground mb-1">สถานะบันทึกการตรวจสอบ</p>
+                  <p className="text-sm font-medium">
+                    {hasVerificationSnapshot
+                      ? 'มีบันทึกการตรวจสอบแล้ว'
+                      : 'ยังไม่มีบันทึกการตรวจสอบ'}
+                  </p>
+                  <p className="text-xs mt-1 text-muted-foreground">
+                    {autosaveStatus === 'saving'
+                      ? 'กำลังบันทึกอัตโนมัติ...'
+                      : autosaveStatus === 'saved' && lastSavedAt
+                        ? `บันทึกล่าสุด ${formatThaiDateTime(lastSavedAt)}`
+                        : autosaveStatus === 'error'
+                          ? 'บันทึกอัตโนมัติไม่สำเร็จ'
+                          : 'ระบบจะบันทึกให้อัตโนมัติเมื่อมีการเปลี่ยนแปลง'}
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Dialog
+                    open={actionDialog === 'approve'}
+                    onOpenChange={(open) => openActionDialog(open ? 'approve' : null)}
+                  >
+                    <DialogTrigger asChild>
+                        <Button
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50"
+                          disabled={!checklistStats.canApprove || isActionBusy}
+                        >
+                          <Check className="w-4 h-4 mr-2" /> อนุมัติ (Approve)
+                        </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>ยืนยันการอนุมัติ</DialogTitle>
+                        <DialogDescription>
+                          คำขอ {displayId} จะถูกส่งต่อไปยังขั้นตอนถัดไป
+                        </DialogDescription>
+                      </DialogHeader>
+                      <Textarea
+                        value={comment}
+                        onChange={(e) => setComment(e.target.value)}
+                        placeholder="หมายเหตุ (ถ้ามี)"
+                      />
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => setActionDialog(null)}
+                          disabled={isActionBusy}
+                        >
+                          ยกเลิก
+                        </Button>
+                        <Button
+                          className="bg-emerald-600 hover:bg-emerald-700"
+                          onClick={() => handleAction('approve')}
+                          disabled={isActionBusy}
+                        >
+                          {isActionBusy ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> กำลังบันทึก...
+                            </>
+                          ) : (
+                            'ยืนยัน'
+                          )}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog
+                    open={actionDialog === 'return'}
+                    onOpenChange={(open) => openActionDialog(open ? 'return' : null)}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        variant={checklistStats.hasIncorrect ? 'default' : 'outline'}
+                        className={`w-full ${checklistStats.hasIncorrect ? 'bg-orange-500 hover:bg-orange-600 text-white border-transparent' : ''}`}
+                      >
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        ส่งกลับแก้ไข (Return)
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle className="text-orange-600 flex items-center gap-2">
+                          <RotateCcw className="w-5 h-5" /> ส่งกลับแก้ไข
+                        </DialogTitle>
+                        <DialogDescription>กรุณาระบุเหตุผล</DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-2">
+                        <Textarea
+                          value={comment}
+                          onChange={(e) => setComment(e.target.value)}
+                          placeholder="เหตุผลที่ส่งกลับแก้ไข"
+                          className="min-h-[120px]"
+                        />
+                        {checklistStats.hasIncorrect && (
+                          <p className="text-xs text-muted-foreground italic">
+                            * ระบบดึงเหตุผลจากรายการที่ติ๊ก &quot;ไม่ถูกต้อง&quot; มาให้แล้ว
+                          </p>
+                        )}
+                      </div>
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => setActionDialog(null)}
+                          disabled={isActionBusy}
+                        >
+                          ยกเลิก
+                        </Button>
+                        <Button
+                          className="bg-orange-500 hover:bg-orange-600 text-white"
+                          onClick={() => handleAction('return')}
+                          disabled={isActionBusy}
+                        >
+                          {isActionBusy ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> กำลังส่ง...
+                            </>
+                          ) : (
+                            'ส่งกลับ'
+                          )}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Dialog
+                    open={actionDialog === 'reject'}
+                    onOpenChange={(open) => openActionDialog(open ? 'reject' : null)}
+                  >
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        className="w-full text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                      >
+                        <XCircle className="mr-2 h-4 w-4" />
+                        ไม่อนุมัติ (Reject)
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle className="text-rose-600">ยืนยันการไม่อนุมัติ</DialogTitle>
+                        <DialogDescription>กรุณาระบุเหตุผล</DialogDescription>
+                      </DialogHeader>
+                      <Textarea
+                        value={comment}
+                        onChange={(e) => setComment(e.target.value)}
+                        placeholder="เหตุผลที่ไม่อนุมัติ"
+                      />
+                      <DialogFooter>
+                        <Button
+                          variant="outline"
+                          onClick={() => setActionDialog(null)}
+                          disabled={isActionBusy}
+                        >
+                          ยกเลิก
+                        </Button>
+                        <Button
+                          variant="destructive"
+                          onClick={() => handleAction('reject')}
+                          disabled={isActionBusy}
+                        >
+                          {isActionBusy ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> กำลังส่ง...
+                            </>
+                          ) : (
+                            'ยืนยัน'
+                          )}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -547,7 +1284,9 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             <CardContent className="p-6">
               <p className="text-sm font-medium text-primary/80 mb-1">ยอดเงินเบิกจ่าย</p>
               <div className="flex items-baseline gap-1">
-                <span className="text-3xl font-bold text-primary">{request.requested_amount?.toLocaleString() || '0'}</span>
+                <span className="text-3xl font-bold text-primary">
+                  {formatThaiNumber(request.requested_amount ?? 0)}
+                </span>
                 <span className="text-sm text-primary/80">บาท</span>
               </div>
               <Separator className="my-4 bg-primary/10" />
@@ -559,7 +1298,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">วันที่ยื่นเรื่อง</span>
                   <span className="text-foreground">
-                    {submitAction?.action_date ? new Date(submitAction.action_date).toLocaleDateString('th-TH') : '-'}
+                    {submitAction?.action_date ? formatThaiDate(submitAction.action_date) : '-'}
                   </span>
                 </div>
               </div>
@@ -567,103 +1306,77 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
           </Card>
 
           <Card className="shadow-sm border-border/60">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Clock className="w-4 h-4 text-muted-foreground" />
-                สถานะการดำเนินการ
-              </CardTitle>
-              <CardDescription>ขั้นตอนปัจจุบัน: {request.current_step ?? '-'}/{APPROVAL_STEPS.length}</CardDescription>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">ผู้ช่วยตรวจเอกสาร (OCR)</CardTitle>
+              <CardDescription>
+                อ่านข้อมูลจากเอกสารและเทียบกับข้อมูลคำขอโดยอัตโนมัติ
+              </CardDescription>
             </CardHeader>
-            <CardContent className="relative">
-              <div className="absolute left-[27px] top-6 bottom-6 w-0.5 bg-border/50" aria-hidden="true"></div>
-
-              <div className="space-y-0">
-                {APPROVAL_STEPS.map((step, index) => {
-                  const action = approvalActions
-                    .filter((a) => a.step_no === step.step && (a.action === 'APPROVE' || a.action === 'REJECT' || a.action === 'RETURN'))
-                    .sort((a, b) => (a.action_date || '').localeCompare(b.action_date || ''))
-                    .pop();
-
-                  const status = action
-                    ? action.action === 'APPROVE'
-                      ? 'approved'
-                      : action.action === 'REJECT'
-                        ? 'rejected'
-                        : 'returned'
-                    : request.current_step === step.step
-                      ? 'pending'
-                      : request.current_step && step.step < request.current_step
-                        ? 'approved'
-                        : 'waiting';
-
-                  const isLast = index === APPROVAL_STEPS.length - 1;
-
-                  return (
-                    <div key={step.step} className={`relative flex gap-4 pb-8 ${isLast ? 'pb-0' : ''}`}>
-                      <div className={`relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 transition-colors ${
-                        status === 'approved'
-                          ? 'bg-emerald-500 border-emerald-500 text-white'
-                          : status === 'pending'
-                            ? 'bg-white border-primary text-primary animate-pulse'
-                            : status === 'rejected'
-                              ? 'bg-red-500 border-red-500 text-white'
-                              : status === 'returned'
-                                ? 'bg-orange-500 border-orange-500 text-white'
-                                : 'bg-white border-muted-foreground/30 text-muted-foreground'
-                      }`}>
-                        {status === 'approved' ? (
-                          <CheckCircle2 className="h-4 w-4" />
-                        ) : status === 'rejected' ? (
-                          <XCircle className="h-4 w-4" />
-                        ) : status === 'returned' ? (
-                          <AlertCircle className="h-4 w-4" />
-                        ) : status === 'pending' ? (
-                          <span className="h-2.5 w-2.5 rounded-full bg-primary" />
-                        ) : (
-                          <span className="text-[10px]">{step.step}</span>
-                        )}
-                      </div>
-
-                      <div className="flex-1 pt-0.5">
-                        <p className={`text-sm font-semibold ${status === 'waiting' ? 'text-muted-foreground' : 'text-foreground'}`}>
-                          {step.role}
-                        </p>
-
-                        {(action?.actor || status === 'pending') && (
-                          <div className="mt-1 flex flex-col gap-1">
-                            {action?.actor && (
-                              <span className="text-xs text-foreground/80">
-                                โดย: {action.actor.first_name} {action.actor.last_name}
-                              </span>
-                            )}
-                            {action?.action_date && (
-                              <span className="text-xs text-muted-foreground flex items-center gap-1">
-                                <Calendar className="w-3 h-3" />
-                                {new Date(action.action_date).toLocaleString('th-TH')}
-                              </span>
-                            )}
-                            {status === 'pending' && request.step_started_at && (
-                              <span className="text-xs text-muted-foreground">
-                                เริ่มเมื่อ: {formatThaiDateTime(request.step_started_at)}
-                              </span>
-                            )}
-                          </div>
-                        )}
-
-                        {action?.comment && (
-                          <div className="mt-2 text-xs bg-muted/50 p-2 rounded border border-border/50 text-muted-foreground italic">
-                            &quot;{action.comment}&quot;
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+            <CardContent className="space-y-3">
+              {ocrResult ? (
+                <>
+                  <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+                    <p className="font-medium">{ocrResult.fileName}</p>
+                    <p className="text-muted-foreground">{ocrResult.documentType}</p>
+                    <p className="mt-1 text-foreground">{ocrResult.summary}</p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    onClick={() => setOcrDialogOpen(true)}
+                  >
+                    ดูผลตรวจ OCR
+                  </Button>
+                </>
+              ) : (
+                <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
+                  เลือกไฟล์แนบ แล้วกด “ตรวจด้วย OCR” เพื่อดูผลวิเคราะห์
+                </div>
+              )}
             </CardContent>
           </Card>
+
+          <ApprovalTimelineCard request={request} />
         </div>
       </div>
+
+      {canAct && (
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/80 backdrop-blur-md border-t z-50 lg:hidden flex gap-2 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+          {checklistStats.canApprove ? (
+            <Button
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => openActionDialog('approve')}
+              disabled={isActionBusy}
+            >
+              <Check className="w-4 h-4 mr-2" /> อนุมัติ
+            </Button>
+          ) : (
+            <div className="flex-1 flex gap-2">
+              <Button
+                variant={checklistStats.hasIncorrect ? 'default' : 'outline'}
+                className={`flex-1 ${checklistStats.hasIncorrect ? 'bg-orange-500 text-white' : ''}`}
+                onClick={() => openActionDialog('return')}
+                disabled={isActionBusy}
+              >
+                <RotateCcw className="w-4 h-4 mr-2" /> ส่งกลับ
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-rose-600"
+                onClick={() => openActionDialog('reject')}
+                disabled={isActionBusy}
+              >
+                <XCircle className="w-6 h-6" />
+              </Button>
+            </div>
+          )}
+
+          <div className="flex items-center justify-center px-3 rounded-md bg-muted text-xs font-medium min-w-[60px]">
+            {checklistStats.checkedCount}/{checklistStats.totalCount}
+          </div>
+        </div>
+      )}
 
       <AttachmentPreviewDialog
         open={previewOpen}
@@ -671,6 +1384,57 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
         previewUrl={previewUrl}
         previewName={previewName}
       />
+
+      <Dialog open={ocrDialogOpen} onOpenChange={setOcrDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>ผลวิเคราะห์เอกสาร (OCR)</DialogTitle>
+            <DialogDescription>ใช้ประกอบการพิจารณาคำขอโดยเจ้าหน้าที่ พ.ต.ส.</DialogDescription>
+          </DialogHeader>
+
+          {ocrLoading ? (
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              กำลังประมวลผล OCR...
+            </div>
+          ) : ocrResult ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
+                <p className="font-medium">{ocrResult.fileName}</p>
+                <p className="text-muted-foreground">{ocrResult.documentType}</p>
+                <p className="mt-1">{ocrResult.summary}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  ตรวจเมื่อ {formatThaiDateTime(ocrResult.checkedAt)}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                {ocrResult.fields.map((field) => (
+                  <div key={field.key} className="rounded-lg border border-border/60 p-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <p className="text-sm font-medium">{field.label}</p>
+                      <Badge variant="outline" className={getOcrStatusBadgeClass(field.status)}>
+                        {getOcrStatusLabel(field.status)} ({field.confidence}%)
+                      </Badge>
+                    </div>
+                    <div className="grid sm:grid-cols-2 gap-2 mt-2 text-xs">
+                      <div className="rounded bg-muted/40 p-2">
+                        <p className="text-muted-foreground">ค่าที่อ่านจากเอกสาร</p>
+                        <p className="font-medium text-foreground">{field.extractedValue}</p>
+                      </div>
+                      <div className="rounded bg-muted/40 p-2">
+                        <p className="text-muted-foreground">ค่าตามข้อมูลคำขอ</p>
+                        <p className="font-medium text-foreground">{field.expectedValue}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="py-10 text-center text-sm text-muted-foreground">ยังไม่มีผล OCR</div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

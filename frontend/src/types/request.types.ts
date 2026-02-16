@@ -78,6 +78,11 @@ export interface RequestWithDetails extends PTSRequest {
     first_name?: string;
     last_name?: string;
     position?: string;
+    license_no?: string | null;
+    license_name?: string | null;
+    license_valid_from?: string | Date | null;
+    license_valid_until?: string | Date | null;
+    license_status?: 'ACTIVE' | 'EXPIRED' | 'INACTIVE' | 'UNKNOWN' | null;
   };
 }
 
@@ -135,7 +140,7 @@ export interface RequestFormData {
 // ===== Label Maps =====
 
 export const REQUEST_TYPE_LABELS: Record<RequestType, string> = {
-  NEW_ENTRY: 'ขอรับ พ.ต.ส. ครั้งแรก',
+  NEW_ENTRY: 'ขอรับสิทธิ พ.ต.ส. ครั้งแรก',
   EDIT_INFO_SAME_RATE: 'แก้ไขข้อมูล (อัตราเดิม)',
   EDIT_INFO_NEW_RATE: 'แก้ไขข้อมูล (อัตราใหม่)',
 };
@@ -150,14 +155,14 @@ export const PERSONNEL_TYPE_LABELS: Record<PersonnelType, string> = {
 export const STATUS_LABELS: Record<RequestStatus, string> = {
   DRAFT: 'ฉบับร่าง',
   PENDING: 'รอดำเนินการ',
-  PENDING_HEAD_WARD: 'รอหัวหน้าตึก/หัวหน้างาน',
-  PENDING_HEAD_DEPT: 'รอหัวหน้ากลุ่มงาน',
-  PENDING_PTS_OFFICER: 'รอเจ้าหน้าที่ พ.ต.ส.',
+  PENDING_HEAD_WARD: 'รอตรวจโดยหัวหน้าตึก/หัวหน้างาน',
+  PENDING_HEAD_DEPT: 'รอตรวจโดยหัวหน้ากลุ่มงาน',
+  PENDING_PTS_OFFICER: 'รอตรวจโดยเจ้าหน้าที่ พ.ต.ส.',
   PENDING_HR: 'รอหัวหน้า HR',
-  PENDING_FINANCE: 'รอหัวหน้าการเงิน',
+  PENDING_FINANCE: 'รอตรวจโดยหัวหน้าการเงิน',
   APPROVED: 'อนุมัติแล้ว',
   REJECTED: 'ไม่อนุมัติ',
-  CANCELLED: 'ยกเลิก',
+  CANCELLED: 'ยกเลิกแล้ว',
   RETURNED: 'ส่งกลับแก้ไข',
 };
 
@@ -175,5 +180,5 @@ export const WORK_ATTRIBUTE_LABELS: Record<keyof WorkAttributes, string> = {
   operation: 'ปฏิบัติการ',
   planning: 'วางแผน',
   coordination: 'ประสานงาน',
-  service: 'บริการ',
+  service: 'ให้บริการ',
 };

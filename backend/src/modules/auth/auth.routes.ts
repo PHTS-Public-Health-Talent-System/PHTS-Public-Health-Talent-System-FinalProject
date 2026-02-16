@@ -9,6 +9,7 @@
 import { Router } from "express";
 import * as authController from '@/modules/auth/auth.controller.js';
 import { protect } from '@middlewares/authMiddleware.js';
+import { authRateLimiter } from '@middlewares/rateLimiter.js';
 import { validate } from '@shared/validate.middleware.js';
 import { loginSchema, updateProfileSchema } from '@/modules/auth/auth.schema.js';
 
@@ -21,7 +22,7 @@ const router = Router();
  * @body    { citizen_id: string, password: string }
  * @returns { success: boolean, token: string, user: UserProfile }
  */
-router.post("/login", validate(loginSchema), authController.login);
+router.post("/login", authRateLimiter, validate(loginSchema), authController.login);
 
 /**
  * @route   GET /api/auth/me

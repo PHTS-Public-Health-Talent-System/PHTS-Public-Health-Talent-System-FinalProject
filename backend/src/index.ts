@@ -15,6 +15,7 @@ import morgan from 'morgan';
 import { loadEnv } from '@config/env.js';
 import { testConnection, closePool } from '@config/database.js';
 import { initializePassport } from '@config/passport.js';
+import { getJwtSecret } from '@config/jwt.js';
 import authRoutes from '@/modules/auth/auth.routes.js';
 import requestRoutes from '@/modules/request/request.routes.js';
 import signatureRoutes from '@/modules/signature/signature.routes.js';
@@ -39,6 +40,9 @@ import navigationRoutes from '@/modules/navigation/navigation.routes.js';
 import { isMaintenanceModeEnabled } from '@/modules/system/services/maintenance.service.js';
 import { errorHandler, notFoundHandler } from '@middlewares/errorHandler.js';
 import { apiRateLimiter } from '@middlewares/rateLimiter.js';
+import { protect } from '@middlewares/authMiddleware.js';
+import { tokenBlacklistMiddleware } from '@middlewares/tokenBlacklistMiddleware.js';
+import { authorizeUploadAccess } from '@middlewares/uploadAccessMiddleware.js';
 
 // Load environment variables
 loadEnv();
@@ -63,6 +67,7 @@ const allowedOrigins = [...new Set([...envOrigins, ...defaultOrigins])];
 app.use(
   helmet({
     frameguard: false,
+    crossOriginEmbedderPolicy: true,
     contentSecurityPolicy: {
       useDefaults: true,
       directives: {
@@ -110,6 +115,19 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 /**
+ * Disable caching for dynamic API responses to reduce data leak risk via shared caches.
+ */
+app.use((req, res, next) => {
+  const cacheablePublicPaths = new Set(['/sitemap.xml']);
+  if (!req.path.startsWith('/uploads') && !cacheablePublicPaths.has(req.path)) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+  }
+  next();
+});
+
+/**
  * Request ID Middleware
  */
 app.use((req, res, next) => {
@@ -132,25 +150,26 @@ if (NODE_ENV === 'production') {
 }
 
 /**
+ * Initialize Passport for JWT authentication
+ */
+app.use(initializePassport());
+
+/**
  * Static Files Middleware
  * Serve uploaded files from /uploads route with CORS headers
  */
 import path from 'path';
 app.use(
   '/uploads',
+  tokenBlacklistMiddleware,
+  protect,
+  authorizeUploadAccess,
   (_req, res, next) => {
-    // Add CORS headers for static files
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
     next();
   },
   express.static(path.join(process.cwd(), 'uploads')),
 );
-
-/**
- * Initialize Passport for JWT authentication
- */
-app.use(initializePassport());
 
 /**
  * Health/Readiness Routes
@@ -177,7 +196,7 @@ app.use(async (req, res, next) => {
 
   if (token) {
     try {
-      const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+      const jwtSecret = getJwtSecret();
       const payload = jwt.verify(token, jwtSecret) as { role?: string };
       if (payload?.role === 'ADMIN') {
         return next();
@@ -197,7 +216,7 @@ app.use(async (req, res, next) => {
 /**
  * API Routes
  */
-app.use('/api', apiRateLimiter);
+app.use('/api', tokenBlacklistMiddleware, apiRateLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/signatures', signatureRoutes);
@@ -205,7 +224,6 @@ app.use('/api/payroll', payrollRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/system', systemRoutes);
 app.use('/api/config', masterDataRoutes);
-app.use('/api/leave-records', leaveRecordsRoutes);
 app.use('/api/leave-records', leaveRecordsRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/finance', financeRoutes);

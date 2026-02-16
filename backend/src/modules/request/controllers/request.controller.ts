@@ -451,7 +451,10 @@ export class RequestController {
   });
 
   getReassignHistory = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
       const requestId = parseInt(req.params.id);
+      await requestQueryService.getRequestById(requestId, req.user.userId, req.user.role);
       const history = await reassignService.getReassignmentHistory(requestId);
       res.json({ success: true, data: history });
   });
@@ -540,6 +543,7 @@ export class RequestController {
 
   updateRateMapping = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
       const requestId = parseInt(req.params.id);
       const { group_no, item_no, sub_item_no } = req.body;
 
@@ -553,8 +557,16 @@ export class RequestController {
       res.json({ success: true, data: result });
   });
 
-  updateVerificationChecks = catchAsync(async (_req: Request, res: Response<ApiResponse>) => {
-     res.json({ success: true, message: "Verified" });
+  updateVerificationChecks = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+     if (!req.user) throw new AuthenticationError("Unauthorized access");
+     const requestId = parseInt(req.params.id);
+     const result = await requestCommandService.updateVerificationChecks(
+       requestId,
+       req.user.userId,
+       req.user.role,
+       req.body,
+     );
+     res.json({ success: true, data: result });
   });
 
   cancelRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {

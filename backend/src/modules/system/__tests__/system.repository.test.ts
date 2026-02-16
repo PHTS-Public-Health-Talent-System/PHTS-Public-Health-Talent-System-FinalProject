@@ -85,7 +85,10 @@ describe('SystemRepository', () => {
       });
 
       const sql = mockQuery.mock.calls[1][0];
-      expect(sql).toContain('LIMIT 20');
+      const params = mockQuery.mock.calls[1][1];
+      expect(sql).toContain('LIMIT ? OFFSET ?');
+      expect(params[params.length - 2]).toBe(20);
+      expect(params[params.length - 1]).toBe(0);
     });
   });
 

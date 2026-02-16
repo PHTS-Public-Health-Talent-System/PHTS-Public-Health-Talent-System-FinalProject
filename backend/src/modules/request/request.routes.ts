@@ -8,6 +8,7 @@
 
 import { Router } from "express";
 import { protect, restrictTo } from '@middlewares/authMiddleware.js';
+import { idempotency } from '@middlewares/idempotency.js';
 import { requestUpload } from '@config/upload.js';
 import { requestController } from '@/modules/request/controllers/request.controller.js'; // Import instance
 import { validate } from '@shared/validate.middleware.js';
@@ -72,6 +73,7 @@ router.post(
 // Create new request with file uploads and signature
 router.post(
   "/",
+  idempotency(),
   requestUpload.fields([
     { name: "files", maxCount: 10 },
     { name: "files[]", maxCount: 10 },
@@ -196,7 +198,12 @@ router.post(
 );
 
 // Cancel a request (Owner only, before APPROVED)
-router.post("/:id/cancel", validate(requestIdParamSchema), requestController.cancelRequest);
+router.post(
+  "/:id/cancel",
+  idempotency(),
+  validate(requestIdParamSchema),
+  requestController.cancelRequest,
+);
 
 // Unified action endpoint (APPROVE / REJECT / RETURN)
 router.post(
@@ -215,7 +222,12 @@ router.post(
 );
 
 // Submit a draft request
-router.post("/:id/submit", validate(requestIdParamSchema), requestController.submitRequest);
+router.post(
+  "/:id/submit",
+  idempotency(),
+  validate(requestIdParamSchema),
+  requestController.submitRequest,
+);
 
 /**
  * Approver Routes

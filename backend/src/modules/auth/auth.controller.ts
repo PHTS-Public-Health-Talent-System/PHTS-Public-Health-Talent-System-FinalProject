@@ -7,6 +7,7 @@
  */
 
 import { Request, Response } from "express";
+import jwt from "jsonwebtoken";
 import {
   LoginResponse,
   ApiResponse,
@@ -21,6 +22,7 @@ import {
   AccountDisabledError,
   InvalidCitizenIdError,
 } from '@/modules/auth/services/auth.service.js';
+import { tokenBlacklist } from '@shared/services/tokenBlacklist.js';
 
 /**
  * Login Handler
@@ -190,6 +192,19 @@ export async function logout(
   res: Response<ApiResponse>,
 ): Promise<void> {
   try {
+    const authHeader = req.headers.authorization;
+    const token =
+      typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+        ? authHeader.slice("Bearer ".length)
+        : null;
+
+    if (token) {
+      const decoded = jwt.decode(token) as { exp?: number } | null;
+      const nowSec = Math.floor(Date.now() / 1000);
+      const expiresIn = Math.max(1, Number(decoded?.exp ?? nowSec + 60) - nowSec);
+      await tokenBlacklist.blacklistToken(token, expiresIn, "logout");
+    }
+
     if (req.user) {
       const requestInfo = extractRequestInfo(req);
       await AuthService.logout(req.user.userId, req.user.role, requestInfo);

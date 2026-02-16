@@ -19,6 +19,18 @@ interface AuthContextType {
 }
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined)
+const TOKEN_COOKIE_KEY = "phts_token"
+
+function setTokenCookie(token: string) {
+  if (typeof document === "undefined") return
+  const secure = window.location.protocol === "https:" ? "; Secure" : ""
+  document.cookie = `${TOKEN_COOKIE_KEY}=${encodeURIComponent(token)}; Path=/; SameSite=Lax${secure}`
+}
+
+function clearTokenCookie() {
+  if (typeof document === "undefined") return
+  document.cookie = `${TOKEN_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax`
+}
 
 function getRoleHomePath(role: User["role"]): string {
   switch (role) {
@@ -56,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = React.useCallback(() => {
     localStorage.removeItem(tokenKey)
     localStorage.removeItem(userKey)
+    clearTokenCookie()
     setUser(null)
     router.push("/login")
   }, [router, tokenKey, userKey])
@@ -66,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null)
       return null
     }
+    setTokenCookie(token)
 
     const { data } = await api.get<ApiResponse<User>>("/auth/me")
     if (!data.success || !data.data) {
@@ -152,6 +166,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         localStorage.setItem(tokenKey, token)
         localStorage.setItem(userKey, JSON.stringify(user))
+        setTokenCookie(token)
 
         setUser(user)
 

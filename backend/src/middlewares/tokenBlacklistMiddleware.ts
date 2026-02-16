@@ -6,11 +6,12 @@
  */
 
 import { Request, Response, NextFunction } from "express";
-import { ExtractJwt } from "passport-jwt";
 import jwt from "jsonwebtoken";
 import { tokenBlacklist } from '@shared/services/tokenBlacklist.js';
 import Logger from '@shared/utils/logger.js';
 import { AppError } from '@shared/utils/errors.js';
+import { getJwtSecret } from '@config/jwt.js';
+import { extractAuthToken } from '@shared/utils/authToken.js';
 
 const log = Logger.create("TokenBlacklistMiddleware");
 
@@ -25,7 +26,7 @@ export const tokenBlacklistMiddleware = async (
 ) => {
   try {
     // Extract token from request
-    const token = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+    const token = extractAuthToken(req);
 
     // If no token, let Passport handle it (will return 401)
     if (!token) {
@@ -45,11 +46,7 @@ export const tokenBlacklistMiddleware = async (
 
     // Extract user ID from token to check user-level blacklist
     try {
-      const secret = process.env.JWT_SECRET;
-      if (!secret) {
-        throw new Error("JWT_SECRET not configured");
-      }
-
+      const secret = getJwtSecret();
       const decoded = jwt.verify(token, secret, {
         algorithms: ["HS256"],
       }) as any;

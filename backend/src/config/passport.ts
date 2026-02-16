@@ -9,13 +9,13 @@
 import passport from "passport";
 import {
   Strategy as JwtStrategy,
-  ExtractJwt,
   StrategyOptions,
 } from "passport-jwt";
 import { loadEnv } from '@config/env.js';
 import { JwtPayload, User } from '@/types/auth.js';
 import { query } from '@config/database.js';
 import { getJwtSecret } from '@config/jwt.js';
+import { extractAuthToken } from '@shared/utils/authToken.js';
 
 // Load environment variables
 loadEnv();
@@ -26,7 +26,7 @@ loadEnv();
  */
 const jwtOptions: StrategyOptions = {
   // Extract JWT from Authorization header as Bearer token
-  jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+  jwtFromRequest: (req) => (req ? extractAuthToken(req) : null),
 
   // Secret key for verifying JWT signature
   secretOrKey: getJwtSecret(),

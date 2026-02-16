@@ -48,3 +48,9 @@ uploads/
 
 # Backup
 /backups/
+
+# Security scan artifacts
+zap-*.html
+zap-*.json
+zap-*.txt
+zap.yaml

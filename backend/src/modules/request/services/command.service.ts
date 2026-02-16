@@ -697,8 +697,8 @@ export class RequestCommandService {
 
   async updateRateMapping(
     requestId: number,
-    _userId: number,
-    _role: string,
+    userId: number,
+    role: string,
     data: { group_no: number; item_no?: string | null; sub_item_no?: string | null },
   ): Promise<any> {
     const connection = await getConnection();
@@ -709,20 +709,38 @@ export class RequestCommandService {
       const request = await requestRepository.findById(requestId, connection);
       if (!request) throw new Error('Request not found');
 
-      if (request.status !== RequestStatus.PENDING && request.status !== RequestStatus.DRAFT) {
-        throw new Error('Cannot update rate mapping of processed request');
+      const isOwner = request.user_id === userId;
+      const isOfficer = role === 'PTS_OFFICER';
+
+      if (!isOwner && !isOfficer) {
+        throw new AuthorizationError('You do not have permission to update rate mapping');
+      }
+
+      if (isOwner) {
+        if (
+          request.status !== RequestStatus.DRAFT &&
+          request.status !== RequestStatus.RETURNED
+        ) {
+          throw new Error('Rate mapping can only be updated in draft or returned status');
+        }
+      }
+
+      if (isOfficer) {
+        const officerStep = ROLE_STEP_MAP['PTS_OFFICER'];
+        if (
+          request.status !== RequestStatus.PENDING ||
+          request.current_step !== officerStep
+        ) {
+          throw new Error('Request is not at PTS officer step');
+        }
+        if (request.assigned_officer_id && request.assigned_officer_id !== userId) {
+          throw new Error('Request is assigned to another officer');
+        }
       }
 
       // Resolve profession from position name (joined field) or fallback
       const positionName = request.position_name || '';
       const professionCode = resolveProfessionCode(positionName);
-
-      console.log(`[DEBUG_RATE] RequestId=${requestId}`);
-      console.log(`[DEBUG_RATE] Position="${positionName}"`);
-      console.log(`[DEBUG_RATE] ResolvedCode="${professionCode}"`);
-      console.log(
-        `[DEBUG_RATE] Params: Group=${data.group_no}, Item=${data.item_no}, Sub=${data.sub_item_no}`,
-      );
 
       if (!professionCode) {
         throw new Error(`Cannot resolve profession from position: ${positionName}`);

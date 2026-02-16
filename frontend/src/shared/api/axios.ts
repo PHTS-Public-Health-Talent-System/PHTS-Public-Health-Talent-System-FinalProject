@@ -9,6 +9,12 @@ const api = axios.create({
 
 const TOKEN_KEY = 'phts_token';
 const USER_KEY = 'phts_user';
+const TOKEN_COOKIE_KEY = 'phts_token';
+
+const clearTokenCookie = () => {
+  if (typeof document === 'undefined') return;
+  document.cookie = `${TOKEN_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax`;
+};
 
 type ValidationDetail = {
   field?: string;
@@ -55,6 +61,7 @@ api.interceptors.response.use(
       if (typeof window !== 'undefined') {
         localStorage.removeItem(TOKEN_KEY);
         localStorage.removeItem(USER_KEY);
+        clearTokenCookie();
         // Prevent redirect loop if already on login
         if (!window.location.pathname.startsWith('/login')) {
             window.location.href = '/login';

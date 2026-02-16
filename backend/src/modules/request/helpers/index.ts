@@ -1,1 +1,1 @@
-export * from "./request.parser.js";
+export * from '@/modules/request/helpers/request.parser.js';

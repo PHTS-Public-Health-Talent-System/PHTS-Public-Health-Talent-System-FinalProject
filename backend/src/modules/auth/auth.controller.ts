@@ -11,15 +11,16 @@ import {
   LoginResponse,
   ApiResponse,
   UserProfile,
-} from "../../types/auth.js";
-import { extractRequestInfo } from "../audit/services/audit.service.js";
-import { LoginSchema } from "./auth.schema.js";
+} from '@/types/auth.js';
+import { extractRequestInfo } from '@/modules/audit/services/audit.service.js';
+import { LoginSchema } from '@/modules/auth/auth.schema.js';
+import type { UpdateProfileSchema } from '@/modules/auth/auth.schema.js';
 import {
   AuthService,
   AuthenticationError,
   AccountDisabledError,
   InvalidCitizenIdError,
-} from "./services/auth.service.js";
+} from '@/modules/auth/services/auth.service.js';
 
 /**
  * Login Handler
@@ -120,6 +121,57 @@ export async function getCurrentUser(
     res.status(500).json({
       success: false,
       error: "An error occurred while fetching user profile",
+    });
+  }
+}
+
+export async function updateCurrentUser(
+  req: Request<object, object, UpdateProfileSchema>,
+  res: Response<ApiResponse<UserProfile>>,
+): Promise<void> {
+  try {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        error: "Not authenticated",
+      });
+      return;
+    }
+
+    const requestInfo = extractRequestInfo(req);
+    const userProfile = await AuthService.updateUserProfile(
+      req.user.userId,
+      req.body,
+      requestInfo,
+    );
+
+    res.status(200).json({
+      success: true,
+      data: userProfile,
+      message: "Profile updated successfully",
+    });
+  } catch (error: any) {
+    console.error("Update current user error:", error);
+
+    if (error.message === "User not found") {
+      res.status(404).json({
+        success: false,
+        error: "User not found",
+      });
+      return;
+    }
+
+    if (error.message === "Employee profile not found") {
+      res.status(404).json({
+        success: false,
+        error: "Employee profile not found",
+      });
+      return;
+    }
+
+    res.status(500).json({
+      success: false,
+      error: "An error occurred while updating user profile",
     });
   }
 }

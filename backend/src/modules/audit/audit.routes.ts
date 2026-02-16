@@ -6,9 +6,15 @@
  */
 
 import { Router } from "express";
-import { protect, restrictTo } from "../../middlewares/authMiddleware.js";
-import { UserRole } from "../../types/auth.js";
-import * as auditController from "./audit.controller.js";
+import { protect, restrictTo } from '@middlewares/authMiddleware.js';
+import { UserRole } from '@/types/auth.js';
+import * as auditController from '@/modules/audit/audit.controller.js';
+import { validate } from '@shared/validate.middleware.js';
+import {
+  auditEntityParamsSchema,
+  auditSearchQuerySchema,
+  auditSummaryQuerySchema,
+} from '@/modules/audit/audit.schema.js';
 
 const router = Router();
 
@@ -30,18 +36,34 @@ router.get(
 );
 
 // Get audit summary
-router.get("/summary", restrictTo(UserRole.ADMIN), auditController.getSummary);
+router.get(
+  "/summary",
+  restrictTo(UserRole.ADMIN),
+  validate(auditSummaryQuerySchema),
+  auditController.getSummary,
+);
 
 // Search audit events
-router.get("/events", restrictTo(UserRole.ADMIN), auditController.searchEvents);
+router.get(
+  "/events",
+  restrictTo(UserRole.ADMIN),
+  validate(auditSearchQuerySchema),
+  auditController.searchEvents,
+);
 
 // Export audit events
-router.get("/export", restrictTo(UserRole.ADMIN), auditController.exportEvents);
+router.get(
+  "/export",
+  restrictTo(UserRole.ADMIN),
+  validate(auditSearchQuerySchema),
+  auditController.exportEvents,
+);
 
 // Get audit trail for a specific entity
 router.get(
   "/entity/:entityType/:entityId",
   restrictTo(UserRole.ADMIN),
+  validate(auditEntityParamsSchema),
   auditController.getEntityAuditTrail,
 );
 

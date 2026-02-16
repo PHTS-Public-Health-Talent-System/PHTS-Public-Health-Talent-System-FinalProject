@@ -17,8 +17,8 @@ export async function searchAuditEvents(params?: ApiParams) {
 }
 
 export async function exportAuditEvents(params?: ApiParams) {
-  const res = await api.get('/audit/export', { params, responseType: 'blob' });
-  return res.data;
+  const res = await api.get<ApiResponse<ApiPayload>>('/audit/export', { params });
+  return res.data.data;
 }
 
 export async function getEntityAuditTrail(entityType: string, entityId: number | string) {

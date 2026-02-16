@@ -5,8 +5,8 @@
  */
 
 import { RowDataPacket, ResultSetHeader, PoolConnection } from "mysql2/promise";
-import db from "../../../config/database.js";
-import { Notification, NotificationType, NotificationSettings } from "../entities/notification.entity.js";
+import db from '@config/database.js';
+import { Notification, NotificationType, NotificationSettings } from '@/modules/notification/entities/notification.entity.js';
 
 const DEFAULT_CHUNK_SIZE = 200;
 
@@ -18,7 +18,7 @@ export class NotificationRepository {
     title: string,
     message: string,
     link: string = "#",
-    type: NotificationType = NotificationType.INFO,
+    type: NotificationType = NotificationType.SYSTEM,
     conn?: PoolConnection,
   ): Promise<number> {
     const executor = conn ?? db;
@@ -118,6 +118,22 @@ export class NotificationRepository {
     return Number((rows[0] as any)?.count ?? 0);
   }
 
+  static async countUnreadToday(
+    userId: number,
+    conn?: PoolConnection,
+  ): Promise<number> {
+    const executor = conn ?? db;
+    const [rows] = await executor.query<RowDataPacket[]>(
+      `SELECT COUNT(*) as count
+       FROM ntf_messages
+       WHERE user_id = ?
+         AND is_read = 0
+         AND DATE(created_at) = CURDATE()`,
+      [userId],
+    );
+    return Number((rows[0] as any)?.count ?? 0);
+  }
+
   // ── Update notifications ────────────────────────────────────────────────────
 
   static async markAsRead(
@@ -144,6 +160,28 @@ export class NotificationRepository {
       `UPDATE ntf_messages
        SET is_read = 1
        WHERE user_id = ? AND is_read = 0`,
+      [userId],
+    );
+    return result.affectedRows;
+  }
+
+  static async deleteRead(
+    userId: number,
+    olderThanDays?: number,
+    conn?: PoolConnection,
+  ): Promise<number> {
+    const executor = conn ?? db;
+    if (olderThanDays && olderThanDays > 0) {
+      const [result] = await executor.execute<ResultSetHeader>(
+        `DELETE FROM ntf_messages
+         WHERE user_id = ? AND is_read = 1
+           AND created_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+        [userId, olderThanDays],
+      );
+      return result.affectedRows;
+    }
+    const [result] = await executor.execute<ResultSetHeader>(
+      `DELETE FROM ntf_messages WHERE user_id = ? AND is_read = 1`,
       [userId],
     );
     return result.affectedRows;

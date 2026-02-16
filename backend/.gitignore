@@ -45,3 +45,6 @@ uploads/
 !uploads/.gitkeep
 !uploads/documents/.gitkeep
 !uploads/signatures/.gitkeep
+
+# Backup
+/backups/

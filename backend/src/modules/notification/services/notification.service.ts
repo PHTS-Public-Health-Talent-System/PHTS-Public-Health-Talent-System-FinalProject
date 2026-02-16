@@ -5,12 +5,13 @@
  */
 
 import { PoolConnection } from "mysql2/promise";
-import { NotificationRepository } from "../repositories/notification.repository.js";
+import { NotificationRepository } from '@/modules/notification/repositories/notification.repository.js';
+import { NotificationOutboxService } from '@/modules/notification/services/notification-outbox.service.js';
 import {
   NotificationType,
   NotificationWithCount,
   NotificationSettings,
-} from "../entities/notification.entity.js";
+} from '@/modules/notification/entities/notification.entity.js';
 
 export class NotificationService {
   /**
@@ -21,17 +22,20 @@ export class NotificationService {
     title: string,
     message: string,
     link: string = "#",
-    type: string = "INFO",
+    type: string = "SYSTEM",
     connection?: PoolConnection,
   ): Promise<number> {
     const notificationType =
-      (type as NotificationType) || NotificationType.INFO;
-    return NotificationRepository.create(
-      userId,
-      title,
-      message,
-      link,
-      notificationType,
+      (type as NotificationType) || NotificationType.SYSTEM;
+    return NotificationOutboxService.enqueue(
+      {
+        kind: "USER",
+        userId,
+        title,
+        message,
+        link,
+        type: notificationType,
+      },
       connection,
     );
   }
@@ -44,24 +48,20 @@ export class NotificationService {
     title: string,
     message: string,
     link: string = "#",
+    type: NotificationType = NotificationType.SYSTEM,
     connection?: PoolConnection,
   ): Promise<number> {
-    const userIds = await NotificationRepository.findUserIdsByRole(
-      role,
+    return NotificationOutboxService.enqueue(
+      {
+        kind: "ROLE",
+        role,
+        title,
+        message,
+        link,
+        type,
+      },
       connection,
     );
-
-    if (userIds.length === 0) return 0;
-
-    const notifications = userIds.map((userId) => ({
-      userId,
-      title,
-      message,
-      link,
-      type: NotificationType.INFO,
-    }));
-
-    return NotificationRepository.createBulk(notifications, connection);
   }
 
   /**
@@ -87,6 +87,13 @@ export class NotificationService {
    */
   static async getUnreadCount(userId: number): Promise<number> {
     return NotificationRepository.countUnread(userId);
+  }
+
+  /**
+   * Get unread notification count for today
+   */
+  static async getUnreadCountToday(userId: number): Promise<number> {
+    return NotificationRepository.countUnreadToday(userId);
   }
 
   /**
@@ -134,6 +141,16 @@ export class NotificationService {
    */
   static async markAllAsRead(userId: number): Promise<number> {
     return NotificationRepository.markAllAsRead(userId);
+  }
+
+  /**
+   * Delete read notifications for a user
+   */
+  static async deleteRead(
+    userId: number,
+    olderThanDays?: number,
+  ): Promise<number> {
+    return NotificationRepository.deleteRead(userId, olderThanDays);
   }
 
   /**

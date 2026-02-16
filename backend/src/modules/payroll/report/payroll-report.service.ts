@@ -1,6 +1,6 @@
 import PDFDocument from "pdfkit";
-import { PayrollRepository } from "../repositories/payroll.repository.js";
-import { getPayoutDataForReport } from "../../snapshot/services/snapshot.service.js";
+import { PayrollRepository } from '@/modules/payroll/repositories/payroll.repository.js';
+import { getPayoutDataForReport } from '@/modules/snapshot/services/snapshot.service.js';
 
 export async function buildPeriodReport(periodId: number): Promise<Buffer> {
   const period = await PayrollRepository.findPeriodById(periodId);
@@ -45,7 +45,7 @@ export async function buildPeriodReport(periodId: number): Promise<Buffer> {
         .text(`สถานะ: ${period.status}  จำนวนคน: ${period.total_headcount ?? 0}`);
       doc
         .fontSize(10)
-        .text(`ยอดรวม: ${Number(period.total_amount ?? 0).toLocaleString()} บาท`);
+        .text(`ยอดรวม: ${Number(period.total_amount ?? 0).toLocaleString('th-TH')} บาท`);
 
       doc.moveDown();
       doc.fontSize(12).text("สรุปตามวิชาชีพ");
@@ -57,7 +57,7 @@ export async function buildPeriodReport(periodId: number): Promise<Buffer> {
           .text(
             `${row.position_name} | จำนวน ${row.headcount} | รวม ${Number(
               row.total_payable,
-            ).toLocaleString()} บาท`,
+            ).toLocaleString('th-TH')} บาท`,
           );
       });
 
@@ -72,8 +72,8 @@ export async function buildPeriodReport(periodId: number): Promise<Buffer> {
           row.position_name ?? "-",
           `สิทธิ ${row.eligible_days ?? 0}`,
           `หัก ${row.deducted_days ?? 0}`,
-          `อัตรา ${Number(row.rate ?? 0).toLocaleString()}`,
-          `รวม ${Number(row.total_payable ?? 0).toLocaleString()}`,
+          `อัตรา ${Number(row.rate ?? 0).toLocaleString('th-TH')}`,
+          `รวม ${Number(row.total_payable ?? 0).toLocaleString('th-TH')}`,
         ].join(" | ");
         doc.fontSize(9).text(line);
       });

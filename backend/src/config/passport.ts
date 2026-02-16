@@ -12,10 +12,10 @@ import {
   ExtractJwt,
   StrategyOptions,
 } from "passport-jwt";
-import { loadEnv } from "./env.js";
-import { JwtPayload, User } from "../types/auth.js";
-import { query } from "./database.js";
-import { getJwtSecret } from "./jwt.js";
+import { loadEnv } from '@config/env.js';
+import { JwtPayload, User } from '@/types/auth.js';
+import { query } from '@config/database.js';
+import { getJwtSecret } from '@config/jwt.js';
 
 // Load environment variables
 loadEnv();
@@ -54,9 +54,9 @@ passport.use(
       }
 
       const users = await query<User[]>(
-        `SELECT id AS user_id, citizen_id, role, is_active 
-         FROM users 
-         WHERE id = ? AND citizen_id = ? 
+        `SELECT id AS user_id, citizen_id, role, is_active
+         FROM users
+         WHERE id = ? AND citizen_id = ?
          LIMIT 1`,
         [userId, citizenId],
       );

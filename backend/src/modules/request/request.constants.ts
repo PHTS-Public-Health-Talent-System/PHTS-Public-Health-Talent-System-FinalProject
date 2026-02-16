@@ -1,0 +1,2 @@
+export const ELIGIBILITY_EXPIRING_DAYS = 90;
+

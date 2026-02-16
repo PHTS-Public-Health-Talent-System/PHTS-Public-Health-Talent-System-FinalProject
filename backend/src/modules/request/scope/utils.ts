@@ -8,7 +8,7 @@
  */
 
 /**
- * Scope type classification
+ * Scope type category
  */
 export type ScopeType = "UNIT" | "DEPT" | "IGNORE" | "UNKNOWN";
 

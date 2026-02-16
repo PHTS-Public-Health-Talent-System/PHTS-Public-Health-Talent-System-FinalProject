@@ -6,18 +6,18 @@
 
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { getJwtSecret } from "../../../config/jwt.js";
-import { isValidCitizenId } from "../../../shared/utils/validationUtils.js";
-import { AuthRepository } from "../repositories/auth.repository.js";
+import { getJwtSecret } from '@config/jwt.js';
+import { isValidCitizenId } from '@shared/utils/validationUtils.js';
+import { AuthRepository } from '@/modules/auth/repositories/auth.repository.js';
 import {
   UserProfile,
   LoginResult,
   JwtPayload,
-} from "../entities/auth.entity.js";
+} from '@/modules/auth/entities/auth.entity.js';
 import {
-  logAuditEvent,
+  emitAuditEvent,
   AuditEventType,
-} from "../../audit/services/audit.service.js";
+} from '@/modules/audit/services/audit.service.js';
 
 // ─── Custom Errors ────────────────────────────────────────────────────────────
 
@@ -98,7 +98,7 @@ export class AuthService {
     const userProfile = await AuthService.getUserProfile(user.user_id);
 
     // Log audit event
-    await logAuditEvent({
+    await emitAuditEvent({
       eventType: AuditEventType.LOGIN,
       entityType: "user",
       entityId: user.user_id,
@@ -130,6 +130,27 @@ export class AuthService {
     const employeeProfile = await AuthRepository.findEmployeeProfileByCitizenId(
       user.citizen_id,
     );
+    const licenseProfile = await AuthRepository.findLatestLicenseByCitizenId(
+      user.citizen_id,
+    );
+    const licenseStatusRaw = licenseProfile?.status?.toUpperCase() ?? null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const licenseValidUntil = licenseProfile?.valid_until
+      ? new Date(licenseProfile.valid_until)
+      : null;
+    let license_status: UserProfile['license_status'] = null;
+    if (licenseProfile) {
+      if (licenseStatusRaw && licenseStatusRaw !== 'ACTIVE') {
+        license_status = 'INACTIVE';
+      } else if (licenseValidUntil && licenseValidUntil < today) {
+        license_status = 'EXPIRED';
+      } else if (licenseValidUntil || licenseStatusRaw === 'ACTIVE' || licenseStatusRaw === null) {
+        license_status = 'ACTIVE';
+      } else {
+        license_status = 'UNKNOWN';
+      }
+    }
 
     return {
       id: user.user_id,
@@ -142,10 +163,57 @@ export class AuthService {
       position: employeeProfile?.position ?? null,
       position_number: employeeProfile?.position_number ?? null,
       department: employeeProfile?.department ?? null,
+      email: employeeProfile?.email ?? null,
+      phone: employeeProfile?.phone ?? null,
       employee_type: employeeProfile?.employee_type ?? null,
       mission_group: employeeProfile?.mission_group ?? null,
       start_current_position: employeeProfile?.start_current_position ?? null,
+      license_no: licenseProfile?.license_no ?? null,
+      license_name: licenseProfile?.license_name ?? null,
+      license_valid_from: licenseProfile?.valid_from ?? null,
+      license_valid_until: licenseProfile?.valid_until ?? null,
+      license_status,
     };
+  }
+
+  static async updateUserProfile(
+    userId: number,
+    payload: { first_name: string; last_name: string; email?: string; phone?: string },
+    requestInfo?: { ipAddress: string; userAgent: string },
+  ): Promise<UserProfile> {
+    const user = await AuthRepository.findById(userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    const updated = await AuthRepository.updateEmployeeProfileByCitizenId(
+      user.citizen_id,
+      {
+        first_name: payload.first_name.trim(),
+        last_name: payload.last_name.trim(),
+        email: payload.email?.trim() || null,
+        phone: payload.phone?.trim() || null,
+      },
+    );
+
+    if (!updated) {
+      throw new Error("Employee profile not found");
+    }
+
+    await emitAuditEvent({
+      eventType: AuditEventType.USER_UPDATE,
+      entityType: "user",
+      entityId: user.user_id,
+      actorId: user.user_id,
+      actorRole: user.role,
+      actionDetail: {
+        updated_fields: ["first_name", "last_name", "email", "phone"],
+      },
+      ipAddress: requestInfo?.ipAddress,
+      userAgent: requestInfo?.userAgent,
+    });
+
+    return AuthService.getUserProfile(userId);
   }
 
   /**
@@ -156,7 +224,7 @@ export class AuthService {
     role: string,
     requestInfo?: { ipAddress: string; userAgent: string },
   ): Promise<void> {
-    await logAuditEvent({
+    await emitAuditEvent({
       eventType: AuditEventType.LOGOUT,
       entityType: "user",
       entityId: userId,

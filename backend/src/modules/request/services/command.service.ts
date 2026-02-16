@@ -2,8 +2,9 @@
  * src/modules/request/services/command.service.ts
  */
 
-import { getConnection } from "../../../config/database.js";
-import { PoolConnection } from "mysql2/promise";
+import { getConnection } from '@config/database.js';
+import { readFile } from 'node:fs/promises';
+import { PoolConnection } from 'mysql2/promise';
 import {
   RequestStatus,
   ActionType,
@@ -12,52 +13,60 @@ import {
   STEP_ROLE_MAP,
   ROLE_STEP_MAP,
   RequestWithDetails,
-} from "../request.types.js";
-import { CreateRequestDTO, UpdateRequestDTO } from "../dto/index.js";
-import { NotificationService } from "../../notification/services/notification.service.js";
-import { saveSignature } from "../../signature/services/signature.service.js";
+} from '@/modules/request/request.types.js';
+import { CreateRequestDTO, UpdateRequestDTO } from '@/modules/request/dto/index.js';
+import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import {
   generateRequestNoFromId,
   normalizeDateToYMD,
   mapRequestRow,
   getRequestLinkForRole,
   parseJsonField,
-} from "./helpers.js";
-import { requestQueryService } from "./query.service.js"; // Use the class instance
-import { logAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
-import { requestRepository } from "../repositories/request.repository.js"; // [NEW]
-
-type SignatureOptions = {
-  saveSignature?: boolean;
-};
+} from '@/modules/request/services/helpers.js';
+import { requestQueryService } from '@/modules/request/services/query.service.js'; // Use the class instance
+import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
+import { requestRepository } from '@/modules/request/repositories/request.repository.js'; // [NEW]
+import { resolveProfessionCode } from '@shared/utils/profession.js';
+import {
+  AuthorizationError,
+  ValidationError,
+  NotFoundError,
+  ConflictError,
+} from '@shared/utils/errors.js';
+import path from 'node:path';
 
 export class RequestCommandService {
-  // --- Helpers (Internal) ---
-
-  private async resolveSignatureId(
-    connection: PoolConnection,
-    userId: number,
-    signatureFile?: Express.Multer.File,
-    shouldSaveSignature: boolean = true,
-  ): Promise<number | null> {
-    if (signatureFile) {
-      if (!shouldSaveSignature) {
-        return null;
-      }
-      if (!signatureFile.buffer || signatureFile.buffer.length === 0) {
-        throw new Error("Signature upload is missing data");
-      }
-      // saveSignature service MUST accept connection to be transactional
-      return await saveSignature(userId, signatureFile.buffer, connection);
-    }
-
-    const signatureId = await requestRepository.findSignatureIdByUserId(userId, connection);
-
-    if (!signatureId) {
-      throw new Error("ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนยื่นคำขอ");
-    }
-    return signatureId;
+  private containsThai(text: string): boolean {
+    return /[\u0E00-\u0E7F]/.test(text);
   }
+
+  private normalizeFilename(name: string): string {
+    if (!name) return name;
+    const decoded = Buffer.from(name, 'latin1').toString('utf8');
+    const originalHasThai = this.containsThai(name);
+    const decodedHasThai = this.containsThai(decoded);
+    if (!originalHasThai && decodedHasThai) return decoded;
+    if (name.includes('�') && decodedHasThai) return decoded;
+    return name;
+  }
+
+  private inferAttachmentType(fieldName: string, fileName: string): FileType {
+    if (fieldName === 'license_file') return FileType.LICENSE;
+    if (fieldName === 'applicant_signature') return FileType.SIGNATURE;
+
+    const lower = fileName.toLowerCase();
+    const looksLikeLicense =
+      lower.includes('license') ||
+      lower.includes('licence') ||
+      lower.includes('ใบอนุญาต') ||
+      lower.includes('ใบประกอบ') ||
+      lower.includes('ประกอบวิชาชีพ');
+    if (looksLikeLicense) return FileType.LICENSE;
+
+    return FileType.OTHER;
+  }
+
+  // --- Helpers (Internal) ---
 
   private buildSubmissionDataJson(data: CreateRequestDTO): string | null {
     if (data.submission_data) {
@@ -79,21 +88,46 @@ export class RequestCommandService {
   ) {
     if (!files || files.length === 0) return;
     for (const file of files) {
-      let fileType: string = FileType.OTHER;
-      if (file.fieldname === "license_file") fileType = FileType.LICENSE;
-      if (file.fieldname === "applicant_signature")
-        fileType = FileType.SIGNATURE;
+      if (!file.path) continue; // Skip files without path (e.g., MemoryStorage signatures)
 
+      const relativePath = path.isAbsolute(file.path)
+        ? path.relative(process.cwd(), file.path)
+        : file.path;
+      const normalizedPath = relativePath.split(path.sep).join('/');
+      const normalizedName = this.normalizeFilename(file.originalname);
+      const fileType = this.inferAttachmentType(file.fieldname, normalizedName);
       await requestRepository.insertAttachment(
         {
           request_id: requestId,
           file_type: fileType,
-          file_path: file.path,
-          file_name: file.originalname,
+          file_path: normalizedPath,
+          file_name: normalizedName,
         },
         connection,
       );
     }
+  }
+
+  async confirmAttachments(requestId: number, userId: number) {
+    const request = await requestRepository.findById(requestId);
+    if (!request) {
+      throw new ValidationError("ไม่พบคำขอที่ระบุ");
+    }
+    if (request.user_id !== userId) {
+      throw new AuthorizationError("ไม่มีสิทธิ์ยืนยันไฟล์แนบของคำขอนี้");
+    }
+    const status = request.status as RequestStatus;
+    if (![RequestStatus.DRAFT, RequestStatus.RETURNED].includes(status)) {
+      throw new ValidationError("ไม่สามารถยืนยันไฟล์แนบในสถานะนี้ได้");
+    }
+
+    const attachments = await requestRepository.findAttachments(requestId);
+    const hasLicense = attachments.some((att) => att.file_type === FileType.LICENSE);
+    if (!hasLicense) {
+      throw new ValidationError("ไม่พบไฟล์ใบอนุญาต");
+    }
+
+    return { confirmed: true };
   }
 
   // ============================================================================
@@ -104,8 +138,7 @@ export class RequestCommandService {
     userId: number,
     data: CreateRequestDTO,
     files?: Express.Multer.File[],
-    signatureFile?: Express.Multer.File,
-    options?: SignatureOptions,
+    _signatureFile?: Express.Multer.File,
   ): Promise<RequestWithDetails> {
     const connection = await getConnection();
 
@@ -114,25 +147,21 @@ export class RequestCommandService {
 
       const citizenId = await requestRepository.findUserCitizenId(userId);
       if (!citizenId) {
-        throw new Error("User not found");
+        throw new Error('User not found');
       }
 
-      const shouldSaveSignature = options?.saveSignature !== false;
-      const signatureId = signatureFile
-        ? await this.resolveSignatureId(
-            connection,
-            userId,
-            signatureFile,
-            shouldSaveSignature,
-          )
-        : await this.resolveSignatureId(connection, userId);
+      const signatureId = await requestRepository.findSignatureIdByUserId(
+        userId,
+        connection,
+      );
+      if (!signatureId && !_signatureFile) {
+        throw new Error('ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนยื่นคำขอ');
+      }
 
       const requestedAmount = data.requested_amount ?? 0;
       // Rate validation skipped - allowing any amount for testing
 
-      const effectiveDateStr = normalizeDateToYMD(
-        data.effective_date as string | Date,
-      );
+      const effectiveDateStr = normalizeDateToYMD(data.effective_date as string | Date);
 
       // [REFACTOR] Use Repo Create
       const requestId = await requestRepository.create(
@@ -143,7 +172,7 @@ export class RequestCommandService {
           current_position_number: data.position_number || null,
           current_department: data.department_group || null,
           work_attributes: data.work_attributes, // Repo handles JSON.stringify
-          applicant_signature_id: signatureId,
+          applicant_signature_id: signatureId ?? null,
           request_type: data.request_type,
           requested_amount: requestedAmount,
           effective_date: new Date(effectiveDateStr),
@@ -161,17 +190,13 @@ export class RequestCommandService {
 
       await this.insertAttachments(connection, requestId, files);
 
-      if (signatureFile && !shouldSaveSignature) {
-        await this.insertAttachments(connection, requestId, [signatureFile]);
-      }
-
-      await logAuditEvent(
+      await emitAuditEvent(
         {
           eventType: AuditEventType.REQUEST_CREATE,
-          entityType: "request",
+          entityType: 'request',
           entityId: requestId,
           actorId: userId,
-          actorRole: "USER", // Creating user usually has role USER in this context
+          actorRole: 'USER', // Creating user usually has role USER in this context
           actionDetail: {
             request_no: requestNo,
             personnel_type: data.personnel_type,
@@ -214,35 +239,46 @@ export class RequestCommandService {
     try {
       await connection.beginTransaction();
 
-      const requestEntity = await requestRepository.findById(
-        requestId,
-        connection,
-      );
+      const requestEntity = await requestRepository.findById(requestId, connection);
       if (!requestEntity) {
-        throw new Error("Request not found");
+        throw new Error('Request not found');
       }
 
-      if (!["PTS_OFFICER", "HEAD_HR"].includes(actorRole)) {
-        throw new Error("Invalid role for verification snapshot");
+      if (!['PTS_OFFICER', 'HEAD_HR'].includes(actorRole)) {
+        throw new Error('Invalid role for verification snapshot');
+      }
+
+      let normalizedEffectiveDate: string;
+      try {
+        normalizedEffectiveDate = normalizeDateToYMD(payload.effective_date);
+      } catch {
+        throw new ValidationError('effective_date ต้องเป็นวันที่ที่ถูกต้อง');
+      }
+
+      let normalizedExpiryDate: string | null = null;
+      if (payload.expiry_date) {
+        try {
+          normalizedExpiryDate = normalizeDateToYMD(payload.expiry_date);
+        } catch {
+          throw new ValidationError('expiry_date ต้องเป็นวันที่ที่ถูกต้อง');
+        }
       }
 
       const snapshotId = await requestRepository.insertVerificationSnapshot(
         {
           request_id: requestId,
+          user_id: requestEntity.user_id ?? null,
           citizen_id: requestEntity.citizen_id,
           master_rate_id: payload.master_rate_id,
-          effective_date: payload.effective_date,
-          expiry_date: payload.expiry_date ?? null,
+          effective_date: normalizedEffectiveDate,
+          expiry_date: normalizedExpiryDate,
           snapshot_data: payload.snapshot_data,
           created_by: actorId,
         },
         connection,
       );
 
-      const snapshot = await requestRepository.findVerificationSnapshotById(
-        snapshotId,
-        connection,
-      );
+      const snapshot = await requestRepository.findVerificationSnapshotById(snapshotId, connection);
 
       await connection.commit();
       return snapshot;
@@ -258,67 +294,69 @@ export class RequestCommandService {
   // Submit Request
   // ============================================================================
 
-  async submitRequest(requestId: number, userId: number): Promise<PTSRequest> {
+  async submitRequest(requestId: number, userId: number, userRole: string): Promise<PTSRequest> {
     const connection = await getConnection();
 
     try {
       await connection.beginTransaction();
 
       // [REFACTOR] Lock row for update check
-      const requestEntity = await requestRepository.findById(
-        requestId,
-        connection,
-      );
+      const requestEntity = await requestRepository.findById(requestId, connection);
 
       if (!requestEntity) {
-        throw new Error("Request not found");
+        throw new Error('Request not found');
       }
 
       // Check Permission
       if (requestEntity.user_id !== userId) {
-        throw new Error("You do not have permission to submit this request");
+        throw new Error('You do not have permission to submit this request');
       }
 
       if (requestEntity.status !== RequestStatus.DRAFT) {
-        throw new Error(
-          `Cannot submit request with status: ${requestEntity.status}`,
-        );
+        throw new Error(`Cannot submit request with status: ${requestEntity.status}`);
       }
 
-      if (
-        !requestEntity.requested_amount ||
-        requestEntity.requested_amount <= 0
-      ) {
-        throw new Error("requested_amount is required before submit");
+      if (!requestEntity.requested_amount || requestEntity.requested_amount <= 0) {
+        throw new Error('requested_amount is required before submit');
       }
 
-      const attachments = await requestRepository.findAttachmentsWithOcr(requestId);
-      const ocrTargets = attachments.filter(
-        (att) => att.file_type && att.file_type !== "SIGNATURE",
-      );
-      const failed = ocrTargets.filter((att) => att.ocr_status === "FAILED");
-      const pending = ocrTargets.filter(
-        (att) => att.ocr_status !== "COMPLETED",
-      );
-      if (failed.length > 0) {
-        throw new Error(
-          "OCR ล้มเหลว กรุณาอัปโหลดเอกสารใหม่และรอให้ประมวลผลเสร็จ",
+      const stepNo =
+        requestEntity.current_step && requestEntity.current_step > 0
+          ? requestEntity.current_step
+          : 1;
+      const nextStep =
+        userRole === 'HEAD_WARD' && stepNo === 1
+          ? 2
+          : userRole === 'HEAD_DEPT' && stepNo === 1
+            ? 3
+            : stepNo;
+
+      // Capture signature snapshot on submit (sig_images or applicant signature)
+      const citizenId = requestEntity.citizen_id;
+      let signatureSnapshot = citizenId
+        ? await requestRepository.findSignatureSnapshot(citizenId, connection)
+        : null;
+      if (!signatureSnapshot) {
+        const signaturePath = await requestRepository.findSignatureAttachmentPath(
+          requestId,
+          connection,
         );
-      }
-      if (pending.length > 0) {
-        throw new Error(
-          "กำลังวิเคราะห์เอกสาร กรุณารอให้ OCR เสร็จครบก่อนยื่นคำขอ",
-        );
+        if (signaturePath) {
+          signatureSnapshot = await readFile(signaturePath);
+        }
       }
 
-      const stepNo = requestEntity.current_step || 1;
+      if (!signatureSnapshot) {
+        throw new Error('ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนส่งคำขอ');
+      }
 
       // [REFACTOR] Use Repo Update
       await requestRepository.update(
         requestId,
         {
           status: RequestStatus.PENDING,
-          current_step: stepNo,
+          current_step: nextStep,
+          step_started_at: new Date(),
         },
         connection,
       );
@@ -331,7 +369,7 @@ export class RequestCommandService {
           step_no: stepNo,
           action: ActionType.SUBMIT,
           comment: null,
-          signature_snapshot: null,
+          signature_snapshot: signatureSnapshot,
         },
         connection,
       );
@@ -339,12 +377,13 @@ export class RequestCommandService {
       await connection.commit();
 
       // Notification (After commit)
-      const nextRole = STEP_ROLE_MAP[stepNo] || "HEAD_WARD";
+      const nextRole = STEP_ROLE_MAP[nextStep] || 'HEAD_WARD';
       await NotificationService.notifyRole(
         nextRole,
-        "มีคำขอใหม่รออนุมัติ",
+        'มีคำขอใหม่รออนุมัติ',
         `มีคำขอเลขที่ ${requestEntity.request_no} รอการตรวจสอบจากท่าน`,
         getRequestLinkForRole(nextRole, requestId),
+        undefined,
         connection,
       );
 
@@ -368,8 +407,7 @@ export class RequestCommandService {
     userRole: string,
     data: UpdateRequestDTO,
     files?: Express.Multer.File[],
-    signatureFile?: Express.Multer.File,
-    options?: SignatureOptions,
+    _signatureFile?: Express.Multer.File,
   ): Promise<RequestWithDetails> {
     const connection = await getConnection();
 
@@ -377,20 +415,17 @@ export class RequestCommandService {
       await connection.beginTransaction();
 
       // [REFACTOR] Lock row
-      const requestEntity = await requestRepository.findById(
-        requestId,
-        connection,
-      );
+      const requestEntity = await requestRepository.findById(requestId, connection);
 
       if (!requestEntity) {
-        throw new Error("ไม่พบคำขอที่ต้องการแก้ไข");
+        throw new Error('ไม่พบคำขอที่ต้องการแก้ไข');
       }
 
       const isOwner = requestEntity.user_id === userId;
-      const isOfficer = userRole === "PTS_OFFICER";
+      const isOfficer = userRole === 'PTS_OFFICER';
 
       if (!isOwner && !isOfficer) {
-        throw new Error("คุณไม่มีสิทธิ์แก้ไขคำขอนี้");
+        throw new Error('คุณไม่มีสิทธิ์แก้ไขคำขอนี้');
       }
 
       if (isOwner) {
@@ -405,41 +440,56 @@ export class RequestCommandService {
       }
 
       if (isOfficer) {
-        const officerStep = ROLE_STEP_MAP["PTS_OFFICER"];
+        const officerStep = ROLE_STEP_MAP['PTS_OFFICER'];
         if (
           requestEntity.status !== RequestStatus.PENDING ||
           requestEntity.current_step !== officerStep
         ) {
-          throw new Error(
-            "คำขอนี้ไม่อยู่ในขั้นตอนที่เจ้าหน้าที่สามารถแก้ไขได้",
-          );
+          throw new Error('คำขอนี้ไม่อยู่ในขั้นตอนที่เจ้าหน้าที่สามารถแก้ไขได้');
         }
-        if (
-          requestEntity.assigned_officer_id &&
-          requestEntity.assigned_officer_id !== userId
-        ) {
-          throw new Error("คำขอนี้ถูกมอบหมายให้เจ้าหน้าที่ท่านอื่นแล้ว");
+        if (requestEntity.assigned_officer_id && requestEntity.assigned_officer_id !== userId) {
+          throw new Error('คำขอนี้ถูกมอบหมายให้เจ้าหน้าที่ท่านอื่นแล้ว');
         }
-        if ((files && files.length > 0) || signatureFile) {
-          throw new Error("PTS_OFFICER cannot modify attachments or signature");
+        if ((files && files.length > 0) || _signatureFile) {
+          throw new Error('PTS_OFFICER cannot modify attachments or signature');
+        }
+
+        const hasDisallowedFields =
+          data.personnel_type !== undefined ||
+          data.position_number !== undefined ||
+          data.department_group !== undefined ||
+          data.main_duty !== undefined ||
+          data.work_attributes !== undefined ||
+          data.request_type !== undefined ||
+          data.requested_amount !== undefined ||
+          data.effective_date !== undefined ||
+          data.reason !== undefined;
+
+        if (hasDisallowedFields) {
+          throw new Error('PTS_OFFICER can only update verification checks via submission_data');
+        }
+
+        if (data.submission_data) {
+          const keys = Object.keys(data.submission_data || {});
+          const allowedKeys = new Set(['verification_checks']);
+          const hasOther = keys.some((key) => !allowedKeys.has(key));
+          if (hasOther) {
+            throw new Error('PTS_OFFICER can only update verification_checks in submission_data');
+          }
         }
       }
 
       // Build update object
       const updateData: any = {};
 
-      if (data.personnel_type !== undefined)
-        updateData.personnel_type = data.personnel_type;
+      if (data.personnel_type !== undefined) updateData.personnel_type = data.personnel_type;
       if (data.position_number !== undefined)
         updateData.current_position_number = data.position_number || null;
       if (data.department_group !== undefined)
         updateData.current_department = data.department_group || null;
-      if (data.main_duty !== undefined)
-        updateData.main_duty = data.main_duty || null;
-      if (data.work_attributes !== undefined)
-        updateData.work_attributes = data.work_attributes;
-      if (data.request_type !== undefined)
-        updateData.request_type = data.request_type;
+      if (data.main_duty !== undefined) updateData.main_duty = data.main_duty || null;
+      if (data.work_attributes !== undefined) updateData.work_attributes = data.work_attributes;
+      if (data.request_type !== undefined) updateData.request_type = data.request_type;
 
       if (data.requested_amount !== undefined) {
         const amount = Number(data.requested_amount);
@@ -448,29 +498,17 @@ export class RequestCommandService {
       }
 
       if (data.effective_date !== undefined) {
-        updateData.effective_date = new Date(
-          normalizeDateToYMD(data.effective_date),
-        );
+        updateData.effective_date = new Date(normalizeDateToYMD(data.effective_date));
       }
 
       if (data.submission_data !== undefined) {
         updateData.submission_data = data.submission_data;
       }
 
-      if (signatureFile) {
-        const shouldSaveSignature = options?.saveSignature !== false;
-        const signatureId = await this.resolveSignatureId(
-          connection,
-          userId,
-          signatureFile,
-          shouldSaveSignature,
-        );
-        updateData.applicant_signature_id = signatureId;
-      }
-
       // Reset status if RETURNED -> DRAFT
       if (isOwner && requestEntity.status === RequestStatus.RETURNED) {
         updateData.status = RequestStatus.DRAFT;
+        updateData.step_started_at = null;
       }
 
       // [REFACTOR] Use Repo Update
@@ -480,9 +518,6 @@ export class RequestCommandService {
 
       // Insert new files
       await this.insertAttachments(connection, requestId, files);
-      if (signatureFile && options?.saveSignature === false) {
-        await this.insertAttachments(connection, requestId, [signatureFile]);
-      }
 
       await connection.commit();
       return await requestQueryService.getRequestDetails(requestId);
@@ -509,19 +544,14 @@ export class RequestCommandService {
     try {
       await connection.beginTransaction();
 
-      const requestEntity = await requestRepository.findById(
-        requestId,
-        connection,
-      );
+      const requestEntity = await requestRepository.findById(requestId, connection);
 
       if (!requestEntity) {
-        throw new Error("Request not found");
+        throw new Error('Request not found');
       }
 
       if (requestEntity.status !== RequestStatus.PENDING) {
-        throw new Error(
-          `Cannot update verification checks with status: ${requestEntity.status}`,
-        );
+        throw new Error(`Cannot update verification checks with status: ${requestEntity.status}`);
       }
 
       const expectedRole = STEP_ROLE_MAP[requestEntity.current_step];
@@ -533,14 +563,10 @@ export class RequestCommandService {
 
       // Logic to handle JSON
       const submissionData =
-        parseJsonField<Record<string, unknown>>(
-          requestEntity.submission_data,
-          "submission_data",
-        ) || {};
+        parseJsonField<Record<string, unknown>>(requestEntity.submission_data, 'submission_data') ||
+        {};
       const existingChecks =
-        (submissionData.verification_checks as
-          | Record<string, unknown>
-          | undefined) || {};
+        (submissionData.verification_checks as Record<string, unknown> | undefined) || {};
       const nextChecks: Record<string, unknown> = { ...existingChecks };
 
       const buildCheck = (input: any) => ({
@@ -585,36 +611,24 @@ export class RequestCommandService {
   // Cancel Request
   // ============================================================================
 
-  async cancelRequest(
-    requestId: number,
-    userId: number,
-    reason?: string,
-  ): Promise<PTSRequest> {
+  async cancelRequest(requestId: number, userId: number, reason?: string): Promise<PTSRequest> {
     const connection = await getConnection();
 
     try {
       await connection.beginTransaction();
 
-      const requestEntity = await requestRepository.findById(
-        requestId,
-        connection,
-      );
+      const requestEntity = await requestRepository.findById(requestId, connection);
       if (!requestEntity) {
-        throw new Error("ไม่พบคำขอที่ต้องการยกเลิก");
+        throw new NotFoundError('คำขอ', requestId);
       }
 
       if (requestEntity.user_id !== userId) {
-        throw new Error("คุณไม่มีสิทธิ์ยกเลิกคำขอนี้");
+        throw new AuthorizationError('คุณไม่มีสิทธิ์ยกเลิกคำขอนี้');
       }
 
-      const nonCancellableStatuses = [
-        RequestStatus.APPROVED,
-        RequestStatus.CANCELLED,
-      ];
-      if (
-        nonCancellableStatuses.includes(requestEntity.status as RequestStatus)
-      ) {
-        throw new Error(
+      const nonCancellableStatuses = [RequestStatus.APPROVED, RequestStatus.CANCELLED];
+      if (nonCancellableStatuses.includes(requestEntity.status as RequestStatus)) {
+        throw new ConflictError(
           `ไม่สามารถยกเลิกคำขอที่มีสถานะ ${requestEntity.status} ได้`,
         );
       }
@@ -624,6 +638,7 @@ export class RequestCommandService {
         requestId,
         {
           status: RequestStatus.CANCELLED,
+          step_started_at: null,
         },
         connection,
       );
@@ -635,7 +650,7 @@ export class RequestCommandService {
           actor_id: userId,
           step_no: requestEntity.current_step || 0,
           action: ActionType.CANCEL,
-          comment: reason || "ผู้ยื่นขอยกเลิกคำขอ",
+          comment: reason || 'ผู้ยื่นขอยกเลิกคำขอ',
           signature_snapshot: null,
         },
         connection,
@@ -665,7 +680,7 @@ export class RequestCommandService {
     remark: string,
     editorName: string,
   ): Promise<void> {
-    const fullRemark = `${remark ?? ""} [Edited by ${editorName}]`;
+    const fullRemark = `${remark ?? ''} [Edited by ${editorName}]`;
 
     // [REFACTOR] Use Repo
     await requestRepository.updateLeaveAdjustment(id, {
@@ -677,14 +692,14 @@ export class RequestCommandService {
   }
 
   // ============================================================================
-  // Update Classification (OCR-assisted)
+  // Update Rate Mapping
   // ============================================================================
 
-  async updateClassification(
+  async updateRateMapping(
     requestId: number,
     _userId: number,
     _role: string,
-    data: { group_no: number; item_no: string; sub_item_no?: string | null },
+    data: { group_no: number; item_no?: string | null; sub_item_no?: string | null },
   ): Promise<any> {
     const connection = await getConnection();
 
@@ -692,23 +707,60 @@ export class RequestCommandService {
       await connection.beginTransaction();
 
       const request = await requestRepository.findById(requestId, connection);
-      if (!request) throw new Error("Request not found");
+      if (!request) throw new Error('Request not found');
 
       if (request.status !== RequestStatus.PENDING && request.status !== RequestStatus.DRAFT) {
-        throw new Error("Cannot update classification of processed request");
+        throw new Error('Cannot update rate mapping of processed request');
       }
 
-      // Default profession code - in production this would be resolved from position
-      const professionCode = "NURSE";
+      // Resolve profession from position name (joined field) or fallback
+      const positionName = request.position_name || '';
+      const professionCode = resolveProfessionCode(positionName);
 
-      const { findRateByDetails } = await import("../classification/classification.service.js");
-      const rate = await findRateByDetails(professionCode, data.group_no, data.item_no, data.sub_item_no);
+      console.log(`[DEBUG_RATE] RequestId=${requestId}`);
+      console.log(`[DEBUG_RATE] Position="${positionName}"`);
+      console.log(`[DEBUG_RATE] ResolvedCode="${professionCode}"`);
+      console.log(
+        `[DEBUG_RATE] Params: Group=${data.group_no}, Item=${data.item_no}, Sub=${data.sub_item_no}`,
+      );
+
+      if (!professionCode) {
+        throw new Error(`Cannot resolve profession from position: ${positionName}`);
+      }
+
+      const rate = await requestRepository.findRateByDetails(
+        professionCode!,
+        data.group_no,
+        data.item_no ?? null,
+        data.sub_item_no ?? null,
+      );
 
       if (!rate) {
-        throw new Error("Invalid classification rate");
+        throw new Error('Invalid rate mapping');
       }
 
-      await requestRepository.update(requestId, { requested_amount: rate.amount }, connection);
+      const submissionData =
+        parseJsonField<Record<string, unknown>>(request.submission_data, 'submission_data') || {};
+      const existingRateMapping =
+        (submissionData as any).rate_mapping || (submissionData as any).classification;
+      const nextSubmissionData = {
+        ...submissionData,
+        rate_mapping: {
+          ...(existingRateMapping || {}),
+          group_no: rate.group_no,
+          item_no: rate.item_no,
+          sub_item_no: rate.sub_item_no ?? null,
+          rate_id: rate.rate_id,
+          amount: rate.amount,
+          profession_code: professionCode,
+        },
+      };
+
+      await requestRepository.update(
+        requestId,
+        { requested_amount: rate.amount, submission_data: nextSubmissionData },
+        connection,
+      );
 
       await connection.commit();
 
@@ -719,7 +771,7 @@ export class RequestCommandService {
         amount: rate.amount,
         group_no: rate.group_no,
         item_no: rate.item_no,
-        sub_item_no: rate.sub_item_no
+        sub_item_no: rate.sub_item_no,
       };
     } catch (error) {
       await connection.rollback();
@@ -729,5 +781,5 @@ export class RequestCommandService {
     }
   }
 }
-// ...
+
 export const requestCommandService = new RequestCommandService();

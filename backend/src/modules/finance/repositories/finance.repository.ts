@@ -5,16 +5,28 @@
  */
 
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
-import db, { getConnection } from "../../../config/database.js";
+import db, { getConnection } from '@config/database.js';
 import {
   PaymentStatus,
   PayoutWithDetails,
   FinanceSummary,
   YearlySummary,
-} from "../entities/finance.entity.js";
+} from '@/modules/finance/entities/finance.entity.js';
 
 export class FinanceRepository {
   // ── Payout queries ──────────────────────────────────────────────────────────
+
+  static async findPeriodWorkflowContextById(
+    periodId: number,
+    conn?: PoolConnection,
+  ): Promise<{ period_id: number; status: string; is_frozen: number } | null> {
+    const executor = conn ?? db;
+    const [rows] = await executor.query<RowDataPacket[]>(
+      "SELECT period_id, status, is_frozen FROM pay_periods WHERE period_id = ?",
+      [periodId],
+    );
+    return (rows[0] as any) ?? null;
+  }
 
   static async findPayoutById(
     payoutId: number,
@@ -23,6 +35,36 @@ export class FinanceRepository {
     const executor = conn ?? db;
     const [rows] = await executor.query<RowDataPacket[]>(
       "SELECT payment_status, total_payable FROM pay_results WHERE payout_id = ?",
+      [payoutId],
+    );
+    return (rows[0] as any) ?? null;
+  }
+
+  static async findPayoutWorkflowContextByIdForUpdate(
+    payoutId: number,
+    conn: PoolConnection,
+  ): Promise<{
+    payout_id: number;
+    period_id: number;
+    payment_status: PaymentStatus;
+    total_payable: number;
+    period_status: string;
+    is_frozen: number;
+  } | null> {
+    const [rows] = await conn.query<RowDataPacket[]>(
+      `
+      SELECT
+        p.payout_id,
+        p.period_id,
+        p.payment_status,
+        p.total_payable,
+        pp.status AS period_status,
+        pp.is_frozen
+      FROM pay_results p
+      INNER JOIN pay_periods pp ON pp.period_id = p.period_id
+      WHERE p.payout_id = ?
+      FOR UPDATE
+      `,
       [payoutId],
     );
     return (rows[0] as any) ?? null;
@@ -78,7 +120,7 @@ export class FinanceRepository {
         p.citizen_id,
         COALESCE(e.first_name, s.first_name, '') as first_name,
         COALESCE(e.last_name, s.last_name, '') as last_name,
-        e.department_code as department,
+        COALESCE(e.department, s.department, '') as department,
         p.pts_rate_snapshot,
         p.calculated_amount,
         p.retroactive_amount,
@@ -100,7 +142,13 @@ export class FinanceRepository {
     }
 
     if (search) {
-      sql += ` AND (p.citizen_id LIKE ? OR e.first_name LIKE ? OR e.last_name LIKE ?)`;
+      sql += `
+        AND (
+          p.citizen_id LIKE ?
+          OR COALESCE(e.first_name, s.first_name, '') LIKE ?
+          OR COALESCE(e.last_name, s.last_name, '') LIKE ?
+        )
+      `;
       const term = `%${search}%`;
       params.push(term, term, term);
     }
@@ -132,22 +180,58 @@ export class FinanceRepository {
   static async findFinanceSummary(
     year?: number,
     month?: number,
+    reportableOnly = false,
     conn?: PoolConnection,
   ): Promise<FinanceSummary[]> {
     const executor = conn ?? db;
-    let sql = `SELECT * FROM vw_finance_period_summary`;
+    let sql = `
+      SELECT
+        pp.period_id,
+        pp.period_month,
+        pp.period_year,
+        pp.status AS period_status,
+        pp.is_frozen,
+        COUNT(pr.payout_id) AS total_employees,
+        COALESCE(SUM(pr.total_payable), 0) AS total_amount,
+        COALESCE(
+          SUM(CASE WHEN pr.payment_status = 'PAID' THEN pr.total_payable ELSE 0 END),
+          0
+        ) AS paid_amount,
+        COALESCE(
+          SUM(CASE WHEN pr.payment_status = 'PENDING' THEN pr.total_payable ELSE 0 END),
+          0
+        ) AS pending_amount,
+        COALESCE(
+          SUM(CASE WHEN pr.payment_status = 'PAID' THEN 1 ELSE 0 END),
+          0
+        ) AS paid_count,
+        COALESCE(
+          SUM(CASE WHEN pr.payment_status = 'PENDING' THEN 1 ELSE 0 END),
+          0
+        ) AS pending_count
+      FROM pay_periods pp
+      LEFT JOIN pay_results pr ON pr.period_id = pp.period_id
+    `;
     const params: any[] = [];
 
     if (year) {
-      sql += ` WHERE period_year = ?`;
+      sql += ` WHERE pp.period_year = ?`;
       params.push(year);
       if (month) {
-        sql += ` AND period_month = ?`;
+        sql += ` AND pp.period_month = ?`;
         params.push(month);
       }
+      if (reportableOnly) {
+        sql += ` AND pp.status = 'CLOSED' AND pp.is_frozen = 1`;
+      }
+    } else if (reportableOnly) {
+      sql += ` WHERE pp.status = 'CLOSED' AND pp.is_frozen = 1`;
     }
 
-    sql += ` ORDER BY period_year DESC, period_month DESC`;
+    sql += `
+      GROUP BY pp.period_id, pp.period_month, pp.period_year, pp.status, pp.is_frozen
+      ORDER BY pp.period_year DESC, pp.period_month DESC
+    `;
 
     const [rows] = await executor.query<RowDataPacket[]>(sql, params);
     return rows as FinanceSummary[];
@@ -155,26 +239,39 @@ export class FinanceRepository {
 
   static async findYearlySummary(
     year?: number,
+    reportableOnly = false,
     conn?: PoolConnection,
   ): Promise<YearlySummary[]> {
     const executor = conn ?? db;
     let sql = `
       SELECT
-        period_year,
-        MAX(total_employees) as total_employees,
-        SUM(total_amount) as total_amount,
-        SUM(paid_amount) as paid_amount,
-        SUM(pending_amount) as pending_amount
-      FROM vw_finance_period_summary
+        pp.period_year,
+        COUNT(pr.payout_id) as total_employees,
+        COALESCE(SUM(pr.total_payable), 0) as total_amount,
+        COALESCE(
+          SUM(CASE WHEN pr.payment_status = 'PAID' THEN pr.total_payable ELSE 0 END),
+          0
+        ) as paid_amount,
+        COALESCE(
+          SUM(CASE WHEN pr.payment_status = 'PENDING' THEN pr.total_payable ELSE 0 END),
+          0
+        ) as pending_amount
+      FROM pay_periods pp
+      LEFT JOIN pay_results pr ON pr.period_id = pp.period_id
     `;
     const params: any[] = [];
 
     if (year) {
-      sql += ` WHERE period_year = ?`;
+      sql += ` WHERE pp.period_year = ?`;
       params.push(year);
+      if (reportableOnly) {
+        sql += ` AND pp.status = 'CLOSED' AND pp.is_frozen = 1`;
+      }
+    } else if (reportableOnly) {
+      sql += ` WHERE pp.status = 'CLOSED' AND pp.is_frozen = 1`;
     }
 
-    sql += ` GROUP BY period_year ORDER BY period_year DESC`;
+    sql += ` GROUP BY pp.period_year ORDER BY pp.period_year DESC`;
 
     const [rows] = await executor.query<RowDataPacket[]>(sql, params);
     return rows as YearlySummary[];

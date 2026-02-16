@@ -5,11 +5,13 @@
  */
 
 import type { NextFunction, Request, Response } from "express";
+import multer from "multer";
 import {
   AppError,
+  ValidationError,
   buildErrorResponse,
   isOperationalError,
-} from "../shared/utils/errors.js";
+} from '@shared/utils/errors.js';
 
 /**
  * Handle 404 Not Found routes
@@ -30,26 +32,57 @@ export const notFoundHandler = (req: Request, res: Response) => {
  */
 export const errorHandler = (
   err: Error | AppError,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction,
 ) => {
+  let normalizedError: Error | AppError = err;
+
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      normalizedError = new AppError(
+        "ขนาดไฟล์เกิน 5MB ต่อไฟล์",
+        413,
+        "FILE_TOO_LARGE",
+      );
+    } else if (err.code === "LIMIT_FILE_COUNT") {
+      normalizedError = new ValidationError("จำนวนไฟล์เกินกว่าที่ระบบกำหนด");
+    } else if (err.code === "LIMIT_UNEXPECTED_FILE") {
+      normalizedError = new ValidationError("รูปแบบฟิลด์ไฟล์ไม่ถูกต้อง");
+    } else {
+      normalizedError = new ValidationError("ไม่สามารถอัปโหลดไฟล์ได้");
+    }
+  } else if (err.message?.includes("Invalid file type")) {
+    normalizedError = new ValidationError("รองรับเฉพาะไฟล์ PDF, JPG และ PNG");
+  }
+
   // Log error
-  const isOperational = isOperationalError(err);
+  const isOperational = isOperationalError(normalizedError);
 
   if (!isOperational) {
     // Programming error - log full stack
-    console.error("[ERROR] Unexpected error:", err.stack || err);
+    console.error("[ERROR] Unexpected error:", {
+      message: normalizedError.message,
+      stack: normalizedError.stack,
+      method: req.method,
+      path: req.originalUrl,
+      requestId: req.requestId,
+    });
   } else if (process.env.NODE_ENV !== "production") {
     // Operational error in development - log for debugging
-    console.error("[ERROR]", err.message);
+    console.error("[ERROR]", {
+      message: normalizedError.message,
+      method: req.method,
+      path: req.originalUrl,
+      requestId: req.requestId,
+    });
   }
 
   // Determine status code
-  const statusCode = err instanceof AppError ? err.statusCode : 500;
+  const statusCode = normalizedError instanceof AppError ? normalizedError.statusCode : 500;
 
   // Build standardized response
-  const errorResponse = buildErrorResponse(err);
+  const errorResponse = buildErrorResponse(normalizedError);
 
   res.status(statusCode).json(errorResponse);
 };

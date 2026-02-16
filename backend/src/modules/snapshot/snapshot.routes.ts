@@ -6,16 +6,16 @@
  */
 
 import { Router } from "express";
-import { protect, restrictTo } from "../../middlewares/authMiddleware.js";
-import { validate } from "../../shared/validate.middleware.js";
-import { UserRole } from "../../types/auth.js";
-import * as snapshotController from "./snapshot.controller.js";
+import { protect, restrictTo } from '@middlewares/authMiddleware.js';
+import { validate } from '@shared/validate.middleware.js';
+import { UserRole } from '@/types/auth.js';
+import * as snapshotController from '@/modules/snapshot/snapshot.controller.js';
 import {
   getPeriodSchema,
   getSnapshotSchema,
   freezePeriodSchema,
   unfreezePeriodSchema,
-} from "./snapshot.schema.js";
+} from '@/modules/snapshot/snapshot.schema.js';
 
 const router = Router();
 

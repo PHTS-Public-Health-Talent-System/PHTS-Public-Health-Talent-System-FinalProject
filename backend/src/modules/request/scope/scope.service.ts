@@ -5,19 +5,17 @@
  * Uses special_position from emp_profiles to determine approver scopes.
  */
 
-import { delCache, setJsonCache } from "../../../shared/utils/cache.js";
-import { requestRepository } from "../repositories/request.repository.js";
+import { delCache, setJsonCache } from '@shared/utils/cache.js';
+import { requestRepository } from '@/modules/request/repositories/request.repository.js';
 import {
   ApproverScopes,
   parseSpecialPositionScopes,
   removeOverlaps,
   resolveApproverRole,
   inferScopeType,
-} from "./utils.js";
+} from '@/modules/request/scope/utils.js';
 
 const SCOPE_CACHE_TTL_SECONDS = 6 * 60 * 60;
-const WARD_PREFIX_RE = /^(งาน|หอ|หน่วย|ศูนย์)/;
-const DEPT_PREFIX_RE = /^(กลุ่มงาน|ภารกิจ)/;
 
 /**
  * Cache for approver scopes (in-memory, cleared on restart)
@@ -62,6 +60,37 @@ export async function getApproverScopes(
     return emptyScopes;
   }
 
+  const originalStatus = await requestRepository.findOriginalStatus(citizenId);
+  if (!isActiveOriginalStatus(originalStatus)) {
+    const emptyScopes = { wardScopes: [], deptScopes: [] };
+    scopeCache.set(cacheKey, emptyScopes);
+    await setJsonCache(redisKey, emptyScopes, SCOPE_CACHE_TTL_SECONDS);
+    return emptyScopes;
+  }
+
+  let mappings = await requestRepository.getScopeMappings(
+    userId,
+    userRole,
+  );
+  if (mappings.length === 0 && citizenId) {
+    mappings = await requestRepository.getScopeMappingsByCitizenId(
+      citizenId,
+      userRole,
+    );
+  }
+  if (mappings.length > 0) {
+    const wardScopes = mappings
+      .filter((m) => m.scope_type === "UNIT")
+      .map((m) => m.scope_name);
+    const deptScopes = mappings
+      .filter((m) => m.scope_type === "DEPT")
+      .map((m) => m.scope_name);
+    const scopes = { wardScopes, deptScopes };
+    scopeCache.set(cacheKey, scopes);
+    await setJsonCache(redisKey, scopes, SCOPE_CACHE_TTL_SECONDS);
+    return scopes;
+  }
+
   const specialPosition = await requestRepository.findSpecialPosition(citizenId);
   const scopes = parseAndClassifyScopes(specialPosition);
   scopeCache.set(cacheKey, scopes);
@@ -92,6 +121,9 @@ function parseAndClassifyScopes(
     if (isWardScope(scope)) {
       const scopeName = extractScopeName(scope);
       pushScope(wardScopes, scopeName);
+      if (inferScopeType(scopeName) === "DEPT") {
+        pushScope(deptScopes, scopeName);
+      }
       continue;
     }
     if (isDeptScope(scope)) {
@@ -129,8 +161,23 @@ export async function canApproverAccessRequest(
 
   const scopes = await getApproverScopes(userId, userRole);
 
+  if (
+    userRole === "HEAD_WARD" &&
+    scopes.wardScopes.length === 0 &&
+    scopes.deptScopes.length > 0
+  ) {
+    const deptMatch = scopes.deptScopes.some(
+      (scope) => scope.toLowerCase() === (requestDepartment ?? "").toLowerCase(),
+    );
+    if (deptMatch) {
+      return true;
+    }
+  }
+
+  const wardScopesForCheck =
+    userRole === "HEAD_DEPT" ? [] : scopes.wardScopes;
   const resolvedRole = resolveApproverRole(
-    scopes.wardScopes,
+    wardScopesForCheck,
     scopes.deptScopes,
     requestDepartment,
     requestSubDepartment,
@@ -166,7 +213,7 @@ export async function getScopeFilterForApprover(
 
   const { conditions, params } =
     userRole === "HEAD_WARD"
-      ? buildWardConditions(scopes.wardScopes)
+      ? buildWardConditions([...scopes.wardScopes, ...scopes.deptScopes])
       : buildDeptConditions(scopes.deptScopes);
 
   if (conditions.length === 0) {
@@ -206,29 +253,24 @@ export async function isRequestOwner(
 }
 
 /**
- * Determine if self-approval is allowed for this role and step
- *
- * Per docs: HEAD_WARD and HEAD_DEPT can self-approve when the request
- * is at their step and they are the owner
- */
-export function canSelfApprove(userRole: string, currentStep: number): boolean {
-  // HEAD_WARD can self-approve at step 1
-  if (userRole === "HEAD_WARD" && currentStep === 1) {
-    return true;
-  }
-  // HEAD_DEPT can self-approve at step 2
-  if (userRole === "HEAD_DEPT" && currentStep === 2) {
-    return true;
-  }
-  return false;
-}
-
-/**
  * Get list of scopes for UI display (multi-scope dropdown)
  *
  * Returns all scopes the user has access to, formatted for display
  */
 type DisplayScope = { value: string; label: string; type: "UNIT" | "DEPT" };
+type ScopeMember = {
+  citizenId: string;
+  fullName: string;
+  position: string;
+  department: string | null;
+  subDepartment: string | null;
+  userRole: string | null;
+  userRoleLabel: string;
+};
+type DisplayScopeWithMembers = DisplayScope & {
+  memberCount: number;
+  members: ScopeMember[];
+};
 
 function appendDisplayScopes(result: DisplayScope[], scopes: string[]) {
   for (const scope of scopes) {
@@ -261,6 +303,67 @@ export async function getUserScopesForDisplay(
   return result;
 }
 
+export async function getUserScopesWithMembers(
+  userId: number,
+  userRole: string,
+): Promise<DisplayScopeWithMembers[]> {
+  const scopes = await getUserScopesForDisplay(userId, userRole);
+  if (!scopes.length) return [];
+
+  const scopesWithMembers = await Promise.all(
+    scopes.map(async (scope) => {
+      const rows = await requestRepository.findEmployeesInScope(scope.type, scope.value);
+      const members: ScopeMember[] = rows.map((row) => {
+        const fullName = [row.title, row.first_name, row.last_name]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        return {
+          citizenId: row.citizen_id,
+          fullName: fullName || row.citizen_id,
+          position: row.position_name || "-",
+          department: row.department,
+          subDepartment: row.sub_department,
+          userRole: row.user_role ?? null,
+          userRoleLabel: mapUserRoleToThaiLabel(row.user_role ?? null),
+        };
+      });
+      return {
+        ...scope,
+        memberCount: members.length,
+        members,
+      };
+    }),
+  );
+
+  return scopesWithMembers;
+}
+
+function mapUserRoleToThaiLabel(role: string | null): string {
+  switch ((role ?? "").toUpperCase()) {
+    case "ADMIN":
+      return "ผู้ดูแลระบบ";
+    case "DIRECTOR":
+      return "ผู้อำนวยการ";
+    case "HEAD_FINANCE":
+      return "หัวหน้าการเงิน";
+    case "FINANCE_OFFICER":
+      return "เจ้าหน้าที่การเงิน";
+    case "HEAD_HR":
+      return "หัวหน้าทรัพยากรบุคคล";
+    case "PTS_OFFICER":
+      return "เจ้าหน้าที่ พ.ต.ส.";
+    case "HEAD_DEPT":
+      return "หัวหน้ากลุ่มงาน";
+    case "HEAD_WARD":
+      return "หัวหน้าตึก/หัวหน้างาน";
+    case "USER":
+      return "ผู้ใช้งานทั่วไป";
+    default:
+      return "ยังไม่ได้กำหนดสิทธิ์";
+  }
+}
+
 /**
  * Get scope filter for a specific selected scope
  *
@@ -291,19 +394,11 @@ export async function getScopeFilterForSelectedScope(
 }
 
 function isWardScope(scope: string): boolean {
-  return (
-    scope.includes("หัวหน้าตึก") ||
-    scope.includes("หัวหน้างาน-") ||
-    Boolean(WARD_PREFIX_RE.exec(scope))
-  );
+  return scope.includes("หัวหน้าตึก") || scope.includes("หัวหน้างาน-");
 }
 
 function isDeptScope(scope: string): boolean {
-  return (
-    scope.includes("หัวหน้ากลุ่มงาน") ||
-    scope.includes("หัวหน้ากลุ่มภารกิจ") ||
-    Boolean(DEPT_PREFIX_RE.exec(scope))
-  );
+  return scope.includes("หัวหน้ากลุ่มงาน");
 }
 
 function extractScopeName(scope: string): string {
@@ -344,9 +439,7 @@ function buildWardConditions(scopes: string[]): {
 
   for (const scope of scopes) {
     if (inferScopeType(scope) === "DEPT") {
-      conditions.push(
-        "(e.sub_department IS NULL AND LOWER(e.department) = LOWER(?))",
-      );
+      conditions.push("(LOWER(e.department) = LOWER(?))");
       params.push(scope);
     }
   }
@@ -394,4 +487,9 @@ function buildSelectedScopeFilter(selectedScope: string): {
     };
   }
   return { whereClause: " AND 1 = 0", params: [] };
+}
+
+function isActiveOriginalStatus(status: string | null): boolean {
+  if (!status) return false;
+  return status.trim().startsWith("ปฏิบัติงาน");
 }

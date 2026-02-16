@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ReviewResult } from "./services/access-review.service.js";
+import { ReviewResult } from '@/modules/access-review/services/access-review.service.js';
 
 // GET /access-review/cycles?year=
 export const getCyclesSchema = z.object({
@@ -49,6 +49,11 @@ export const completeCycleSchema = z.object({
   params: z.object({
     id: z.string().regex(/^\d+$/, "id ต้องเป็นตัวเลข"),
   }),
+  body: z.object({
+    autoKeepPending: z.boolean().optional(),
+    note: z.string().max(500).optional(),
+  }).optional(),
 });
 
 export type CompleteCycleParams = z.infer<typeof completeCycleSchema>["params"];
+export type CompleteCycleBody = z.infer<typeof completeCycleSchema>["body"];

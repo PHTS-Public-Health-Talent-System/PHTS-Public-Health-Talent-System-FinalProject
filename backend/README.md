@@ -9,11 +9,10 @@ This document is deliberately detailed to reflect the real system design and to 
 ## 1) Architecture Overview
 
 The backend is organized into domain modules inside `src/modules/`:
-- **request** – request workflow, approvals, attachments, OCR, verification snapshot
+- **request** – request workflow, approvals, attachments, verification snapshot
 - **payroll** – period creation, calculation, retroactive logic, reporting
-- **data-quality** – issue detection, dashboard, auto‑resolve
 - **snapshot** – period snapshots, freeze/unfreeze, report data
-- **license-alerts** – license expiry monitoring
+- **alerts** – license expiry monitoring, retirements, SLA digests
 - **master-data** – holidays, payment rates
 - **notification** – in‑app notifications
 
@@ -35,9 +34,8 @@ backend/
 │  ├─ modules/
 │  │  ├─ request/
 │  │  ├─ payroll/
-│  │  ├─ data-quality/
 │  │  ├─ snapshot/
-│  │  ├─ license-alerts/
+│  │  ├─ alerts/
 │  │  ├─ master-data/
 │  │  └─ notification/
 │  ├─ middlewares/       # auth, validation, error handling
@@ -105,16 +103,8 @@ npx jest src/modules/request/__tests__/workflow.test.ts
 
 ---
 
-## 7) OCR Pipeline
-- OCR results are stored in `req_ocr_results`
-- OCR can be local (docker) or external provider
-- For OCR setup see root `docker-compose.ocr.yml`
-
----
-
-## 8) Conventions
+## 7) Conventions
 - TypeScript only
 - camelCase for APIs and services
 - Domain separation is mandatory
 - Never commit secrets
-

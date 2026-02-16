@@ -1,4 +1,4 @@
-import redis from "../../config/redis.js";
+import redis from '@config/redis.js';
 
 export async function getJsonCache<T>(key: string): Promise<T | null> {
   try {

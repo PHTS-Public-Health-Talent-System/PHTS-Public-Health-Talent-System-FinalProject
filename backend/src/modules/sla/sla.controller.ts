@@ -5,8 +5,8 @@
  */
 
 import { Request, Response } from "express";
-import { ApiResponse } from "../../types/auth.js";
-import * as slaService from "./services/sla.service.js";
+import { ApiResponse } from '@/types/auth.js';
+import * as slaService from '@/modules/sla/services/sla.service.js';
 
 /**
  * Get all SLA configurations
@@ -71,16 +71,109 @@ export async function getSLAReport(
   }
 }
 
+export async function getSLAKpiOverview(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const { from, to } = req.query;
+    const data = await slaService.getSLAKpiOverview({
+      from: typeof from === "string" ? from : undefined,
+      to: typeof to === "string" ? to : undefined,
+    });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+export async function getSLAKpiByStep(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const { from, to } = req.query;
+    const data = await slaService.getSLAKpiByStep({
+      from: typeof from === "string" ? from : undefined,
+      to: typeof to === "string" ? to : undefined,
+    });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+export async function getSLAKpiBacklogAging(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const { as_of } = req.query;
+    const data = await slaService.getSLAKpiBacklogAging({
+      asOf: typeof as_of === "string" ? as_of : undefined,
+    });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+export async function getSLAKpiDataQuality(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const { from, to } = req.query;
+    const data = await slaService.getSLAKpiDataQuality({
+      from: typeof from === "string" ? from : undefined,
+      to: typeof to === "string" ? to : undefined,
+    });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+export async function getSLAKpiErrorOverview(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const { from, to } = req.query;
+    const data = await slaService.getSLAKpiErrorOverview({
+      from: typeof from === "string" ? from : undefined,
+      to: typeof to === "string" ? to : undefined,
+    });
+    res.json({ success: true, data });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
 /**
  * Get pending requests with SLA info
  * GET /api/sla/pending
  */
 export async function getPendingRequestsWithSLA(
-  _req: Request,
+  req: Request,
   res: Response<ApiResponse>,
 ): Promise<void> {
   try {
-    const requests = await slaService.getPendingRequestsWithSLA();
+    const { start, end } = req.query;
+    const startDate = typeof start === "string" ? new Date(start) : null;
+    const endDate = typeof end === "string" ? new Date(end) : null;
+    if (startDate && Number.isNaN(startDate.getTime())) {
+      res.status(400).json({ success: false, error: "Invalid start date" });
+      return;
+    }
+    if (endDate && Number.isNaN(endDate.getTime())) {
+      res.status(400).json({ success: false, error: "Invalid end date" });
+      return;
+    }
+    const requests = await slaService.getPendingRequestsWithSLA({
+      startDate,
+      endDate,
+    });
     res.json({ success: true, data: requests });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });

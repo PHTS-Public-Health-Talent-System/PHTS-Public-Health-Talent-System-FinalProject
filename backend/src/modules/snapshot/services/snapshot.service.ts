@@ -7,8 +7,8 @@
  */
 
 import { RowDataPacket } from "mysql2/promise";
-import { query, getConnection } from "../../../config/database.js";
-import { logAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
+import { query, getConnection } from '@config/database.js';
+import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 
 /**
  * Snapshot type
@@ -183,7 +183,7 @@ export async function freezePeriod(
     await connection.commit();
 
     // Log audit
-    await logAuditEvent({
+    await emitAuditEvent({
       eventType: AuditEventType.SNAPSHOT_FREEZE,
       entityType: "period",
       entityId: periodId,
@@ -366,7 +366,7 @@ export async function unfreezePeriod(
     await connection.commit();
 
     // Log audit
-    await logAuditEvent({
+    await emitAuditEvent({
       eventType: AuditEventType.SNAPSHOT_UNFREEZE,
       entityType: "period",
       entityId: periodId,

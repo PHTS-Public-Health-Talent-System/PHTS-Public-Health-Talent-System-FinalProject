@@ -1,10 +1,11 @@
 import { z } from "zod";
-import { ActionType } from "../request.types.js";
+import { ActionType } from '@/modules/request/request.types.js';
 
 export const actionSchema = z.object({
   body: z.object({
     action: z.enum([ActionType.APPROVE, ActionType.REJECT, ActionType.RETURN]),
     comment: z.string().max(1000).optional(),
+    signature_base64: z.string().optional(),
   }),
 });
 

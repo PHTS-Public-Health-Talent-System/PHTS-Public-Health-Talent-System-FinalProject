@@ -42,6 +42,8 @@ export interface PayPeriod {
   closed_at: Date | null;
   created_at: Date;
   updated_at: Date;
+  created_by?: number | null;
+  created_by_name?: string | null;
 }
 
 // ─── pay_results ─────────────────────────────────────────────────────────────
@@ -49,8 +51,10 @@ export interface PayPeriod {
 export interface PayResult {
   payout_id: number;
   period_id: number;
+  user_id?: number | null;
   citizen_id: string;
   master_rate_id: number | null;
+  profession_code?: string | null;
   pts_rate_snapshot: number;
   calculated_amount: number;
   retroactive_amount: number;
@@ -81,29 +85,5 @@ export interface PaySnapshot {
   period_id: number;
   snapshot_type: SnapshotType;
   snapshot_data: Record<string, unknown>;
-  created_at: Date;
-}
-
-// ─── leave_pay_exceptions ────────────────────────────────────────────────────
-
-export interface LeavePayException {
-  exception_id: number;
-  citizen_id: string;
-  start_date: string;
-  end_date: string;
-  reason: string | null;
-  created_by: number;
-  created_at: Date;
-}
-
-// ─── leave_return_reports ────────────────────────────────────────────────────
-
-export interface LeaveReturnReport {
-  report_id: number;
-  leave_record_id: number;
-  citizen_id: string;
-  return_date: string;
-  remark: string | null;
-  created_by: number;
   created_at: Date;
 }

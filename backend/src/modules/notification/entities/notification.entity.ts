@@ -7,10 +7,13 @@
 // ─── Notification Types ───────────────────────────────────────────────────────
 
 export enum NotificationType {
-  INFO = "INFO",
-  SUCCESS = "SUCCESS",
-  WARNING = "WARNING",
-  ERROR = "ERROR",
+  APPROVAL = "APPROVAL",
+  PAYMENT = "PAYMENT",
+  LICENSE = "LICENSE",
+  LEAVE = "LEAVE",
+  SYSTEM = "SYSTEM",
+  REMINDER = "REMINDER",
+  OTHER = "OTHER",
 }
 
 // ─── ntf_messages table ───────────────────────────────────────────────────────

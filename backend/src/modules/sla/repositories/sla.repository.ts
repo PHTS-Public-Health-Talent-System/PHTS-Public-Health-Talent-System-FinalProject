@@ -5,8 +5,8 @@
  */
 
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
-import db from "../../../config/database.js";
-import { SLAConfig, ReminderType } from "../entities/sla.entity.js";
+import db from '@config/database.js';
+import { SLAConfig, ReminderType } from '@/modules/sla/entities/sla.entity.js';
 
 export class SLARepository {
   // ── SLA Config queries ──────────────────────────────────────────────────────
@@ -97,24 +97,92 @@ export class SLARepository {
   // ── Pending request queries ─────────────────────────────────────────────────
 
   static async findPendingRequestsWithSLA(
-    conn?: PoolConnection,
+    params?: { startDate?: Date | null; endDate?: Date | null; conn?: PoolConnection },
   ): Promise<any[]> {
-    const executor = conn ?? db;
-    const sql = `
+    const executor = params?.conn ?? db;
+    let sql = `
       SELECT
         r.request_id,
         r.request_no,
+        r.citizen_id,
         r.current_step,
-        r.updated_at as step_started_at,
+        COALESCE(r.step_started_at, r.updated_at) as step_started_at,
         r.status,
-        sla.sla_days
+        sla.sla_days,
+        e.first_name,
+        e.last_name
       FROM req_submissions r
       JOIN cfg_sla_rules sla ON r.current_step = sla.step_no
+      LEFT JOIN emp_profiles e ON e.citizen_id = r.citizen_id
       WHERE r.status = 'PENDING'
       AND sla.is_active = 1
     `;
+    const values: any[] = [];
+    if (params?.startDate) {
+      sql += " AND COALESCE(r.step_started_at, r.updated_at) >= ?";
+      values.push(params.startDate.toISOString().slice(0, 10));
+    }
+    if (params?.endDate) {
+      sql += " AND COALESCE(r.step_started_at, r.updated_at) <= ?";
+      values.push(`${params.endDate.toISOString().slice(0, 10)} 23:59:59`);
+    }
 
-    const [rows] = await executor.query<RowDataPacket[]>(sql);
+    const [rows] = await executor.query<RowDataPacket[]>(sql, values);
+    return rows as any[];
+  }
+
+  static async findClosedRequestsForKPI(
+    from: Date,
+    to: Date,
+    conn?: PoolConnection,
+  ): Promise<any[]> {
+    const executor = conn ?? db;
+    const fromDate = from.toISOString().slice(0, 10);
+    const toDate = `${to.toISOString().slice(0, 10)} 23:59:59`;
+    const [rows] = await executor.query<RowDataPacket[]>(
+      `
+      SELECT
+        r.request_id,
+        r.request_no,
+        r.status,
+        r.updated_at AS completed_at,
+        (
+          SELECT MIN(a.created_at)
+          FROM req_approvals a
+          WHERE a.request_id = r.request_id
+            AND a.action = 'SUBMIT'
+        ) AS submitted_at
+      FROM req_submissions r
+      WHERE r.status IN ('APPROVED', 'REJECTED', 'CANCELLED')
+        AND r.updated_at BETWEEN ? AND ?
+      `,
+      [fromDate, toDate],
+    );
+    return rows as any[];
+  }
+
+  static async findApprovalsInRangeForKPI(
+    from: Date,
+    to: Date,
+    conn?: PoolConnection,
+  ): Promise<any[]> {
+    const executor = conn ?? db;
+    const fromDate = from.toISOString().slice(0, 10);
+    const toDate = `${to.toISOString().slice(0, 10)} 23:59:59`;
+    const [rows] = await executor.query<RowDataPacket[]>(
+      `
+      SELECT
+        a.request_id,
+        a.step_no,
+        a.action,
+        a.comment,
+        a.created_at
+      FROM req_approvals a
+      WHERE a.created_at BETWEEN ? AND ?
+      ORDER BY a.request_id ASC, a.created_at ASC, a.action_id ASC
+      `,
+      [fromDate, toDate],
+    );
     return rows as any[];
   }
 
@@ -142,7 +210,7 @@ export class SLARepository {
   ): Promise<boolean> {
     const executor = conn ?? db;
     const [rows] = await executor.query<RowDataPacket[]>(
-      `SELECT 1 FROM sla_reminder_logs
+      `SELECT 1 FROM wf_sla_reminders
        WHERE request_id = ? AND step_no = ? AND reminder_type = ?
        AND DATE(sent_at) = CURDATE()`,
       [requestId, stepNo, reminderType],
@@ -160,7 +228,7 @@ export class SLARepository {
   ): Promise<void> {
     const executor = conn ?? db;
     await executor.execute(
-      `INSERT INTO sla_reminder_logs (request_id, step_no, target_user_id, reminder_type, sent_via)
+      `INSERT INTO wf_sla_reminders (request_id, step_no, target_user_id, reminder_type, sent_via)
        VALUES (?, ?, ?, ?, ?)`,
       [requestId, stepNo, targetUserId, reminderType, sentVia],
     );

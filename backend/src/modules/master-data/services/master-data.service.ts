@@ -5,5 +5,5 @@
  * Primary User: PTS_OFFICER
  */
 
-export * from "./holiday.service.js";
-export * from "./rate.service.js";
+export * from '@/modules/master-data/services/holiday.service.js';
+export * from '@/modules/master-data/services/rate.service.js';

@@ -5,14 +5,14 @@
  */
 
 import { Router } from "express";
-import { protect, restrictTo } from "../../middlewares/authMiddleware.js";
-import { validate } from "../../shared/validate.middleware.js";
-import { UserRole } from "../../types/auth.js";
-import * as slaController from "./sla.controller.js";
+import { protect, restrictTo } from '@middlewares/authMiddleware.js';
+import { validate } from '@shared/validate.middleware.js';
+import { UserRole } from '@/types/auth.js';
+import * as slaController from '@/modules/sla/sla.controller.js';
 import {
   updateSLAConfigSchema,
   calculateBusinessDaysSchema,
-} from "./sla.schema.js";
+} from '@/modules/sla/sla.schema.js';
 
 const router = Router();
 
@@ -24,7 +24,7 @@ router.use(protect);
 // Get SLA configurations (PTS_OFFICER, ADMIN)
 router.get(
   "/config",
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN, UserRole.HEAD_HR, UserRole.DIRECTOR),
   slaController.getSLAConfigs,
 );
 
@@ -48,10 +48,65 @@ router.get(
   slaController.getSLAReport,
 );
 
+router.get(
+  "/kpi/overview",
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  slaController.getSLAKpiOverview,
+);
+
+router.get(
+  "/kpi/by-step",
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  slaController.getSLAKpiByStep,
+);
+
+router.get(
+  "/kpi/backlog-aging",
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  slaController.getSLAKpiBacklogAging,
+);
+
+router.get(
+  "/kpi/data-quality",
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  slaController.getSLAKpiDataQuality,
+);
+
+router.get(
+  "/kpi/error",
+  restrictTo(
+    UserRole.PTS_OFFICER,
+    UserRole.HEAD_HR,
+    UserRole.DIRECTOR,
+    UserRole.ADMIN,
+  ),
+  slaController.getSLAKpiErrorOverview,
+);
+
 // Get pending requests with SLA info (PTS_OFFICER, ADMIN)
 router.get(
   "/pending",
-  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
+  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN, UserRole.HEAD_HR, UserRole.DIRECTOR),
   slaController.getPendingRequestsWithSLA,
 );
 

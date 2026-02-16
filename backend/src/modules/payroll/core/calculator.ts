@@ -1,19 +1,25 @@
 import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { Decimal } from "decimal.js";
-import pool from "../../../config/database.js";
+import pool from '@config/database.js';
 import {
   calculateDeductions,
+  DeductionReason,
+  DeductionReasonCode,
+  DeductionResult,
   LeaveRow,
   NoSalaryPeriodRow,
   QuotaRow,
   ReturnReportRow,
-} from "./deductions.js";
-import { formatLocalDate, makeLocalDate } from "./utils.js";
+} from '@/modules/payroll/core/deductions.js';
+import { formatLocalDate, makeLocalDate } from '@/modules/payroll/core/utils.js';
+import { LEAVE_RULES } from '@/modules/payroll/payroll.constants.js';
+import { calculateLeaveQuotaStatus } from '@/modules/leave-records/services/leave-domain.service.js';
 
 export interface EligibilityRow extends RowDataPacket {
   effective_date: Date | string;
   expiry_date: Date | string | null;
   rate: number;
+  profession_code?: string | null;
   group_no?: number | null;
   item_no?: string | null;
 }
@@ -52,8 +58,10 @@ export interface CalculationResult {
   rateSnapshot: number;
   ptsGroupNo?: number | null;
   ptsItemNo?: string | null;
+  professionCode?: string | null;
   retroactiveTotal?: number;
   retroDetails?: RetroDetail[];
+  checks?: PayrollCheck[];
 }
 
 export interface RetroDetail {
@@ -63,6 +71,71 @@ export interface RetroDetail {
   remark: string;
 }
 
+export type PayrollCheckSeverity = "BLOCKER" | "WARNING";
+export type PayrollCheckCode =
+  | "NO_PAY"
+  | "OVER_QUOTA"
+  | "ELIGIBILITY_GAP"
+  | "NO_LICENSE"
+  | "NOT_WORKING"
+  | "RETRO_DEDUCT";
+
+export type PayrollCheckEvidence =
+  | {
+      type: "leave";
+      leave_record_id: number;
+      leave_type: string;
+      start_date: string;
+      end_date: string;
+      is_no_pay?: boolean;
+      over_quota?: boolean;
+      exceed_date?: string | null;
+      // Extra context for OVER_QUOTA / leave deductions (from quota engine).
+      quota_limit?: number | null;
+      leave_duration?: number | null;
+      quota_unit?: string | null;
+    }
+  | {
+      type: "eligibility";
+      effective_date: string;
+      expiry_date: string | null;
+      rate: number;
+      rate_id?: number | null;
+    }
+  | {
+      type: "license";
+      valid_from: string;
+      valid_until: string;
+      status: string;
+      license_name?: string;
+      license_type?: string;
+      occupation_name?: string;
+    }
+  | {
+      type: "movement";
+      movement_type: string;
+      effective_date: string;
+    }
+  | {
+      type: "retro";
+      reference_month: number;
+      reference_year: number;
+      diff: number;
+      remark: string;
+    };
+
+export type PayrollCheck = {
+  code: PayrollCheckCode;
+  severity: PayrollCheckSeverity;
+  title: string;
+  summary: string;
+  impactDays: number;
+  impactAmount: number | null;
+  startDate: string | null;
+  endDate: string | null;
+  evidence: PayrollCheckEvidence[];
+};
+
 interface WorkPeriod {
   start: Date;
   end: Date;
@@ -71,8 +144,11 @@ interface WorkPeriod {
 type EligibilityInfo = Readonly<{
   effectiveTs: number;
   expiryTs: number;
+  effectiveDate: string;
+  expiryDate: string | null;
   rate: number;
   rateId: number | null;
+  professionCode: string | null;
   groupNo: number | null;
   itemNo: string | null;
 }>;
@@ -89,6 +165,7 @@ type PaymentTotals = {
   daysCounted: number;
   lastRateSnapshot: number;
   lastMasterRateId: number | null;
+  lastProfessionCode: string | null;
   lastGroupNo: number | null;
   lastItemNo: string | null;
 };
@@ -100,8 +177,14 @@ const buildEligibilities = (rows: EligibilityRow[]): EligibilityInfo[] =>
       expiryTs: row.expiry_date
         ? new Date(row.expiry_date).getTime()
         : makeLocalDate(9999, 11, 31).getTime(),
+      effectiveDate: formatLocalDate(row.effective_date),
+      expiryDate: row.expiry_date ? formatLocalDate(row.expiry_date) : null,
       rate: Number(row.rate),
       rateId: (row as any).rate_id ?? null,
+      professionCode:
+        row.profession_code !== undefined && row.profession_code !== null
+          ? String(row.profession_code)
+          : null,
       groupNo:
         row.group_no !== undefined && row.group_no !== null
           ? Number(row.group_no)
@@ -140,11 +223,17 @@ const applyDailyTotals = (
 ) => {
   if (hasLicense) totals.validLicenseDays += 1;
 
-  let eligibleWeight = hasLicense ? 1 : 0;
+  // Only count "eligible days" when the day has an active eligibility rate AND a valid license.
+  // This aligns UI meaning: "วันมีสิทธิ" should reflect days that can actually be paid.
+  const hasEligibilityRate = currentRate > 0;
+  const isPayEligible = hasLicense && hasEligibilityRate;
+
+  let eligibleWeight = isPayEligible ? 1 : 0;
   eligibleWeight -= deductionWeight;
   if (eligibleWeight < 0) eligibleWeight = 0;
 
-  if (deductionWeight > 0) totals.totalDeductionDays += deductionWeight;
+  // "วันถูกหัก" should represent deduction against payable/eligible days, not days outside eligibility.
+  if (isPayEligible && deductionWeight > 0) totals.totalDeductionDays += deductionWeight;
   if (eligibleWeight > 0) totals.daysCounted += eligibleWeight;
 
   const dailyRate = new Decimal(currentRate || 0).div(daysInMonth);
@@ -153,28 +242,24 @@ const applyDailyTotals = (
 
 function createLicenseChecker(
   licenses: LicenseRow[],
-  positionName = "",
+  _positionName = "",
 ): (dateStr: string) => boolean {
-  const normalizedPosition = (positionName || "")
-    .toLowerCase()
-    .normalize("NFC");
-  let requiresLicense =
-    normalizedPosition.includes("พยาบาล") ||
-    normalizedPosition.includes("นักเทคนิคการแพทย์");
-  if (!requiresLicense && !normalizedPosition && licenses.length > 0) {
-    requiresLicense = true;
-  }
-
-  if (!requiresLicense) {
-    return () => true;
+  if (!licenses || licenses.length === 0) {
+    return () => false;
   }
 
   const ranges = licenses
-    .filter((lic) => (lic.status || "").toUpperCase() === "ACTIVE")
+    .filter(
+      (lic) => ((lic.status || "ACTIVE") as string).toUpperCase() === "ACTIVE",
+    )
     .map((lic) => ({
       start: formatLocalDate(lic.valid_from),
       end: formatLocalDate(lic.valid_until),
     }));
+
+  if (ranges.length === 0) {
+    return () => false;
+  }
 
   return (dateStr: string) =>
     ranges.some((range) => dateStr >= range.start && dateStr <= range.end);
@@ -193,6 +278,72 @@ export interface EmployeeBatchData {
   returnReportRows?: RowDataPacket[];
 }
 
+const normalizeReasonCode = (code: DeductionReasonCode): PayrollCheckCode => {
+  switch (code) {
+    case "NO_PAY":
+      return "NO_PAY";
+    case "OVER_QUOTA":
+      return "OVER_QUOTA";
+  }
+};
+
+const reasonSeverity = (code: PayrollCheckCode): PayrollCheckSeverity => {
+  switch (code) {
+    case "NO_PAY":
+      return "BLOCKER";
+    case "NO_LICENSE":
+      return "BLOCKER";
+    default:
+      return "WARNING";
+  }
+};
+
+const checkTitle = (code: PayrollCheckCode): string => {
+  switch (code) {
+    case "NO_PAY":
+      return "ช่วง no-pay (ไม่รับเงินเดือน)";
+    case "OVER_QUOTA":
+      return "ลาเกินโควต้า";
+    case "ELIGIBILITY_GAP":
+      return "สิทธิเริ่มมีผลกลางเดือน / สิทธิไม่ครอบคลุมทั้งงวด";
+    case "NO_LICENSE":
+      return "ใบอนุญาตไม่ ACTIVE บางช่วง";
+    case "NOT_WORKING":
+      return "ไม่ได้ปฏิบัติงานตลอดเดือน";
+    case "RETRO_DEDUCT":
+      return "ตกเบิกย้อนหลัง (หัก)";
+  }
+};
+
+type CheckAgg = {
+  code: PayrollCheckCode;
+  impactDays: number;
+  impactAmount: number;
+  startDate: string | null;
+  endDate: string | null;
+  // Optional, used for checks that need more explicit human-readable ranges.
+  rangeLabel?: string;
+  evidence: PayrollCheckEvidence[];
+  evidenceKeySet: Set<string>;
+};
+
+const pushEvidence = (agg: CheckAgg, key: string, evidence: PayrollCheckEvidence) => {
+  if (agg.evidenceKeySet.has(key)) return;
+  agg.evidenceKeySet.add(key);
+  agg.evidence.push(evidence);
+};
+
+const parseLocalDateString = (value: string): Date => {
+  const [yy, mm, dd] = value.split("-").map((v) => Number(v));
+  return makeLocalDate(yy, (mm ?? 1) - 1, dd ?? 1);
+};
+
+const addDaysToLocalDateString = (value: string, deltaDays: number): string => {
+  const d = parseLocalDateString(value);
+  d.setDate(d.getDate() + deltaDays);
+  return formatLocalDate(d);
+};
+
 export async function calculateMonthlyWithData(
   year: number,
   month: number,
@@ -201,6 +352,14 @@ export async function calculateMonthlyWithData(
   const startOfMonth = makeLocalDate(year, month - 1, 1);
   const endOfMonth = makeLocalDate(year, month, 0);
   const daysInMonth = endOfMonth.getDate();
+  const fiscalYearStart =
+    month >= 10
+      ? makeLocalDate(year, 9, 1)
+      : makeLocalDate(year - 1, 9, 1);
+  const fiscalYearEnd =
+    month >= 10
+      ? makeLocalDate(year + 1, 9, 0)
+      : makeLocalDate(year, 9, 0);
 
   const eligibilities = buildEligibilities(
     data.eligibilityRows as EligibilityRow[],
@@ -241,7 +400,34 @@ export async function calculateMonthlyWithData(
     : employee.first_entry_date
       ? new Date(employee.first_entry_date)
       : null;
-  const deductionMap = calculateDeductions(
+
+  const quotaStatus = calculateLeaveQuotaStatus({
+    leaveRows: leaves,
+    holidays,
+    quota,
+    rules: LEAVE_RULES,
+    serviceStartDate,
+    rangeStart: fiscalYearStart,
+    rangeEnd: endOfMonth < fiscalYearEnd ? endOfMonth : fiscalYearEnd,
+  });
+  const quotaDecisions = new Map<number, { overQuota: boolean; exceedDate: Date | null }>();
+  const quotaInfoByLeaveId = new Map<number, { limit: number | null; duration: number; exceedDate: string | null; leaveType: string }>();
+  Object.entries(quotaStatus.perLeave).forEach(([leaveId, info]) => {
+    const id = Number(leaveId);
+    if (!Number.isNaN(id)) {
+      quotaDecisions.set(id, {
+        overQuota: info.overQuota,
+        exceedDate: info.exceedDate ? new Date(info.exceedDate) : null,
+      });
+      quotaInfoByLeaveId.set(id, {
+        limit: info.limit === null || info.limit === undefined ? null : Number(info.limit),
+        duration: Number(info.duration ?? 0),
+        exceedDate: info.exceedDate ?? null,
+        leaveType: String(info.leaveType ?? ""),
+      });
+    }
+  });
+  const deductionResult: DeductionResult = calculateDeductions(
     mergedLeaves,
     quota,
     holidays,
@@ -250,7 +436,10 @@ export async function calculateMonthlyWithData(
     serviceStartDate,
     noSalaryPeriods,
     returnReports,
+    quotaDecisions,
   );
+  const deductionMap = deductionResult.deductionMap;
+  const reasonsByDate = deductionResult.reasonsByDate;
   const totalDeductionDaysInMonth = Array.from(deductionMap.values()).reduce(
     (sum, value) => sum + value,
     0,
@@ -267,6 +456,7 @@ export async function calculateMonthlyWithData(
     daysCounted: 0,
     lastRateSnapshot: 0,
     lastMasterRateId: null,
+    lastProfessionCode: null,
     lastGroupNo: null,
     lastItemNo: null,
   };
@@ -274,6 +464,49 @@ export async function calculateMonthlyWithData(
   const orderedPeriods = [...periods].sort(
     (a, b) => a.start.getTime() - b.start.getTime(),
   );
+
+  const workDaySet = new Set<string>();
+  for (const period of orderedPeriods) {
+    for (
+      let d = new Date(period.start);
+      d <= period.end;
+      d.setDate(d.getDate() + 1)
+    ) {
+      workDaySet.add(formatLocalDate(d));
+    }
+  }
+  let firstWorkDay: string | null = null;
+  let lastWorkDay: string | null = null;
+  for (const day of workDaySet) {
+    if (!firstWorkDay || day < firstWorkDay) firstWorkDay = day;
+    if (!lastWorkDay || day > lastWorkDay) lastWorkDay = day;
+  }
+
+  const checkAggs = new Map<PayrollCheckCode, CheckAgg>();
+  const ensureAgg = (code: PayrollCheckCode): CheckAgg => {
+    const existing = checkAggs.get(code);
+    if (existing) return existing;
+    const next: CheckAgg = {
+      code,
+      impactDays: 0,
+      impactAmount: 0,
+      startDate: null,
+      endDate: null,
+      evidence: [],
+      evidenceKeySet: new Set(),
+    };
+    checkAggs.set(code, next);
+    return next;
+  };
+
+  const leaveById = new Map<number, LeaveRow>();
+  mergedLeaves.forEach((leave) => {
+    if (leave.id !== undefined && leave.id !== null) leaveById.set(Number(leave.id), leave);
+  });
+
+  let daysWithEligibilityRate = 0;
+  let firstEligibilityDay: string | null = null;
+  let lastEligibilityDay: string | null = null;
 
   for (const period of orderedPeriods) {
     for (
@@ -294,11 +527,22 @@ export async function calculateMonthlyWithData(
       if (activeEligibility) {
         totals.lastRateSnapshot = currentRate;
         totals.lastMasterRateId = activeEligibility.rateId;
+        totals.lastProfessionCode = activeEligibility.professionCode;
         totals.lastGroupNo = activeEligibility.groupNo;
         totals.lastItemNo = activeEligibility.itemNo;
       }
+      if (currentRate > 0) {
+        daysWithEligibilityRate += 1;
+        if (!firstEligibilityDay || dateStr < firstEligibilityDay) {
+          firstEligibilityDay = dateStr;
+        }
+        if (!lastEligibilityDay || dateStr > lastEligibilityDay) {
+          lastEligibilityDay = dateStr;
+        }
+      }
 
       const hasLicense = licenseChecker(dateStr);
+      const reasons: DeductionReason[] = reasonsByDate.get(dateStr) || [];
       const deductionWeight = deductionMap.get(dateStr) || 0;
       applyDailyTotals(
         totals,
@@ -307,8 +551,206 @@ export async function calculateMonthlyWithData(
         deductionWeight,
         daysInMonth,
       );
+
+      if (currentRate > 0) {
+        const dailyRate = Number(new Decimal(currentRate).div(daysInMonth).toFixed(10));
+        if (!hasLicense) {
+          const agg = ensureAgg("NO_LICENSE");
+          agg.impactDays += 1;
+          agg.impactAmount += dailyRate;
+          agg.startDate = agg.startDate ? (dateStr < agg.startDate ? dateStr : agg.startDate) : dateStr;
+          agg.endDate = agg.endDate ? (dateStr > agg.endDate ? dateStr : agg.endDate) : dateStr;
+        } else if (reasons.length > 0) {
+          for (const reason of reasons) {
+            const code = normalizeReasonCode(reason.code);
+            const agg = ensureAgg(code);
+            agg.impactDays += reason.weight;
+            agg.impactAmount += dailyRate * reason.weight;
+            agg.startDate = agg.startDate ? (dateStr < agg.startDate ? dateStr : agg.startDate) : dateStr;
+            agg.endDate = agg.endDate ? (dateStr > agg.endDate ? dateStr : agg.endDate) : dateStr;
+
+              if (reason.leave_record_id) {
+                const leave = leaveById.get(Number(reason.leave_record_id));
+                const quotaInfo = quotaInfoByLeaveId.get(Number(reason.leave_record_id));
+                const leaveStartRaw = leave
+                  ? ((leave as any).document_start_date ?? leave.start_date)
+                  : null;
+                const leaveEndRaw = leave
+                  ? ((leave as any).document_end_date ?? leave.end_date)
+                  : null;
+                const start = leaveStartRaw ? formatLocalDate(leaveStartRaw) : dateStr;
+                const end = leaveEndRaw ? formatLocalDate(leaveEndRaw) : dateStr;
+                const leaveType =
+                  reason.leave_type
+                    ? String(reason.leave_type)
+                    : quotaInfo?.leaveType
+                      ? String(quotaInfo.leaveType)
+                      : leave
+                        ? String(leave.leave_type)
+                        : "unknown";
+                pushEvidence(
+                  agg,
+                  `leave:${reason.leave_record_id}:${code}`,
+                  {
+                    type: "leave",
+                    leave_record_id: Number(reason.leave_record_id),
+                    leave_type: leaveType,
+                    start_date: start,
+                    end_date: end,
+                    is_no_pay: code === "NO_PAY",
+                    over_quota: code === "OVER_QUOTA",
+                    exceed_date: reason.exceed_date
+                      ? formatLocalDate(reason.exceed_date)
+                      : quotaInfo?.exceedDate ?? null,
+                    quota_limit: quotaInfo?.limit ?? null,
+                    leave_duration: Number.isFinite(quotaInfo?.duration ?? NaN)
+                      ? Number(quotaInfo?.duration ?? 0)
+                      : null,
+                    quota_unit: LEAVE_RULES[leaveType]?.unit ?? null,
+                  },
+                );
+              }
+          }
+        } else if (deductionWeight > 0) {
+          // Fallback (should be rare): weights applied without reason metadata.
+          const agg = ensureAgg("OVER_QUOTA");
+          agg.impactDays += deductionWeight;
+          agg.impactAmount += dailyRate * deductionWeight;
+          agg.startDate = agg.startDate ? (dateStr < agg.startDate ? dateStr : agg.startDate) : dateStr;
+          agg.endDate = agg.endDate ? (dateStr > agg.endDate ? dateStr : agg.endDate) : dateStr;
+        }
+      }
     }
   }
+
+  // Add license evidence once if license check was triggered
+  if (checkAggs.has("NO_LICENSE")) {
+    const agg = checkAggs.get("NO_LICENSE")!;
+    for (const lic of licenses) {
+      pushEvidence(agg, `license:${formatLocalDate(lic.valid_from)}:${formatLocalDate(lic.valid_until)}:${lic.status}`, {
+        type: "license",
+        valid_from: formatLocalDate(lic.valid_from),
+        valid_until: formatLocalDate(lic.valid_until),
+        status: String(lic.status ?? ""),
+        license_name: (lic as any).license_name ?? undefined,
+        license_type: (lic as any).license_type ?? undefined,
+        occupation_name: (lic as any).occupation_name ?? undefined,
+      });
+    }
+  }
+
+  if (workDaySet.size > 0 && workDaySet.size < daysInMonth) {
+    const agg = ensureAgg("NOT_WORKING");
+    agg.impactDays = daysInMonth - workDaySet.size;
+    agg.impactAmount = 0;
+    // Evidence: include movements around month range
+    movements
+      .filter((m) => new Date(m.effective_date) <= endOfMonth)
+      .slice(-10)
+      .forEach((m) => {
+        pushEvidence(agg, `movement:${formatLocalDate(m.effective_date)}:${m.movement_type}`, {
+          type: "movement",
+          movement_type: String(m.movement_type),
+          effective_date: formatLocalDate(m.effective_date),
+        });
+      });
+  }
+
+  // Eligibility gap: has some eligibility in month but does not cover all work days.
+  if (totals.lastRateSnapshot > 0 && workDaySet.size > 0 && daysWithEligibilityRate < workDaySet.size) {
+    const agg = ensureAgg("ELIGIBILITY_GAP");
+    agg.impactDays = workDaySet.size - daysWithEligibilityRate;
+    const expectedFull = totals.lastRateSnapshot;
+    const impact = Math.max(0, expectedFull - Number(totals.totalPayment.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber()));
+    agg.impactAmount = impact;
+    const monthStartStr = formatLocalDate(startOfMonth);
+    const monthEndStr = formatLocalDate(endOfMonth);
+    // Prefer showing the "missing eligibility" range(s) (what to check) rather than the eligible span.
+    // NOTE: We only derive up to 2 ranges (head/tail). If eligibility is fragmented in the middle,
+    // the evidence section still lists all overlapping eligibility rows.
+    const missingRanges: { start: string; end: string }[] = [];
+    if (firstWorkDay && firstEligibilityDay && firstEligibilityDay > firstWorkDay) {
+      const end = addDaysToLocalDateString(firstEligibilityDay, -1);
+      if (end >= firstWorkDay) missingRanges.push({ start: firstWorkDay, end });
+    }
+    if (lastWorkDay && lastEligibilityDay && lastEligibilityDay < lastWorkDay) {
+      const start = addDaysToLocalDateString(lastEligibilityDay, 1);
+      if (start <= lastWorkDay) missingRanges.push({ start, end: lastWorkDay });
+    }
+    if (missingRanges.length === 1) {
+      agg.startDate = missingRanges[0]!.start;
+      agg.endDate = missingRanges[0]!.end;
+    } else {
+      agg.startDate = null;
+      agg.endDate = null;
+    }
+    if (missingRanges.length > 0) {
+      agg.rangeLabel = missingRanges.map((r) => `${r.start} ถึง ${r.end}`).join(", ");
+      pushEvidence(agg, `elig_gap:${monthStartStr}:${monthEndStr}`, {
+        type: "eligibility_gap" as any,
+        work_start_date: firstWorkDay ?? monthStartStr,
+        work_end_date: lastWorkDay ?? monthEndStr,
+        missing_ranges: missingRanges,
+      } as any);
+    }
+
+    // Evidence: include eligibilities overlapping the month window (rate > 0).
+    for (const elig of eligibilities) {
+      if (elig.rate <= 0) continue;
+      const overlaps =
+        elig.effectiveDate <= monthEndStr &&
+        (elig.expiryDate ? elig.expiryDate >= monthStartStr : true);
+      if (!overlaps) continue;
+      pushEvidence(agg, `elig:${elig.effectiveDate}:${elig.expiryDate ?? "null"}:${elig.rate}:${elig.rateId ?? "null"}`, {
+        type: "eligibility",
+        effective_date: elig.effectiveDate,
+        expiry_date: elig.expiryDate,
+        rate: elig.rate,
+        rate_id: elig.rateId,
+      });
+    }
+  }
+
+  const checks: PayrollCheck[] = Array.from(checkAggs.values())
+    .filter((agg) => agg.impactDays > 0.0001 || Math.abs(agg.impactAmount) > 0.01)
+    .map((agg) => {
+      const severity = reasonSeverity(agg.code);
+      const impactDays = Number.parseFloat(agg.impactDays.toFixed(2));
+      const impactAmount = agg.code === "NOT_WORKING"
+        ? null
+        : Number.parseFloat(agg.impactAmount.toFixed(2));
+      const title = checkTitle(agg.code);
+      const summaryParts: string[] = [];
+      summaryParts.push(`กระทบ ${impactDays.toLocaleString('th-TH')} วัน`);
+      if (impactAmount !== null && impactAmount > 0) {
+        summaryParts.push(`ประมาณ -${impactAmount.toLocaleString('th-TH')} บาท`);
+      }
+      if (agg.code === "ELIGIBILITY_GAP" && agg.rangeLabel) {
+        summaryParts.push(`ไม่มีสิทธิ ${agg.rangeLabel}`);
+      } else if (agg.startDate && agg.endDate) {
+        summaryParts.push(`${agg.startDate} ถึง ${agg.endDate}`);
+      }
+      return {
+        code: agg.code,
+        severity,
+        title,
+        summary: summaryParts.join(" • "),
+        impactDays,
+        impactAmount,
+        startDate: agg.startDate,
+        endDate: agg.endDate,
+        evidence: agg.evidence,
+      };
+    })
+    .sort((a, b) => {
+      const sevA = a.severity === "BLOCKER" ? 0 : 1;
+      const sevB = b.severity === "BLOCKER" ? 0 : 1;
+      if (sevA !== sevB) return sevA - sevB;
+      const amtA = a.impactAmount ?? 0;
+      const amtB = b.impactAmount ?? 0;
+      if (amtA !== amtB) return amtB - amtA;
+      return b.impactDays - a.impactDays;
+    });
 
   return {
     netPayment: totals.totalPayment
@@ -322,6 +764,8 @@ export async function calculateMonthlyWithData(
     rateSnapshot: totals.lastRateSnapshot,
     ptsGroupNo: totals.lastGroupNo,
     ptsItemNo: totals.lastItemNo,
+    professionCode: totals.lastProfessionCode,
+    checks,
   };
 }
 
@@ -340,7 +784,7 @@ export async function calculateMonthly(
 
   const [eligibilityRows] = await dbConn.query<RowDataPacket[]>(
     `
-      SELECT e.effective_date, e.expiry_date, m.amount as rate, m.rate_id, m.group_no, m.item_no
+      SELECT e.effective_date, e.expiry_date, m.amount as rate, m.rate_id, m.profession_code, m.group_no, m.item_no
       FROM req_eligibility e
       JOIN cfg_payment_rates m ON e.master_rate_id = m.rate_id
       WHERE e.citizen_id = ?
@@ -372,38 +816,48 @@ export async function calculateMonthly(
 
   const [leaveRows] = await dbConn.query<RowDataPacket[]>(
     `
-      SELECT * FROM leave_records
-      WHERE citizen_id = ? AND fiscal_year = ?
-      ORDER BY start_date ASC
+      SELECT lr.*,
+             ext.document_start_date,
+             ext.document_end_date,
+             ext.document_duration_days,
+             ext.pay_exception,
+             COALESCE(ext.is_no_pay, ext.pay_exception, 0) AS is_no_pay
+      FROM leave_records lr
+      LEFT JOIN leave_record_extensions ext ON ext.leave_record_id = lr.id
+      WHERE lr.citizen_id = ? AND lr.fiscal_year = ?
+      ORDER BY lr.start_date ASC
     `,
     [citizenId, fiscalYear],
   );
 
   const [noSalaryRows] = await dbConn.query<RowDataPacket[]>(
     `
-      SELECT start_date, end_date
-      FROM leave_pay_exceptions
-      WHERE citizen_id = ?
-        AND start_date <= ?
-        AND end_date >= ?
+      SELECT lr.citizen_id,
+             lr.id AS leave_record_id,
+             lr.leave_type,
+             COALESCE(ext.document_start_date, lr.start_date) AS start_date,
+             COALESCE(ext.document_end_date, lr.end_date) AS end_date
+      FROM leave_record_extensions ext
+      JOIN leave_records lr ON lr.id = ext.leave_record_id
+      WHERE lr.citizen_id = ?
+        AND COALESCE(ext.is_no_pay, ext.pay_exception) = 1
+        AND COALESCE(ext.document_start_date, lr.start_date) <= ?
+        AND COALESCE(ext.document_end_date, lr.end_date) >= ?
     `,
     [citizenId, endOfMonthStr, startOfMonthStr],
   );
 
-  const leaveIds = (leaveRows as any[]).map((row) => row.id).filter(Boolean);
-  let returnReportRows: RowDataPacket[] = [];
-  if (leaveIds.length > 0) {
-    const placeholders = leaveIds.map(() => "?").join(",");
-    const [rows] = await dbConn.query<RowDataPacket[]>(
-      `
-        SELECT leave_record_id, return_date
-        FROM leave_return_reports
-        WHERE leave_record_id IN (${placeholders})
-      `,
-      leaveIds,
-    );
-    returnReportRows = rows as RowDataPacket[];
-  }
+  const [returnReportRows] = await dbConn.query<RowDataPacket[]>(
+    `
+      SELECT ext.leave_record_id, ext.return_date
+      FROM leave_record_extensions ext
+      JOIN leave_records lr ON lr.id = ext.leave_record_id
+      WHERE lr.citizen_id = ?
+        AND ext.return_report_status = 'DONE'
+        AND ext.return_date IS NOT NULL
+    `,
+    [citizenId],
+  );
 
   const [quotaRows] = await dbConn.query<RowDataPacket[]>(
     `SELECT * FROM leave_quotas WHERE citizen_id = ? AND fiscal_year = ?`,
@@ -441,6 +895,7 @@ export function checkLicense(
 type SavePayoutInput = {
   conn: PoolConnection;
   periodId: number;
+  userId: number | null;
   citizenId: string;
   result: CalculationResult;
   masterRateId: number | null;
@@ -452,6 +907,7 @@ type SavePayoutInput = {
 export async function savePayout({
   conn,
   periodId,
+  userId,
   citizenId,
   result,
   masterRateId,
@@ -464,15 +920,18 @@ export async function savePayout({
   const [res] = await conn.query<ResultSetHeader>(
     `
       INSERT INTO pay_results
-      (period_id, citizen_id, master_rate_id, pts_rate_snapshot, calculated_amount, total_payable, deducted_days, eligible_days, remark)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (period_id, user_id, citizen_id, master_rate_id, profession_code, pts_rate_snapshot, calculated_amount, retroactive_amount, total_payable, deducted_days, eligible_days, remark)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `,
     [
       periodId,
+      userId,
       citizenId,
       masterRateId,
+      result.professionCode ?? null,
       baseRateSnapshot,
       result.netPayment,
+      result.retroactiveTotal ?? 0,
       totalPayable,
       result.totalDeductionDays,
       result.eligibleDays,
@@ -533,6 +992,30 @@ export async function savePayout({
     );
   }
 
+  if (result.checks && result.checks.length > 0) {
+    for (const check of result.checks) {
+      await conn.query(
+        `
+          INSERT INTO pay_result_checks
+          (payout_id, code, severity, title, summary, impact_days, impact_amount, start_date, end_date, evidence_json)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          payoutId,
+          check.code,
+          check.severity,
+          check.title,
+          check.summary,
+          check.impactDays,
+          check.impactAmount,
+          check.startDate,
+          check.endDate,
+          check.evidence.length ? JSON.stringify(check.evidence) : null,
+        ],
+      );
+    }
+  }
+
   return payoutId;
 }
 
@@ -567,7 +1050,7 @@ function resolveWorkPeriods(
   const periods: WorkPeriod[] = [];
   let isActive = false;
   let currentSegmentStart = -1;
-  let lastRemark = "";
+  const lastRemark = "";
 
   const exitTypes = new Set(["RESIGN", "RETIRE", "DEATH", "TRANSFER_OUT"]);
 

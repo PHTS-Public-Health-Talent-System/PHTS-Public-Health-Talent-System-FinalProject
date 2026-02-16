@@ -5,15 +5,66 @@
  */
 
 import { RowDataPacket, ResultSetHeader, PoolConnection } from "mysql2/promise";
-import db from "../../../config/database.js";
+import db from '@config/database.js';
 import {
   AuditEvent,
   CreateAuditEventInput,
   AuditSearchFilter,
   AuditSummaryItem,
-} from "../entities/audit.entity.js";
+} from '@/modules/audit/entities/audit.entity.js';
 
 export class AuditRepository {
+  private static schemaReady = false;
+
+  static async ensureSchema(conn?: PoolConnection): Promise<void> {
+    if (AuditRepository.schemaReady) return;
+    const executor = conn ?? db;
+    try {
+      const [rows] = await executor.query<RowDataPacket[]>(
+        "SHOW COLUMNS FROM audit_logs LIKE 'event_type'",
+      );
+      const type = String((rows[0] as any)?.Type ?? "").toLowerCase();
+      if (type.startsWith("enum(")) {
+        // Avoid enum drift between DB and code by using a plain string column.
+        await executor.execute(
+          "ALTER TABLE audit_logs MODIFY event_type VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL",
+        );
+      }
+      AuditRepository.schemaReady = true;
+    } catch (error: any) {
+      // If table is missing (fresh DB), create a minimal compatible schema.
+      const message = String(error?.message ?? "");
+      if (message.includes("doesn't exist") || message.includes("ER_NO_SUCH_TABLE")) {
+        await executor.execute(`
+          CREATE TABLE IF NOT EXISTS audit_logs (
+            audit_id INT NOT NULL AUTO_INCREMENT,
+            event_type VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+            entity_type VARCHAR(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL COMMENT 'Table or entity name (pts_requests, users, etc.)',
+            entity_id INT DEFAULT NULL COMMENT 'Primary key of affected entity',
+            actor_id INT DEFAULT NULL COMMENT 'User who performed the action',
+            actor_role VARCHAR(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'Role of actor at time of action',
+            action_detail JSON DEFAULT NULL COMMENT 'Structured detail of what changed',
+            ip_address VARCHAR(45) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+            user_agent VARCHAR(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (audit_id) USING BTREE,
+            KEY idx_audit_event_type (event_type) USING BTREE,
+            KEY idx_audit_entity (entity_type, entity_id) USING BTREE,
+            KEY idx_audit_actor (actor_id) USING BTREE,
+            KEY idx_audit_created (created_at) USING BTREE,
+            KEY idx_audit_actor_created (actor_id, created_at)
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC
+        `);
+        AuditRepository.schemaReady = true;
+        return;
+      }
+
+      // Do not block application flow if schema check fails in restricted envs.
+      AuditRepository.schemaReady = true;
+      console.warn("AuditRepository.ensureSchema failed:", error);
+    }
+  }
+
   // ── Create audit event ──────────────────────────────────────────────────────
 
   static async create(
@@ -21,6 +72,7 @@ export class AuditRepository {
     conn?: PoolConnection,
   ): Promise<number> {
     const executor = conn ?? db;
+    await AuditRepository.ensureSchema(conn);
     const sql = `
       INSERT INTO audit_logs
       (event_type, entity_type, entity_id, actor_id, actor_role, action_detail, ip_address, user_agent)
@@ -63,6 +115,7 @@ export class AuditRepository {
     // Get events with actor name
     const sql = `
       SELECT a.*,
+             COALESCE(a.actor_role, u.role) AS resolved_actor_role,
              COALESCE(e.first_name, s.first_name, '') AS actor_first_name,
              COALESCE(e.last_name, s.last_name, '') AS actor_last_name
       FROM audit_logs a
@@ -94,6 +147,7 @@ export class AuditRepository {
     const executor = conn ?? db;
     const sql = `
       SELECT a.*,
+             COALESCE(a.actor_role, u.role) AS resolved_actor_role,
              COALESCE(e.first_name, s.first_name, '') AS actor_first_name,
              COALESCE(e.last_name, s.last_name, '') AS actor_last_name
       FROM audit_logs a
@@ -203,9 +257,38 @@ export class AuditRepository {
 
     // Text search (in action_detail JSON)
     if (filter.search) {
-      whereClauses.push("(a.action_detail LIKE ? OR a.entity_type LIKE ?)");
+      whereClauses.push(`(
+        a.action_detail LIKE ?
+        OR a.entity_type LIKE ?
+        OR a.event_type LIKE ?
+        OR a.actor_role LIKE ?
+        OR a.ip_address LIKE ?
+        OR CAST(a.entity_id AS CHAR) LIKE ?
+        OR CAST(a.actor_id AS CHAR) LIKE ?
+        OR EXISTS (
+          SELECT 1
+          FROM users su
+          LEFT JOIN emp_profiles se ON su.citizen_id = se.citizen_id
+          LEFT JOIN emp_support_staff ss ON su.citizen_id = ss.citizen_id
+          WHERE su.id = a.actor_id
+            AND (
+              CONCAT_WS(' ', COALESCE(se.first_name, ss.first_name, ''), COALESCE(se.last_name, ss.last_name, '')) LIKE ?
+              OR su.citizen_id LIKE ?
+            )
+        )
+      )`);
       const searchPattern = `%${filter.search}%`;
-      params.push(searchPattern, searchPattern);
+      params.push(
+        searchPattern,
+        searchPattern,
+        searchPattern,
+        searchPattern,
+        searchPattern,
+        searchPattern,
+        searchPattern,
+        searchPattern,
+        searchPattern,
+      );
     }
 
     return {
@@ -223,7 +306,7 @@ export class AuditRepository {
       entity_type: row.entity_type,
       entity_id: row.entity_id,
       actor_id: row.actor_id,
-      actor_role: row.actor_role,
+      actor_role: row.resolved_actor_role ?? row.actor_role,
       action_detail: AuditRepository.parseActionDetail(row.action_detail),
       ip_address: row.ip_address,
       user_agent: row.user_agent,

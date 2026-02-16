@@ -5,8 +5,8 @@
  */
 
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
-import db, { getConnection, query } from "../../../config/database.js";
-import { MasterRateRow, PayPeriod } from "../entities/report.entity.js";
+import db, { getConnection, query } from '@config/database.js';
+import { MasterRateRow, PayPeriod } from '@/modules/report/entities/report.entity.js';
 
 export class ReportRepository {
   // ── Period queries ─────────────────────────────────────────────────────────

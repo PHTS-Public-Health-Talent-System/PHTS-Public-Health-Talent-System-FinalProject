@@ -10,7 +10,10 @@ import {
   getFinanceYearlySummary,
   getPayoutsByPeriod,
   markPayoutAsPaid,
-} from '@/features/finance/api';
+} from './api';
+
+const invalidateNavigation = (qc: ReturnType<typeof useQueryClient>) =>
+  qc.invalidateQueries({ queryKey: ['navigation'] });
 
 export function useFinanceDashboard() {
   return useQuery({
@@ -46,7 +49,10 @@ export function useMarkPayoutAsPaid() {
   return useMutation({
     mutationFn: ({ payoutId, payload }: { payoutId: number | string; payload: ApiPayload }) =>
       markPayoutAsPaid(payoutId, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['finance-payouts'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['finance-payouts'] });
+      invalidateNavigation(qc);
+    },
   });
 }
 
@@ -54,7 +60,10 @@ export function useBatchMarkAsPaid() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (payload: ApiPayload) => batchMarkAsPaid(payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['finance-payouts'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['finance-payouts'] });
+      invalidateNavigation(qc);
+    },
   });
 }
 
@@ -63,6 +72,9 @@ export function useCancelPayout() {
   return useMutation({
     mutationFn: ({ payoutId, payload }: { payoutId: number | string; payload?: ApiPayload }) =>
       cancelPayout(payoutId, payload),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['finance-payouts'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['finance-payouts'] });
+      invalidateNavigation(qc);
+    },
   });
 }

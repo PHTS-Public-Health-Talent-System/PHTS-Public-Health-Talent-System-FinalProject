@@ -7,7 +7,7 @@
  */
 
 /**
- * Personnel type classification for Thai hospital staff
+ * Personnel type category for Thai hospital staff
  */
 export enum PersonnelType {
   CIVIL_SERVANT = "CIVIL_SERVANT",
@@ -60,36 +60,11 @@ export enum FileType {
   OTHER = "OTHER",
 }
 
-/**
- * Step to Role mapping (6-step workflow)
- * Defines which role is responsible for approval at each workflow step
- */
-export const STEP_ROLE_MAP: Record<number, string> = {
-  1: "HEAD_WARD",
-  2: "HEAD_DEPT",
-  3: "PTS_OFFICER",
-  4: "HEAD_HR",
-  5: "HEAD_FINANCE",
-  6: "DIRECTOR",
-};
-
-/**
- * Role to Step mapping (reverse)
- * Maps user roles to their corresponding approval step number
- */
-export const ROLE_STEP_MAP: Record<string, number> = {
-  HEAD_WARD: 1,
-  HEAD_DEPT: 2,
-  PTS_OFFICER: 3,
-  HEAD_HR: 4,
-  HEAD_FINANCE: 5,
-  DIRECTOR: 6,
-};
-
-/**
- * Total number of approval steps in the workflow
- */
-export const TOTAL_APPROVAL_STEPS = 6;
+export {
+  STEP_ROLE_MAP,
+  ROLE_STEP_MAP,
+  TOTAL_APPROVAL_STEPS,
+} from '@shared/policy/request.policy.js';
 
 /**
  * Work attributes interface for P.T.S. form
@@ -132,6 +107,7 @@ export interface PTSRequest {
   // Timestamps
   created_at: Date;
   updated_at: Date;
+  step_started_at?: Date | null;
   submitted_at?: Date | null;
 
   // Verification snapshot status (for officer flow)
@@ -170,10 +146,6 @@ export interface RequestAttachment {
   file_size?: number;
   mime_type?: string;
   uploaded_at: Date;
-  ocr_status?: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | null;
-  ocr_confidence?: number | null;
-  ocr_provider?: string | null;
-  ocr_processed_at?: Date | null;
 }
 
 /**
@@ -188,6 +160,11 @@ export interface RequestWithDetails extends PTSRequest {
     first_name?: string;
     last_name?: string;
     position?: string;
+    license_no?: string | null;
+    license_name?: string | null;
+    license_valid_from?: Date | string | null;
+    license_valid_until?: Date | string | null;
+    license_status?: "ACTIVE" | "EXPIRED" | "INACTIVE" | "UNKNOWN" | null;
   };
 }
 
@@ -204,7 +181,7 @@ export interface RequestActionWithActor extends RequestAction {
 }
 
 // ─── DTOs moved to dto/ directory ───────────────────────────────────────────
-// Import from "./dto/index.js" instead:
+// Import from '@/modules/request/dto/index.js' instead:
 //   CreateRequestDTO, UpdateRequestDTO, CancelRequestDTO, SubmitRequestDTO,
 //   ApproveRequestDTO, RejectRequestDTO, ReturnRequestDTO,
 //   BatchApproveParams, BatchApproveResult, RequestFilters, PaginatedResult

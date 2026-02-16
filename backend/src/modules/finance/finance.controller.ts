@@ -5,8 +5,8 @@
  */
 
 import { Request, Response } from "express";
-import { ApiResponse } from "../../types/auth.js";
-import * as financeService from "./services/finance.service.js";
+import { ApiResponse } from '@/types/auth.js';
+import * as financeService from '@/modules/finance/services/finance.service.js';
 import type {
   GetSummaryQuery,
   GetYearlySummaryQuery,
@@ -17,7 +17,7 @@ import type {
   BatchMarkAsPaidBody,
   CancelPayoutParams,
   CancelPayoutBody,
-} from "./finance.schema.js";
+} from '@/modules/finance/finance.schema.js';
 
 /**
  * Get finance dashboard overview
@@ -93,7 +93,16 @@ export async function getPayoutsByPeriod(
     );
     res.json({ success: true, data: payouts });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    const message = error?.message || 'เกิดข้อผิดพลาดในการโหลดข้อมูล';
+    if (message.includes('not found')) {
+      res.status(404).json({ success: false, error: message });
+      return;
+    }
+    if (message === 'งวดนี้ยังไม่ผ่านการอนุมัติปิดรอบจากผู้บริหาร') {
+      res.status(403).json({ success: false, error: message });
+      return;
+    }
+    res.status(500).json({ success: false, error: message });
   }
 }
 

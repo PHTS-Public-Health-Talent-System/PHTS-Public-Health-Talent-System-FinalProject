@@ -5,8 +5,8 @@
  */
 
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
-import db from "../../../config/database.js";
-import { Holiday, PaymentRate } from "../entities/master-data.entity.js";
+import db from '@config/database.js';
+import { Holiday, PaymentRate } from '@/modules/master-data/entities/master-data.entity.js';
 
 export class MasterDataRepository {
   // ── Holiday queries ─────────────────────────────────────────────────────────

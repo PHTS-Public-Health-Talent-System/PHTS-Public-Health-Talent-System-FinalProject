@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation } from '@tanstack/react-query';
-import { downloadDetailReport, downloadSummaryReport } from '@/features/report/api';
+import { downloadDetailReport, downloadSummaryReport } from './api';
 import type { ApiParams } from '@/shared/api/types';
 
 export function useDownloadDetailReport() {

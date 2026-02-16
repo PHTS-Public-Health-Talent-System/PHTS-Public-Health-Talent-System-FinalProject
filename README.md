@@ -63,11 +63,6 @@ phts-project/
 │  ├─ next.config.ts
 │  └─ package.json
 │
-├─ infra/
-│  └─ ocr/                   # OCR stack (optional)
-│     ├─ docker-compose.ocr.yml
-│     ├─ ocr-typhoon/         # OCR service container
-│     └─ ocr-models/          # OCR model files (ignored)
 ├─ scripts/                  # Workspace scripts
 └─ package.json              # Root scripts
 ```
@@ -120,24 +115,13 @@ npm run build:all
 
 ---
 
-## 6) OCR Support
-
-OCR is optional but supported:
-
-- Docker compose lives at `infra/ocr/docker-compose.ocr.yml`
-- OCR results are stored in `req_ocr_results`
-
-See details in `backend/README.md`.
-
----
-
-## 7) Documentation
+## 6) Documentation
 
 - System design + workflows: `../docs/` (workspace root)
 
 ---
 
-## 8) Team Conventions
+## 7) Team Conventions
 
 - Keep domain logic inside the correct module
 - camelCase for API/services

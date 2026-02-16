@@ -10,6 +10,7 @@ export interface Holiday {
   holiday_id: number;
   holiday_date: string;
   holiday_name: string;
+  holiday_type?: "national" | "special" | "substitution" | null;
   is_active: boolean;
   created_at: Date;
   updated_at: Date;
@@ -34,6 +35,14 @@ export interface PaymentRate {
 export interface CreateHolidayInput {
   date: string;
   name: string;
+  type?: "national" | "special" | "substitution";
+}
+
+export interface UpdateHolidayInput {
+  originalDate: string;
+  date: string;
+  name: string;
+  type?: "national" | "special" | "substitution";
 }
 
 export interface UpdateRateInput {

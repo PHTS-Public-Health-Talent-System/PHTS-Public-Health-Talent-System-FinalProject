@@ -1,4 +1,4 @@
-import { RequestStatus, RequestType } from "../request.types.js";
+import { RequestStatus, RequestType } from '@/modules/request/request.types.js';
 
 /**
  * Filters for querying requests

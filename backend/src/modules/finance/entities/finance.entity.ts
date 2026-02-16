@@ -38,6 +38,7 @@ export interface FinanceSummary {
   period_month: number;
   period_year: number;
   period_status: string;
+  is_frozen: boolean | number;
   total_employees: number;
   total_amount: number;
   paid_amount: number;

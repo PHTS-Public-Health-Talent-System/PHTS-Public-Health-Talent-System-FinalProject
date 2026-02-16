@@ -3,8 +3,8 @@ import {
   PersonnelType,
   RequestType,
   WorkAttributes,
-} from "../request.types.js";
-import { CreateRequestDTO } from "../dto/index.js";
+} from '@/modules/request/request.types.js';
+import { CreateRequestDTO } from '@/modules/request/dto/index.js';
 
 /**
  * Parsed request payload with file categorization
@@ -12,7 +12,6 @@ import { CreateRequestDTO } from "../dto/index.js";
 export interface ParsedRequestPayload {
   dto: CreateRequestDTO;
   documents: Express.Multer.File[];
-  signature?: Express.Multer.File;
 }
 
 /**
@@ -106,8 +105,6 @@ export const parseCreateRequestPayload = (
 
   // 4. File Categorization
   let documents: Express.Multer.File[] = [];
-  let signature: Express.Multer.File | undefined;
-
   if (files) {
     if (files["files"]) {
       documents = [...documents, ...files["files"]];
@@ -115,13 +112,7 @@ export const parseCreateRequestPayload = (
     if (files["license_file"]) {
       documents = [...documents, ...files["license_file"]];
     }
-    if (
-      files["applicant_signature"] &&
-      files["applicant_signature"].length > 0
-    ) {
-      signature = files["applicant_signature"][0];
-    }
   }
 
-  return { dto, documents, signature };
+  return { dto, documents };
 };

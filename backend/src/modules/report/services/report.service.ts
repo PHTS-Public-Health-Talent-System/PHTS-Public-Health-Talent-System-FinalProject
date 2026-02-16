@@ -1,14 +1,14 @@
 import ExcelJS from "exceljs";
-import { getPayoutDataForReport } from "../../snapshot/services/snapshot.service.js";
-import { ReportRepository } from "../repositories/report.repository.js";
+import { getPayoutDataForReport } from '@/modules/snapshot/services/snapshot.service.js';
+import { ReportRepository } from '@/modules/report/repositories/report.repository.js';
 import {
   ReportParams,
   PayoutRow,
   PROFESSION_NAME_MAP,
-} from "../entities/report.entity.js";
+} from '@/modules/report/entities/report.entity.js';
 
 // Re-export entities for backward compatibility
-export * from "../entities/report.entity.js";
+export * from '@/modules/report/entities/report.entity.js';
 
 const BORDER_STYLE: Partial<ExcelJS.Borders> = {
   top: { style: "thin" },
@@ -23,6 +23,28 @@ const FONT_HEADER: Partial<ExcelJS.Font> = {
   bold: true,
 };
 const FONT_BODY: Partial<ExcelJS.Font> = { name: "TH SarabunPSK", size: 16 };
+
+const escapeCsvValue = (value: string | number | null | undefined): string => {
+  const normalized = value === null || value === undefined ? "" : String(value);
+  if (
+    normalized.includes(",") ||
+    normalized.includes('"') ||
+    normalized.includes("\n")
+  ) {
+    return `"${normalized.replace(/"/g, '""')}"`;
+  }
+  return normalized;
+};
+
+const buildCsv = (
+  headers: string[],
+  rows: Array<Array<string | number | null | undefined>>,
+): Buffer => {
+  const csv = [headers, ...rows]
+    .map((line) => line.map((cell) => escapeCsvValue(cell)).join(","))
+    .join("\n");
+  return Buffer.from(`\uFEFF${csv}`, "utf-8");
+};
 
 export async function generateDetailReport(
   params: ReportParams,
@@ -319,4 +341,130 @@ export async function generateSummaryReport(
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);
+}
+
+export async function generateDetailReportCsv(
+  params: ReportParams,
+): Promise<Buffer> {
+  const { year, month, professionCode } = params;
+  const periodId = await ReportRepository.getPeriodId(year, month);
+  const payoutData = await getPayoutDataForReport(periodId);
+  const payouts = payoutData.data as PayoutRow[];
+
+  const rateIds = payouts
+    .map((row) => row.master_rate_id)
+    .filter((id): id is number => typeof id === "number");
+  const rateMap = await ReportRepository.getMasterRateMap(Array.from(new Set(rateIds)));
+
+  const rows = payouts
+    .map((row) => {
+      const rate = row.master_rate_id
+        ? rateMap.get(row.master_rate_id)
+        : undefined;
+      const profession =
+        (row as any).profession_code ?? rate?.profession_code ?? null;
+      return {
+        first_name: row.first_name || "",
+        last_name: row.last_name || "",
+        position_name: row.position_name || "",
+        base_rate:
+          row.pts_rate_snapshot ?? (row as any).base_rate ?? rate?.amount ?? 0,
+        current_receive: Number(row.calculated_amount) || 0,
+        retro: Number(row.retroactive_amount) || 0,
+        total: Number(row.total_payable) || 0,
+        group_no: (row as any).group_no ?? rate?.group_no ?? null,
+        item_no: (row as any).item_no ?? rate?.item_no ?? null,
+        profession_code: profession,
+        remark: row.remark || "",
+      };
+    })
+    .filter((row) => !professionCode || row.profession_code === professionCode)
+    .sort((a, b) => a.first_name.localeCompare(b.first_name, "th"));
+
+  return buildCsv(
+    [
+      "ลำดับ",
+      "ชื่อ-สกุล",
+      "ตำแหน่ง",
+      "อัตราเงินเพิ่มที่ได้รับ/เดือน(บาท)",
+      "ได้รับจริง(บาท)",
+      "ตกเบิก(บาท)",
+      "รวมรับ(บาท)",
+      "กลุ่มที่",
+      "ข้อ",
+      "อัตรา(บาท)",
+      "หมายเหตุ",
+    ],
+    rows.map((row, idx) => [
+      idx + 1,
+      `${row.first_name} ${row.last_name}`.trim(),
+      row.position_name,
+      Number(row.base_rate).toFixed(2),
+      Number(row.current_receive).toFixed(2),
+      Number(row.retro).toFixed(2),
+      Number(row.total).toFixed(2),
+      row.group_no ?? "",
+      row.item_no ?? "-",
+      Number(row.base_rate).toFixed(2),
+      row.remark,
+    ]),
+  );
+}
+
+export async function generateSummaryReportCsv(
+  year: number,
+  month: number,
+): Promise<Buffer> {
+  const periodId = await ReportRepository.getPeriodId(year, month);
+  const payoutData = await getPayoutDataForReport(periodId);
+  const payouts = payoutData.data as PayoutRow[];
+
+  const rateIds = payouts
+    .map((row) => row.master_rate_id)
+    .filter((id): id is number => typeof id === "number");
+  const rateMap = await ReportRepository.getMasterRateMap(Array.from(new Set(rateIds)));
+
+  const summaryMap = new Map<
+    string,
+    { sum_current: number; sum_retro: number; sum_total: number }
+  >();
+  for (const row of payouts) {
+    const rate = row.master_rate_id
+      ? rateMap.get(row.master_rate_id)
+      : undefined;
+    const profession =
+      (row as any).profession_code ?? rate?.profession_code ?? "UNKNOWN";
+    const current = Number(row.calculated_amount) || 0;
+    const retro = Number(row.retroactive_amount) || 0;
+    const total = Number(row.total_payable) || 0;
+    const bucket = summaryMap.get(profession) || {
+      sum_current: 0,
+      sum_retro: 0,
+      sum_total: 0,
+    };
+    bucket.sum_current += current;
+    bucket.sum_retro += retro;
+    bucket.sum_total += total;
+    summaryMap.set(profession, bucket);
+  }
+
+  const rows = Array.from(summaryMap.entries())
+    .map(([profession_code, sums]) => ({
+      profession_code,
+      sum_current: sums.sum_current,
+      sum_retro: sums.sum_retro,
+      sum_total: sums.sum_total,
+    }))
+    .sort((a, b) => a.profession_code.localeCompare(b.profession_code, "th"));
+
+  return buildCsv(
+    ["ที่", "กลุ่มวิชาชีพ", "ยอดเดือนปัจจุบัน", "ยอดตกเบิก", "รวมเป็นเงิน"],
+    rows.map((row, idx) => [
+      idx + 1,
+      PROFESSION_NAME_MAP[row.profession_code] || row.profession_code,
+      Number(row.sum_current).toFixed(2),
+      Number(row.sum_retro).toFixed(2),
+      Number(row.sum_total).toFixed(2),
+    ]),
+  );
 }

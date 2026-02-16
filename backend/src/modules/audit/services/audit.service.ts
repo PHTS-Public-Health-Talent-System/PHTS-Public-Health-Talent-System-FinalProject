@@ -7,19 +7,19 @@
  */
 
 import { PoolConnection } from "mysql2/promise";
-import { AuditRepository } from "../repositories/audit.repository.js";
+import { AuditRepository } from '@/modules/audit/repositories/audit.repository.js';
 import {
   AuditEvent,
   CreateAuditEventInput,
   AuditSearchFilter,
   AuditSearchResult,
   AuditSummaryItem,
-} from "../entities/audit.entity.js";
+} from '@/modules/audit/entities/audit.entity.js';
 
 // Re-export types for backward compatibility
-export { AuditEventType } from "../entities/audit.entity.js";
-export type { CreateAuditEventInput as CreateAuditEventDTO } from "../entities/audit.entity.js";
-export type { AuditEvent, AuditSearchFilter } from "../entities/audit.entity.js";
+export { AuditEventType } from '@/modules/audit/entities/audit.entity.js';
+export type { CreateAuditEventInput as CreateAuditEventDTO } from '@/modules/audit/entities/audit.entity.js';
+export type { AuditEvent, AuditSearchFilter } from '@/modules/audit/entities/audit.entity.js';
 
 /**
  * Log an audit event
@@ -29,6 +29,27 @@ export async function logAuditEvent(
   connection?: PoolConnection,
 ): Promise<number> {
   return AuditRepository.create(dto, connection);
+}
+
+/**
+ * Standardized audit logger (normalizes optional fields)
+ */
+export async function emitAuditEvent(
+  dto: CreateAuditEventInput,
+  connection?: PoolConnection,
+): Promise<number> {
+  return logAuditEvent(
+    {
+      ...dto,
+      entityId: dto.entityId ?? null,
+      actorId: dto.actorId ?? null,
+      actorRole: dto.actorRole ?? null,
+      actionDetail: dto.actionDetail ?? null,
+      ipAddress: dto.ipAddress ?? null,
+      userAgent: dto.userAgent ?? null,
+    },
+    connection,
+  );
 }
 
 /**
@@ -122,4 +143,18 @@ export async function logAuditEventWithRequest(
     },
     connection,
   );
+}
+
+/**
+ * Standardized audit logger with request context
+ */
+export async function emitAuditEventWithRequest(
+  req: any,
+  dto: Omit<
+    CreateAuditEventInput,
+    "ipAddress" | "userAgent" | "actorId" | "actorRole"
+  >,
+  connection?: PoolConnection,
+): Promise<number> {
+  return logAuditEventWithRequest(req, dto, connection);
 }

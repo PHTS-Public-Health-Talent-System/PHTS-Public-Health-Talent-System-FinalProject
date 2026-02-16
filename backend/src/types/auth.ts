@@ -70,9 +70,16 @@ export interface UserProfile {
   position?: string | null;
   position_number?: string | null;
   department?: string | null;
+  email?: string | null;
+  phone?: string | null;
   employee_type?: string | null;
   mission_group?: string | null;
   start_current_position?: Date | null;
+  license_no?: string | null;
+  license_name?: string | null;
+  license_valid_from?: Date | string | null;
+  license_valid_until?: Date | string | null;
+  license_status?: 'ACTIVE' | 'EXPIRED' | 'INACTIVE' | 'UNKNOWN' | null;
 }
 
 /**

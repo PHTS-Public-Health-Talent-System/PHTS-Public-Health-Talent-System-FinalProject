@@ -6,34 +6,42 @@
  */
 
 import { Request, Response } from "express";
-import { ApiResponse } from "../../../types/auth.js";
+import { ApiResponse, UserRole } from '@/types/auth.js';
 
 // Services
-import { requestQueryService } from "../services/query.service.js";
-import { requestCommandService } from "../services/command.service.js";
-import { requestApprovalService } from "../services/approval.service.js";
-import * as reassignService from "../reassign/reassign.service.js";
-import * as ocrService from "../ocr/ocr.service.js";
+import { requestQueryService } from '@/modules/request/services/query.service.js';
+import { requestCommandService } from '@/modules/request/services/command.service.js';
+import { requestApprovalService } from '@/modules/request/services/approval.service.js';
+import * as reassignService from '@/modules/request/reassign/reassign.service.js';
+import * as rateService from '@/modules/master-data/services/rate.service.js';
 
-import { getUserScopesForDisplay } from "../scope/scope.service.js";
-import {
-  getAllActiveMasterRates,
-} from "../classification/classification.service.js";
+import { getUserScopesForDisplay, getUserScopesWithMembers } from '@/modules/request/scope/scope.service.js';
 
-import { requestRepository } from "../repositories/request.repository.js";
+import { requestRepository } from '@/modules/request/repositories/request.repository.js';
 import {
   cleanupUploadSession,
-} from "../helpers/utils.js";
+} from '@/modules/request/helpers/utils.js';
 
 import {
   createRequestSchema,
-} from "../dto/create-request.dto.js";
+} from '@/modules/request/dto/create-request.dto.js';
+import { updateRequestSchema } from "@/modules/request/dto/update-request.dto.js";
 
 import {
   catchAsync,
   AuthenticationError,
+  AuthorizationError,
   ValidationError,
-} from "../../../shared/utils/errors.js";
+} from '@shared/utils/errors.js';
+import { resolveProfessionCode } from '@shared/utils/profession.js';
+import { ELIGIBILITY_EXPIRING_DAYS } from '@/modules/request/request.constants.js';
+
+const decodeSignatureBase64 = (payload?: string): Buffer | null => {
+  if (!payload || typeof payload !== "string") return null;
+  const base64 = payload.includes(",") ? payload.split(",")[1] : payload;
+  if (!base64) return null;
+  return Buffer.from(base64, "base64");
+};
 
 export class RequestController {
 
@@ -41,8 +49,18 @@ export class RequestController {
 
   getRequestById = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
     if (!req.user) throw new AuthenticationError("Unauthorized access");
-    const requestId = parseInt(req.params.id);
-    if (isNaN(requestId)) throw new ValidationError("Invalid Request ID");
+    assertNotAdmin(req);
+    const rawId = String(req.params.id || "");
+    let requestId = Number(rawId);
+    if (!Number.isNaN(requestId) && Number.isFinite(requestId)) {
+      // use numeric id
+    } else if (/^(PTS-\d+|REQ-\d{4}-\d+)$/i.test(rawId)) {
+      const request = await requestRepository.findByRequestNo(rawId);
+      if (!request) throw new ValidationError("Request not found");
+      requestId = request.request_id;
+    } else {
+      throw new ValidationError("Invalid Request ID");
+    }
 
     const request = await requestQueryService.getRequestById(
       requestId,
@@ -55,13 +73,20 @@ export class RequestController {
 
   getMyRequests = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
      if (!req.user) throw new AuthenticationError("Unauthorized access");
+     assertNotAdmin(req);
      const requests = await requestQueryService.getMyRequests(req.user.userId);
      res.json({ success: true, data: requests });
   });
 
   getHistory = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
-      const history = await requestQueryService.getApprovalHistory(req.user.userId);
+      const view = req.query.view === "mine" ? "mine" : "team";
+      const includeAllActions = req.query.actions === "all";
+      const history = await requestQueryService.getApprovalHistory(
+          req.user.userId,
+          req.user.role,
+          { view, includeAllActions },
+      );
       res.json({ success: true, data: history });
   });
 
@@ -76,10 +101,194 @@ export class RequestController {
       res.json({ success: true, data: requests });
   });
 
+  getEligibilityList = catchAsync(
+    async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      const activeOnly = String(req.query.active_only ?? "1") !== "0";
+      const hasAnyFilter =
+        typeof req.query.page !== "undefined" ||
+        typeof req.query.limit !== "undefined" ||
+        typeof req.query.profession_code !== "undefined" ||
+        typeof req.query.search !== "undefined" ||
+        typeof req.query.rate_group !== "undefined" ||
+        typeof req.query.department !== "undefined" ||
+        typeof req.query.sub_department !== "undefined" ||
+        typeof req.query.license_status !== "undefined";
+
+      if (!hasAnyFilter) {
+        const rows = await requestQueryService.getEligibilityList(activeOnly);
+        res.json({ success: true, data: rows });
+        return;
+      }
+
+      const page = Number(req.query.page ?? 1);
+      const limit = Number(req.query.limit ?? 20);
+      const professionCodeRaw = typeof req.query.profession_code === "string" ? req.query.profession_code : "ALL";
+      const professionCode = professionCodeRaw.toUpperCase() === "ALL" ? "ALL" : professionCodeRaw.toUpperCase();
+      const search = typeof req.query.search === "string" ? req.query.search.trim() : null;
+      const rateGroup = typeof req.query.rate_group === "string" ? req.query.rate_group.trim() : null;
+      const department = typeof req.query.department === "string" ? req.query.department.trim() : null;
+      const subDepartment = typeof req.query.sub_department === "string" ? req.query.sub_department.trim() : null;
+      const licenseStatus =
+        typeof req.query.license_status === "string" && req.query.license_status !== "all"
+          ? (req.query.license_status as any)
+          : null;
+
+      const data = await requestQueryService.getEligibilityListPaged({
+        activeOnly,
+        page: Number.isFinite(page) && page > 0 ? page : 1,
+        limit: Number.isFinite(limit) && limit > 0 ? Math.min(limit, 100) : 20,
+        professionCode,
+        search: search && search.length ? search : null,
+        rateGroup: rateGroup && rateGroup.length ? rateGroup : null,
+        department: department && department.length ? department : null,
+        subDepartment: subDepartment && subDepartment.length ? subDepartment : null,
+        licenseStatus,
+        expiringDays: ELIGIBILITY_EXPIRING_DAYS,
+      });
+
+      res.json({ success: true, data });
+    },
+  );
+
+  getEligibilitySummary = catchAsync(
+    async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      const activeOnly = String(req.query.active_only ?? "1") !== "0";
+      const data = await requestQueryService.getEligibilitySummary(activeOnly);
+      res.json({ success: true, data });
+    },
+  );
+
+  exportEligibilityCsv = catchAsync(
+    async (req: Request, res: Response) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+
+      const activeOnly = String(req.query.active_only ?? "1") !== "0";
+      const professionCodeRaw =
+        typeof req.query.profession_code === "string" ? req.query.profession_code : "ALL";
+      const professionCode =
+        professionCodeRaw.toUpperCase() === "ALL" ? "ALL" : professionCodeRaw.toUpperCase();
+      const search = typeof req.query.search === "string" ? req.query.search.trim() : null;
+      const rateGroup = typeof req.query.rate_group === "string" ? req.query.rate_group.trim() : null;
+      const department = typeof req.query.department === "string" ? req.query.department.trim() : null;
+      const subDepartment =
+        typeof req.query.sub_department === "string" ? req.query.sub_department.trim() : null;
+      const licenseStatus =
+        typeof req.query.license_status === "string" && req.query.license_status !== "all"
+          ? (req.query.license_status as any)
+          : null;
+
+      // Hard safety guard to avoid accidental huge exports.
+      const meta = await requestRepository.findEligibilityListMeta({
+        activeOnly,
+        professionCode,
+        search,
+        rateGroup,
+        department,
+        subDepartment,
+        licenseStatus,
+        expiringDays: ELIGIBILITY_EXPIRING_DAYS,
+      });
+      const maxRows = 20000;
+      if (meta.total > maxRows) {
+        res.status(413).json({
+          success: false,
+          error: `Too many rows to export (${meta.total}). Please narrow filters (max ${maxRows}).`,
+        });
+        return;
+      }
+
+      const rows = await requestRepository.findEligibilityListPaged(
+        {
+          activeOnly,
+          professionCode,
+          search,
+          rateGroup,
+          department,
+          subDepartment,
+          licenseStatus,
+          expiringDays: ELIGIBILITY_EXPIRING_DAYS,
+        },
+        1,
+        maxRows,
+      );
+
+      const escapeCsv = (value: unknown) => {
+        if (value === null || value === undefined) return "";
+        const s = String(value);
+        if (/[",\n]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+        return s;
+      };
+
+      const header = [
+        "eligibility_id",
+        "request_no",
+        "full_name",
+        "profession_code",
+        "position_name",
+        "department",
+        "sub_department",
+        "group_no",
+        "item_no",
+        "sub_item_no",
+        "rate_amount",
+        "effective_date",
+        "expiry_date",
+      ];
+
+      const lines: string[] = [];
+      // UTF-8 BOM for Excel-friendly Thai text.
+      lines.push("\uFEFF" + header.join(","));
+
+      for (const r of rows as any[]) {
+        const fullName = `${r.title ?? ""}${r.first_name ?? ""} ${r.last_name ?? ""}`.trim();
+        lines.push(
+          [
+            r.eligibility_id,
+            r.request_no,
+            fullName,
+            r.profession_code,
+            r.position_name,
+            r.department,
+            r.sub_department,
+            r.group_no,
+            r.item_no,
+            r.sub_item_no,
+            r.rate_amount,
+            r.effective_date,
+            r.expiry_date,
+          ]
+            .map(escapeCsv)
+            .join(","),
+        );
+      }
+
+      const now = new Date();
+      const fileName = `eligibility_${now.toISOString().slice(0, 19).replace(/[:T]/g, "-")}.csv`;
+      res.setHeader("Content-Type", "text/csv; charset=utf-8");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.status(200).send(lines.join("\n"));
+    },
+  );
+
+  getEligibilityById = catchAsync(
+    async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      const eligibilityId = Number(req.params.eligibilityId);
+      if (!Number.isFinite(eligibilityId)) {
+        throw new ValidationError("Invalid eligibility ID");
+      }
+      const row = await requestQueryService.getEligibilityById(eligibilityId);
+      res.json({ success: true, data: row });
+    },
+  );
+
   // --- WRITE Operations ---
 
   createRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
 
       const validation = createRequestSchema.safeParse(req);
       if (!validation.success) {
@@ -89,7 +298,10 @@ export class RequestController {
       }
 
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
-      const documentFiles = files?.["files"] || [];
+      const documentFiles = [
+        ...(files?.["files"] || []),
+        ...(files?.["files[]"] || []),
+      ];
       const licenseFiles = files?.["license_file"] || [];
       const signatureFiles = files?.["applicant_signature"] || [];
       const allFiles = [...documentFiles, ...licenseFiles, ...signatureFiles];
@@ -115,16 +327,26 @@ export class RequestController {
 
   updateRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
       const requestId = parseInt(req.params.id);
 
+      const validation = updateRequestSchema.safeParse(req);
+      if (!validation.success) {
+          cleanupUploadSession(req);
+          throw new ValidationError("Validation failed", { errors: (validation as any).error.format() });
+      }
+
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
-      const documentFiles = files?.["files"] || [];
+      const documentFiles = [
+        ...(files?.["files"] || []),
+        ...(files?.["files[]"] || []),
+      ];
       const licenseFiles = files?.["license_file"] || [];
       const signatureFiles = files?.["applicant_signature"] || [];
       const allFiles = [...documentFiles, ...licenseFiles, ...signatureFiles];
       const signatureFile = signatureFiles[0];
 
-      const requestData = req.body;
+      const requestData = validation.data.body;
 
       const updated = await requestCommandService.updateRequest(
           requestId,
@@ -159,11 +381,18 @@ export class RequestController {
   processAction = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
       const requestId = parseInt(req.params.id);
-      const { action, comment } = req.body;
+      const { action, comment, signature_base64 } = req.body;
 
       let result;
       if (action === 'APPROVE') {
-          result = await requestApprovalService.approveRequest(requestId, req.user.userId, req.user.role, comment);
+          const signatureSnapshot = decodeSignatureBase64(signature_base64);
+          result = await requestApprovalService.approveRequest(
+            requestId,
+            req.user.userId,
+            req.user.role,
+            comment,
+            signatureSnapshot,
+          );
       } else if (action === 'REJECT') {
           result = await requestApprovalService.rejectRequest(requestId, req.user.userId, req.user.role, comment);
       } else if (action === 'RETURN') {
@@ -178,8 +407,15 @@ export class RequestController {
   approveRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
       const requestId = parseInt(req.params.id);
-      const { comment } = req.body;
-      const result = await requestApprovalService.approveRequest(requestId, req.user.userId, req.user.role, comment);
+      const { comment, signature_base64 } = req.body;
+      const signatureSnapshot = decodeSignatureBase64(signature_base64);
+      const result = await requestApprovalService.approveRequest(
+        requestId,
+        req.user.userId,
+        req.user.role,
+        comment,
+        signatureSnapshot,
+      );
       res.json({ success: true, data: result });
   });
 
@@ -246,87 +482,20 @@ export class RequestController {
     res.json({ success: true, message: "Leave request adjusted successfully" });
   });
 
-  // --- OCR & ATTACHMENTS ---
-
-  getAttachmentOcr = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
-      if (!req.user) throw new AuthenticationError("Unauthorized access");
-      const attachmentId = parseInt(req.params.attachmentId);
-      if (isNaN(attachmentId)) throw new ValidationError("Invalid Attachment ID");
-
-      const attachment = await requestRepository.findAttachmentById(attachmentId);
-      if (!attachment) throw new ValidationError("Attachment not found");
-
-      const request = await requestRepository.findById(attachment.request_id);
-      if (!request) throw new ValidationError("Request not found");
-
-      const isOwner = request.user_id === req.user.userId;
-      const isPrivileged = req.user.role === "PTS_OFFICER" || req.user.role === "ADMIN";
-      if (!isOwner && !isPrivileged) {
-        throw new AuthenticationError("Unauthorized access");
-      }
-
-      const result = await ocrService.getOcrRecord(attachmentId);
-      res.json({ success: true, data: result });
-  });
-
-  requestAttachmentOcr = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
-      if (!req.user) throw new AuthenticationError("Unauthorized access");
-      const attachmentId = parseInt(req.params.attachmentId);
-      if (isNaN(attachmentId)) throw new ValidationError("Invalid Attachment ID");
-
-      const attachment = await requestRepository.findAttachmentById(attachmentId);
-      if (!attachment) throw new ValidationError("Attachment not found");
-
-      const request = await requestRepository.findById(attachment.request_id);
-      if (!request) throw new ValidationError("Request not found");
-
-      const isOwner = request.user_id === req.user.userId;
-      const isPrivileged = req.user.role === "PTS_OFFICER" || req.user.role === "ADMIN";
-      if (!isOwner && !isPrivileged) {
-        throw new AuthenticationError("Unauthorized access");
-      }
-
-      const result = await ocrService.requestOcrProcessing(attachmentId);
-      res.json({ success: true, data: result });
-  });
-
-  confirmAttachments = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
-      if (!req.user) throw new AuthenticationError("Unauthorized access");
-      const requestId = parseInt(req.params.id);
-      if (isNaN(requestId)) throw new ValidationError("Invalid Request ID");
-
-      const request = await requestQueryService.getRequestById(
-        requestId,
-        req.user.userId,
-        req.user.role,
-      );
-
-      const attachments = request.attachments ?? [];
-      const targets = attachments.filter(
-        (att) => att.file_type && att.file_type !== "SIGNATURE",
-      );
-
-      for (const att of targets) {
-        await ocrService.requestOcrProcessing(att.attachment_id);
-      }
-
-      res.json({
-        success: true,
-        message: "Attachments confirmed",
-        data: { queued: targets.map((t) => t.attachment_id) },
-      });
-  });
-
   // --- OTHER ---
 
   getMasterRates = catchAsync(async (_req: Request, res: Response<ApiResponse>) => {
-      const rates = await getAllActiveMasterRates();
+      const req = _req as Request;
+      if (!req.user) throw new AuthenticationError("Unauthorized access");
+      assertNotAdmin(req);
+      const rates = await rateService.getMasterRates();
       res.json({ success: true, data: rates });
   });
 
 
   getPrefill = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user?.citizenId) throw new AuthenticationError("Unauthorized");
+      assertNotAdmin(req);
 
       const emp = await requestRepository.findEmployeeProfile(req.user.citizenId);
 
@@ -347,49 +516,34 @@ export class RequestController {
       res.json({ success: true, data: scopes });
   });
 
-  getRecommendedClassification = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
-       if (!req.user) throw new AuthenticationError("Unauthorized access");
-       const requestId = parseInt(req.params.id);
+  getMyScopeMembers = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+      if (!req.user?.userId) throw new AuthenticationError("Unauthorized");
+      if (!req.user?.role) throw new AuthenticationError("Unauthorized");
 
-       // 1. Get OCR Text
-       const ocrText = await ocrService.getOcrTextForRequest(requestId);
-
-       if (!ocrText) {
-          res.json({ success: true, data: null });
-          return;
-       }
-
-       // 2. Get Request for Citizen ID
-       const request = await requestQueryService.getRequestById(requestId, req.user.userId, req.user.role);
-
-       // 3. Find Recommended Rate
-       const { findRecommendedRate } = await import("../classification/classification.service.js");
-       const result = await findRecommendedRate((request as any).citizen_id, ocrText);
-
-       if (result) {
-         const hintParts = [`กลุ่ม ${result.group_no}`, `ข้อ ${result.item_no}`];
-         if (result.sub_item_no) hintParts.push(`ข้อย่อย ${result.sub_item_no}`);
-
-         res.json({
-           success: true,
-           data: {
-             source: "OCR",
-             ...result,
-             hint_text: `มีแนวโน้มเข้าข่าย${hintParts.join(" ")}`,
-           },
-         });
-         return;
-       }
-
-       res.json({ success: true, data: result });
+      const scopeMembers = await getUserScopesWithMembers(req.user.userId, req.user.role);
+      res.json({ success: true, data: scopeMembers });
   });
 
-  updateClassification = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+  confirmAttachments = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+    if (!req.user) throw new AuthenticationError("Unauthorized access");
+    assertNotAdmin(req);
+    const requestId = parseInt(req.params.id);
+    if (isNaN(requestId)) throw new ValidationError("Invalid Request ID");
+    const result = await requestCommandService.confirmAttachments(
+      requestId,
+      req.user.userId,
+    );
+    res.json({ success: true, data: result, message: "Attachments confirmed" });
+  });
+
+
+
+  updateRateMapping = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
       if (!req.user) throw new AuthenticationError("Unauthorized access");
       const requestId = parseInt(req.params.id);
       const { group_no, item_no, sub_item_no } = req.body;
 
-      const result = await requestCommandService.updateClassification(
+      const result = await requestCommandService.updateRateMapping(
           requestId,
           req.user.userId,
           req.user.role,
@@ -404,14 +558,22 @@ export class RequestController {
   });
 
   cancelRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+     if (!req.user) throw new AuthenticationError("Unauthorized access");
+     assertNotAdmin(req);
      const requestId = parseInt(req.params.id);
      await requestCommandService.cancelRequest(requestId, req.user!.userId);
      res.json({ success: true, message: "Cancelled" });
   });
 
   submitRequest = catchAsync(async (req: Request, res: Response<ApiResponse>) => {
+     if (!req.user) throw new AuthenticationError("Unauthorized access");
+     assertNotAdmin(req);
      const requestId = parseInt(req.params.id);
-     const result = await requestCommandService.submitRequest(requestId, req.user!.userId);
+     const result = await requestCommandService.submitRequest(
+       requestId,
+       req.user!.userId,
+       req.user!.role,
+     );
      res.json({ success: true, message: "Submitted", data: result });
   });
 
@@ -427,27 +589,10 @@ export class RequestController {
   });
 }
 
-// Helper
-const resolveProfessionCode = (positionName: string): string | null => {
-  const name = positionName.trim();
-  if (name.includes("ทันตแพทย์")) return "DENTIST";
-  if (name.includes("นายแพทย์") || name.includes("แพทย์")) return "DOCTOR";
-  if (name.includes("เภสัชกร")) return "PHARMACIST";
-  if (name.includes("พยาบาล")) {
-      const excluded = ["ผู้ช่วยพยาบาล", "พนักงานช่วยการพยาบาล", "พนักงานช่วยเหลือคนไข้"];
-      if (excluded.some(v => name.startsWith(v))) return null;
-      return "NURSE";
+const assertNotAdmin = (req: Request) => {
+  if (req.user?.role === UserRole.ADMIN) {
+    throw new AuthorizationError("ADMIN ไม่สามารถทำรายการคำขอได้");
   }
-  if (name.startsWith("นักเทคนิคการแพทย์")) return "MED_TECH";
-  if (name.startsWith("นักรังสีการแพทย์")) return "RAD_TECH";
-  if (name.startsWith("นักกายภาพบำบัด") || name.startsWith("นักกายภาพบําบัด")) return "PHYSIO";
-  if (name.startsWith("นักกิจกรรมบำบัด") || name.startsWith("นักกิจกรรมบําบัด")) return "OCC_THERAPY";
-  if (name.startsWith("นักอาชีวบำบัด") || name.startsWith("นักอาชีวบําบัด")) return "OCC_THERAPY";
-  if (name.startsWith("นักจิตวิทยา")) return "CLIN_PSY";
-  if (name.startsWith("นักแก้ไขความผิดปกติ")) return "SPEECH_THERAPIST";
-  if (name.startsWith("นักวิชาการศึกษาพิเศษ")) return "SPECIAL_EDU";
-  if (name.startsWith("นักเทคโนโลยีหัวใจและทรวงอก")) return "CARDIO_TECH";
-  return null;
 };
 
 export const requestController = new RequestController();

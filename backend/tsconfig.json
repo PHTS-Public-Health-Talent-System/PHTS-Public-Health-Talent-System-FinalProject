@@ -49,13 +49,11 @@
     "paths": {
       "@/*": ["src/*"],
       "@config/*": ["src/config/*"],
-      "@controllers/*": ["src/controllers/*"],
       "@middlewares/*": ["src/middlewares/*"],
-      "@models/*": ["src/models/*"],
-      "@routes/*": ["src/routes/*"],
-      "@services/*": ["src/services/*"],
-      "@utils/*": ["src/utils/*"],
-      "@types/*": ["src/types/*"]
+      "@types/*": ["src/types/*"],
+      "@shared/*": ["src/shared/*"],
+      "@scripts/*": ["src/scripts/*"],
+      "@validators/*": ["src/validators/*"]
     },
 
     /* Completeness */

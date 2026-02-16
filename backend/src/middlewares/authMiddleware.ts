@@ -8,7 +8,7 @@
 
 import { Request, Response, NextFunction } from "express";
 import passport from "passport";
-import { UserRole, ApiResponse } from "../types/auth.js";
+import { UserRole, ApiResponse } from '@/types/auth.js';
 
 /**
  * Protect Middleware

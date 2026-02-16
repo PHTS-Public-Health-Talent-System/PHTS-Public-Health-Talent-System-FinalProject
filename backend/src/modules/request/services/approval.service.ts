@@ -4,30 +4,27 @@
  * Approval workflow operations: approve, reject, return, batch approve
  */
 import { PoolConnection } from "mysql2/promise";
-import { getConnection } from "../../../config/database.js";
+import { getConnection } from '@config/database.js';
 import {
   RequestStatus,
   ActionType,
   PTSRequest,
   STEP_ROLE_MAP,
   ROLE_STEP_MAP,
-} from "../request.types.js";
-import { BatchApproveParams, BatchApproveResult } from "../dto/index.js";
-import { NotificationService } from "../../notification/services/notification.service.js";
+} from '@/modules/request/request.types.js';
+import { BatchApproveParams, BatchApproveResult } from '@/modules/request/dto/index.js';
+import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import {
   mapRequestRow,
   normalizeDateToYMD,
   getRequestLinkForRole,
-} from "./helpers.js";
+} from '@/modules/request/services/helpers.js';
 import {
   canApproverAccessRequest,
-  canSelfApprove,
   isRequestOwner,
-} from "../scope/scope.service.js";
-import { logAuditEvent, AuditEventType } from "../../audit/services/audit.service.js";
-import { requestRepository } from "../repositories/request.repository.js";
-import { findRecommendedRate } from "../classification/classification.service.js";
-import { createEligibility } from "../classification/eligibility.service.js";
+} from '@/modules/request/scope/scope.service.js';
+import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
+import { requestRepository } from '@/modules/request/repositories/request.repository.js';
 
 // ============================================================================
 // Finalization
@@ -56,13 +53,8 @@ const finalizeRequest = async (
   // 1. Try rate from submission_data
   let rateId = request.submission_data?.rate_id;
 
-  // 2. Try findRecommendedRate by citizenId
+  // 2. Fallback: match by amount + profession
   if (!rateId) {
-    const recommended = await findRecommendedRate(citizenId);
-    if (recommended && recommended.amount === Number(amount)) {
-      rateId = recommended.rate_id;
-    } else {
-      // 3. Fallback: match by amount + profession
       let profession = request.personnel_type;
       const positionName = (request as any).position_name;
       if (positionName && typeof positionName === "string") {
@@ -76,7 +68,6 @@ const finalizeRequest = async (
         profession,
         connection,
       );
-    }
   }
 
   if (!rateId) {
@@ -86,12 +77,21 @@ const finalizeRequest = async (
     return;
   }
 
-  await createEligibility(
+  // Create Eligibility (Deactivate old, Insert new)
+  await requestRepository.deactivateEligibility(
+    request.user_id ?? null,
+    citizenId,
+    effectiveDateStr,
     connection,
+  );
+
+  await requestRepository.insertEligibility(
+    request.user_id ?? null,
     citizenId,
     rateId,
-    effectiveDateStr,
     requestId,
+    effectiveDateStr,
+    connection,
   );
 };
 
@@ -109,6 +109,7 @@ export class RequestApprovalService {
     actorId: number,
     actorRole: string,
     comment?: string,
+    signatureSnapshot?: Buffer | null,
   ): Promise<PTSRequest> {
     const connection = await getConnection();
 
@@ -141,6 +142,8 @@ export class RequestApprovalService {
         );
       }
 
+      const isSelfApproval = await isRequestOwner(actorId, request.user_id);
+
       if (actorRole === "HEAD_WARD" || actorRole === "HEAD_DEPT") {
         const hasScope = await canApproverAccessRequest(
           actorId,
@@ -149,27 +152,30 @@ export class RequestApprovalService {
           empSubDepartment,
         );
 
-        const isSelfApproval = await isRequestOwner(actorId, request.user_id);
-
         if (!hasScope && !isSelfApproval) {
           throw new Error(
             "You do not have scope access to approve this request",
           );
         }
 
-        if (
-          isSelfApproval &&
-          !canSelfApprove(actorRole, request.current_step)
-        ) {
-          throw new Error("Self-approval is not allowed at this step");
+        if (isSelfApproval) {
+          throw new Error("Self-approval is not allowed");
         }
       }
 
-      const signatureSnapshot = await requestRepository.findSignatureSnapshot(
-        actorId,
-        connection,
-      );
-      if (!signatureSnapshot) {
+      const actorCitizenId =
+        (await requestRepository.findCitizenIdByUserId(actorId)) ??
+        (await requestRepository.findUserCitizenId(actorId));
+
+      const signatureFromStore =
+        signatureSnapshot ??
+        (actorCitizenId
+          ? await requestRepository.findSignatureSnapshot(
+              actorCitizenId,
+              connection,
+            )
+          : null);
+      if (!signatureFromStore) {
         throw new Error(
           "Approver signature is required. Please set your signature before approving.",
         );
@@ -181,10 +187,10 @@ export class RequestApprovalService {
         requestId,
         actorId,
         comment || null,
-        signatureSnapshot,
+        signatureFromStore,
       );
 
-      await logAuditEvent(
+      await emitAuditEvent(
         {
           eventType: AuditEventType.REQUEST_APPROVE,
           entityType: "request",
@@ -287,6 +293,7 @@ export class RequestApprovalService {
         requestId,
         {
           status: RequestStatus.REJECTED,
+          step_started_at: null,
         },
         connection,
       );
@@ -296,11 +303,11 @@ export class RequestApprovalService {
         "คำขอถูกปฏิเสธ",
         `คำขอเลขที่ ${request.request_no} ถูกปฏิเสธ: ${comment}`,
         `/dashboard/user/requests/${requestId}`,
-        "ERROR",
+        "APPROVAL",
         connection,
       );
 
-      await logAuditEvent(
+      await emitAuditEvent(
         {
           eventType: AuditEventType.REQUEST_REJECT,
           entityType: "request",
@@ -399,6 +406,7 @@ export class RequestApprovalService {
         requestId,
         {
           status: RequestStatus.RETURNED,
+          step_started_at: null,
         },
         connection,
       );
@@ -408,11 +416,11 @@ export class RequestApprovalService {
         "คำขอถูกส่งคืน",
         `คำขอเลขที่ ${request.request_no} ถูกส่งคืนแก้ไข: ${comment}`,
         `/dashboard/user/requests/${requestId}`,
-        "WARNING",
+        "APPROVAL",
         connection,
       );
 
-      await logAuditEvent(
+      await emitAuditEvent(
         {
           eventType: AuditEventType.REQUEST_RETURN,
           entityType: "request",
@@ -452,7 +460,8 @@ export class RequestApprovalService {
     const { requestIds, comment } = params;
     const result: BatchApproveResult = { success: [], failed: [] };
 
-    const expectedStep = ROLE_STEP_MAP[actorRole];
+    const expectedStep =
+      ROLE_STEP_MAP[actorRole as keyof typeof ROLE_STEP_MAP];
     const allowedSteps =
       actorRole === "DIRECTOR"
         ? [5, 6]
@@ -470,10 +479,15 @@ export class RequestApprovalService {
     const connection = await getConnection();
 
     try {
-      const signatureSnapshot = await requestRepository.findSignatureSnapshot(
-        actorId,
-        connection,
-      );
+      const actorCitizenId =
+        (await requestRepository.findCitizenIdByUserId(actorId)) ??
+        (await requestRepository.findUserCitizenId(actorId));
+      const signatureSnapshot = actorCitizenId
+        ? await requestRepository.findSignatureSnapshot(
+            actorCitizenId,
+            connection,
+          )
+        : null;
 
       if (!signatureSnapshot) {
         throw new Error(
@@ -525,7 +539,7 @@ export class RequestApprovalService {
             signatureSnapshot,
           );
 
-          await logAuditEvent(
+          await emitAuditEvent(
             {
               eventType: AuditEventType.REQUEST_APPROVE,
               entityType: "request",
@@ -596,6 +610,7 @@ export class RequestApprovalService {
         {
           status: RequestStatus.APPROVED,
           current_step: 7,
+          step_started_at: null,
         },
         connection,
       );
@@ -607,7 +622,7 @@ export class RequestApprovalService {
         "คำขออนุมัติแล้ว",
         `คำขอเลขที่ ${request.request_no} ได้รับการอนุมัติครบทุกขั้นตอนแล้ว`,
         `/dashboard/user/requests/${requestId}`,
-        "SUCCESS",
+        "APPROVAL",
         connection,
       );
     } else {
@@ -615,17 +630,36 @@ export class RequestApprovalService {
         requestId,
         {
           current_step: nextStep,
+          step_started_at: new Date(),
         },
         connection,
       );
 
       const nextRole = STEP_ROLE_MAP[nextStep];
+      if (nextRole === "PTS_OFFICER") {
+        try {
+          const officerCount = await requestRepository.countActiveOfficers();
+          if (officerCount > 0) {
+            const officerId = await requestRepository.findLeastLoadedOfficer();
+            if (officerId) {
+              await requestRepository.updateAssignedOfficer(
+                requestId,
+                officerId,
+                connection,
+              );
+            }
+          }
+        } catch (err) {
+          console.error("[Approval] Auto-assign PTS_OFFICER failed:", err);
+        }
+      }
       if (nextRole) {
         await NotificationService.notifyRole(
           nextRole,
           "งานรออนุมัติ",
           `มีคำขอเลขที่ ${request.request_no} ส่งต่อมาถึงท่าน`,
           getRequestLinkForRole(nextRole, requestId),
+          undefined,
           connection,
         );
       }

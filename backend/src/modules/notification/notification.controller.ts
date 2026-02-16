@@ -5,8 +5,11 @@
  */
 
 import { Request, Response } from "express";
-import { NotificationService } from "./services/notification.service.js";
-import { NotificationSettingsBody } from "./notification.schema.js";
+import { NotificationService } from '@/modules/notification/services/notification.service.js';
+import {
+  DeleteReadBody,
+  NotificationSettingsBody,
+} from '@/modules/notification/notification.schema.js';
 
 /**
  * Get notifications for current user
@@ -47,6 +50,27 @@ export const markRead = async (req: Request, res: Response): Promise<void> => {
       const success = await NotificationService.markAsRead(Number(id), userId);
       res.json({ success });
     }
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+/**
+ * Delete read notifications for current user
+ * DELETE /api/notifications/read
+ */
+export const deleteReadNotifications = async (
+  req: Request<object, object, DeleteReadBody>,
+  res: Response,
+): Promise<void> => {
+  try {
+    const userId = (req.user as any).id ?? (req.user as any).userId;
+    const olderThanDays = req.body?.older_than_days;
+    const deletedCount = await NotificationService.deleteRead(
+      userId,
+      olderThanDays,
+    );
+    res.json({ success: true, data: { deletedCount } });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }

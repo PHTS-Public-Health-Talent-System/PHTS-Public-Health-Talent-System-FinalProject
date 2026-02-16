@@ -2,9 +2,9 @@
  * Entity interfaces matching request-related DB tables.
  *
  * Core request tables: req_submissions, req_approvals, req_attachments
- * Related tables: req_eligibility, req_ocr_results
+ * Related tables: req_eligibility
  * External tables (read-only joins): users, emp_profiles, emp_support_staff,
- *   sig_images, cfg_payment_rates, cfg_classification_rules, leave_records
+ *   sig_images, cfg_payment_rates, legacy cfg_classification_rules, leave_records
  */
 
 // ─── req_submissions ─────────────────────────────────────────────────────────
@@ -21,7 +21,6 @@ export interface RequestSubmissionEntity {
   main_duty: string | null;
   applicant_signature_id: number | null;
   request_type: string;
-  target_rate_id: number | null;
   requested_amount: number;
   effective_date: Date;
   submission_data: any; // JSON
@@ -65,6 +64,7 @@ export interface RequestAttachmentEntity {
 
 export interface RequestEligibilityEntity {
   eligibility_id: number;
+  user_id: number | null;
   citizen_id: string;
   master_rate_id: number;
   request_id: number;
@@ -79,6 +79,7 @@ export interface RequestEligibilityEntity {
 export interface RequestVerificationSnapshotEntity {
   snapshot_id: number;
   request_id: number;
+  user_id: number | null;
   citizen_id: string;
   master_rate_id: number;
   effective_date: Date;
@@ -88,18 +89,6 @@ export interface RequestVerificationSnapshotEntity {
   created_at: Date;
 }
 
-// ─── req_ocr_results ─────────────────────────────────────────────────────────
-
-export interface RequestOcrResultEntity {
-  ocr_id: number;
-  attachment_id: number;
-  request_id: number;
-  status: string;
-  raw_text: string | null;
-  confidence: number;
-  provider: string;
-  processed_at: Date | null;
-}
 
 // ─── cfg_payment_rates (read-only) ───────────────────────────────────────────
 
@@ -113,19 +102,7 @@ export interface PaymentRateEntity {
   is_active: boolean;
 }
 
-// ─── cfg_classification_rules (read-only) ────────────────────────────────────
-
-export interface ClassificationRuleEntity {
-  id: number;
-  profession: string;
-  priority: number;
-  rule_condition: any; // JSON
-  target_group_no: number;
-  target_item_no: string | null;
-  target_sub_item_no: string | null;
-  description: string;
-  is_active: boolean;
-}
+// ClassificationRuleEntity removed
 
 // ─── leave_records (read-only, for adjustments) ──────────────────────────────
 

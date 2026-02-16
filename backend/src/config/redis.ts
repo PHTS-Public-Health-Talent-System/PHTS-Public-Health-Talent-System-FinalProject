@@ -1,5 +1,5 @@
 import { Redis } from "ioredis";
-import { loadEnv } from "./env.js";
+import { loadEnv } from '@config/env.js';
 
 loadEnv();
 
@@ -11,6 +11,7 @@ interface RedisClient {
     ...args: Array<string | number>
   ): Promise<"OK" | null>;
   del(...keys: string[]): Promise<number>;
+  keys(pattern: string): Promise<string[]>;
   lpush(key: string, ...values: string[]): Promise<number>;
   brpop(key: string, timeoutSeconds: number): Promise<[string, string] | null>;
   on(event: string, listener: (...args: unknown[]) => void): RedisClient;
@@ -45,6 +46,10 @@ const createTestRedisClient = (): RedisClient => {
         }
       }
       return removed;
+    },
+    keys: async (pattern: string) => {
+      const regex = new RegExp(`^${pattern.replace(/\*/g, ".*")}$`);
+      return Array.from(store.keys()).filter((key) => regex.test(key));
     },
     lpush: async (key: string, ...values: string[]) => {
       const list = lists.get(key) ?? [];

@@ -7,10 +7,36 @@ const api = axios.create({
   },
 });
 
+const TOKEN_KEY = 'phts_token';
+const USER_KEY = 'phts_user';
+
+type ValidationDetail = {
+  field?: string;
+  message?: string;
+};
+
+type ApiErrorBody = {
+  success?: boolean;
+  error?: string;
+  message?: string;
+  details?: ValidationDetail[];
+};
+
+const toReadableErrorMessage = (body?: ApiErrorBody): string => {
+  if (!body) return 'เกิดข้อผิดพลาดจากการเชื่อมต่อระบบ';
+
+  if (Array.isArray(body.details) && body.details.length > 0) {
+    const first = body.details[0];
+    if (first?.message) return first.message;
+  }
+
+  return body.error || body.message || 'เกิดข้อผิดพลาดจากการเชื่อมต่อระบบ';
+};
+
 // Interceptor: Attach Token
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem(TOKEN_KEY);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -22,16 +48,22 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    const errorBody = error?.response?.data as ApiErrorBody | undefined;
+    const readableMessage = toReadableErrorMessage(errorBody);
+
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
+        localStorage.removeItem(TOKEN_KEY);
+        localStorage.removeItem(USER_KEY);
         // Prevent redirect loop if already on login
         if (!window.location.pathname.startsWith('/login')) {
             window.location.href = '/login';
         }
       }
     }
+
+    error.message = readableMessage;
+    (error as { details?: ValidationDetail[] }).details = errorBody?.details;
     return Promise.reject(error);
   }
 );

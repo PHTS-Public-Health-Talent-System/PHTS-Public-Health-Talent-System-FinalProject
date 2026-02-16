@@ -7,10 +7,10 @@
  */
 
 import { Router } from "express";
-import * as authController from "./auth.controller.js";
-import { protect } from "../../middlewares/authMiddleware.js";
-import { validate } from "../../shared/validate.middleware.js";
-import { loginSchema } from "./auth.schema.js";
+import * as authController from '@/modules/auth/auth.controller.js';
+import { protect } from '@middlewares/authMiddleware.js';
+import { validate } from '@shared/validate.middleware.js';
+import { loginSchema, updateProfileSchema } from '@/modules/auth/auth.schema.js';
 
 const router = Router();
 
@@ -30,6 +30,13 @@ router.post("/login", validate(loginSchema), authController.login);
  * @returns { success: boolean, data: UserProfile }
  */
 router.get("/me", protect, authController.getCurrentUser);
+
+/**
+ * @route   PATCH /api/auth/me
+ * @desc    Update current authenticated user's profile fields
+ * @access  Protected
+ */
+router.patch("/me", protect, validate(updateProfileSchema), authController.updateCurrentUser);
 
 /**
  * @route   POST /api/auth/logout

@@ -5,9 +5,9 @@
  */
 
 import { Request, Response } from "express";
-import { ApiResponse } from "../../types/auth.js";
-import * as snapshotService from "./services/snapshot.service.js";
-import { SnapshotType } from "./services/snapshot.service.js";
+import { ApiResponse } from '@/types/auth.js';
+import * as snapshotService from '@/modules/snapshot/services/snapshot.service.js';
+import { SnapshotType } from '@/modules/snapshot/services/snapshot.service.js';
 
 /**
  * Get period with snapshot info

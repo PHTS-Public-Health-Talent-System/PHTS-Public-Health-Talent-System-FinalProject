@@ -6,11 +6,38 @@
  * Date: 2025-12-30
  */
 
-import mysql from "mysql2/promise";
-import { loadEnv } from "./env.js";
+import mysql, { type PoolConnection } from "mysql2/promise";
+import { loadEnv } from '@config/env.js';
 
 // Load environment variables
 loadEnv();
+
+const dbTimezone = process.env.DB_TIMEZONE || "+07:00";
+
+async function ensureSessionTimezone(connection: PoolConnection): Promise<void> {
+  await connection.query("SET time_zone = ?", [dbTimezone]);
+}
+
+async function ensureSessionTimezoneOnEventConnection(
+  connection: { query: (...args: any[]) => any; promise?: () => { query: (...args: any[]) => Promise<any> } },
+): Promise<void> {
+  // mysql2 "connection" event provides a callback-style connection.
+  // Use promise wrapper when available; otherwise execute with callback.
+  if (typeof connection.promise === "function") {
+    await connection.promise().query("SET time_zone = ?", [dbTimezone]);
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    connection.query("SET time_zone = ?", [dbTimezone], (error: unknown) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
 
 /**
  * Database connection pool configuration
@@ -27,6 +54,13 @@ const pool = mysql.createPool({
   queueLimit: 0,
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
+  timezone: dbTimezone,
+});
+
+pool.on("connection", (connection) => {
+  void ensureSessionTimezoneOnEventConnection(connection).catch((error) => {
+    console.error("✗ Failed to set DB session timezone:", error);
+  });
 });
 
 /**
@@ -36,6 +70,7 @@ const pool = mysql.createPool({
 export async function testConnection(): Promise<void> {
   try {
     const connection = await pool.getConnection();
+    await ensureSessionTimezone(connection);
     console.log("✓ Database connected successfully to:", process.env.DB_NAME);
     connection.release();
   } catch (error) {
@@ -69,7 +104,9 @@ export async function query<T = any>(
  * Remember to release the connection after use
  */
 export async function getConnection() {
-  return await pool.getConnection();
+  const connection = await pool.getConnection();
+  await ensureSessionTimezone(connection);
+  return connection;
 }
 
 /**

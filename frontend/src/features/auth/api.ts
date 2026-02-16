@@ -21,3 +21,13 @@ export async function logout() {
   const res = await api.post<ApiResponse<{ message: string }>>('/auth/logout');
   return res.data;
 }
+
+export async function updateCurrentUserProfile(payload: {
+  first_name: string;
+  last_name: string;
+  email?: string;
+  phone?: string;
+}) {
+  const res = await api.patch<ApiResponse<User>>('/auth/me', payload);
+  return res.data;
+}

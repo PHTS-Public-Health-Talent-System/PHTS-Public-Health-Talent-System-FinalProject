@@ -16,6 +16,26 @@ export const refreshTokenSchema = z.object({
   }),
 });
 
+export const updateProfileSchema = z.object({
+  body: z.object({
+    first_name: z.string().trim().min(1, "First name is required").max(100),
+    last_name: z.string().trim().min(1, "Last name is required").max(100),
+    email: z
+      .string()
+      .trim()
+      .email("Invalid email format")
+      .max(100)
+      .or(z.literal("")),
+    phone: z
+      .string()
+      .trim()
+      .max(50)
+      .regex(/^[0-9+\-()\s]*$/, "Invalid phone number format")
+      .or(z.literal("")),
+  }),
+});
+
 // Infer types
 export type LoginSchema = z.infer<typeof loginSchema>["body"];
 export type RefreshTokenSchema = z.infer<typeof refreshTokenSchema>["body"];
+export type UpdateProfileSchema = z.infer<typeof updateProfileSchema>["body"];

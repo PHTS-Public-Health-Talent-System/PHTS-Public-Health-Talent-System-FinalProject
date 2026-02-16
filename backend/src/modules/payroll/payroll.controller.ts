@@ -1,13 +1,17 @@
 import { Request, Response } from "express";
-import { PayrollService } from "./payroll.service.js";
-import { ApiResponse } from "../../types/auth.js";
+import { PayrollService } from '@/modules/payroll/payroll.service.js';
+import { emitAuditEventWithRequest } from '@/modules/audit/services/audit.service.js';
+import { AuditEventType } from '@/modules/audit/entities/audit.entity.js';
+import { ApiResponse } from '@/types/auth.js';
 import type {
   CreatePeriodDto,
   CalculatePeriodDto,
-  CreateLeavePayExceptionDto,
-  CreateLeaveReturnReportDto,
-} from "./dto/index.js";
-import { buildPeriodReport } from "./report/payroll-report.service.js";
+} from '@/modules/payroll/dto/index.js';
+import { buildPeriodReport } from '@/modules/payroll/report/payroll-report.service.js';
+
+const getCurrentRole = (req: Request): string | null => {
+  return ((req.user as any)?.role as string | undefined) ?? null;
+};
 
 export const getPeriodStatus = async (req: Request, res: Response) => {
   try {
@@ -17,19 +21,22 @@ export const getPeriodStatus = async (req: Request, res: Response) => {
       return;
     }
 
-    const period = await PayrollService.getOrCreatePeriod(
-      Number(year),
-      Number(month),
-    );
-    res.json(period);
+    const yearNum = Number(year);
+    const monthNum = Number(month);
+    const existing = await PayrollService.getPeriodByMonthYear(yearNum, monthNum);
+    if (!existing) {
+      res.status(404).json({ message: "Period not found" });
+      return;
+    }
+    res.json(existing);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
 };
 
-export const listPeriods = async (_req: Request, res: Response) => {
+export const listPeriods = async (req: Request, res: Response) => {
   try {
-    const periods = await PayrollService.getAllPeriods();
+    const periods = await PayrollService.getAllPeriods(getCurrentRole(req));
     res.json({ success: true, data: periods });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -42,12 +49,16 @@ export const getPeriodDetail = async (
 ) => {
   try {
     const { periodId } = req.params;
-    const detail = await PayrollService.getPeriodDetail(Number(periodId));
+    const detail = await PayrollService.getPeriodDetail(Number(periodId), getCurrentRole(req));
     res.json({ success: true, data: detail });
   } catch (error: any) {
     const message = error.message || "เกิดข้อผิดพลาดในการโหลดงวด";
     if (message === "Period not found") {
       res.status(404).json({ success: false, error: message });
+      return;
+    }
+    if (message === "Forbidden period access") {
+      res.status(403).json({ success: false, error: "You do not have permission to view this period" });
       return;
     }
     res.status(500).json({ success: false, error: message });
@@ -123,7 +134,8 @@ export const createPeriod = async (
     const yearNum = Number(year);
     const monthNum = Number(month);
 
-    const period = await PayrollService.getOrCreatePeriod(yearNum, monthNum);
+    const actorId = (req.user as any)?.userId ?? (req.user as any)?.id ?? null;
+    const period = await PayrollService.getOrCreatePeriod(yearNum, monthNum, actorId);
 
     res.status(201).json({
       success: true,
@@ -146,10 +158,83 @@ export const getPeriodPayouts = async (req: Request, res: Response) => {
       res.status(400).json({ message: "periodId is required" });
       return;
     }
+    await PayrollService.ensurePeriodVisibleForRole(Number(periodId), getCurrentRole(req));
     const payouts = await PayrollService.getPeriodPayouts(Number(periodId));
     res.json({ success: true, data: payouts });
   } catch (error: any) {
+    if (error?.message === "Period not found") {
+      res.status(404).json({ success: false, error: "Period not found" });
+      return;
+    }
+    if (error?.message === "Forbidden period access") {
+      res.status(403).json({ success: false, error: "You do not have permission to view this period" });
+      return;
+    }
     res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+export const getPayoutDetail = async (req: Request, res: Response<ApiResponse>) => {
+  try {
+    const { payoutId } = req.params as { payoutId?: string };
+    if (!payoutId) {
+      res.status(400).json({ success: false, error: "payoutId is required" });
+      return;
+    }
+    const data = await PayrollService.getPayoutDetail(Number(payoutId));
+    res.json({ success: true, data });
+  } catch (error: any) {
+    const message = error?.message || "เกิดข้อผิดพลาดในการโหลดรายละเอียดรายการจ่าย";
+    if (message === "Payout not found") {
+      res.status(404).json({ success: false, error: message });
+      return;
+    }
+    res.status(500).json({ success: false, error: message });
+  }
+};
+
+export const updatePayout = async (req: Request, res: Response<ApiResponse>) => {
+  try {
+    const { payoutId } = req.params as { payoutId?: string };
+    if (!payoutId) {
+      res.status(400).json({ success: false, error: "payoutId is required" });
+      return;
+    }
+
+    const actorId = (req as any)?.user?.id ?? (req as any)?.user?.userId ?? null;
+
+    const payload = req.body as {
+      eligible_days?: number;
+      deducted_days?: number;
+      retroactive_amount?: number;
+      remark?: string | null;
+    };
+
+    const data = await PayrollService.updatePayout(Number(payoutId), payload, {
+      actorId: actorId ? Number(actorId) : null,
+    });
+
+    await emitAuditEventWithRequest(req, {
+      eventType: AuditEventType.PAYOUT_UPDATE,
+      entityType: "payout",
+      entityId: Number(payoutId),
+      actionDetail: {
+        eligible_days: payload.eligible_days ?? null,
+        deducted_days: payload.deducted_days ?? null,
+        retroactive_amount: payload.retroactive_amount ?? null,
+        remark: payload.remark ?? null,
+        period_id: data?.period_id ?? null,
+      },
+    });
+
+    res.json({ success: true, data });
+  } catch (error: any) {
+    const message = error?.message || "เกิดข้อผิดพลาดในการแก้ไขรายการจ่าย";
+    if (message === "Payout not found") {
+      res.status(404).json({ success: false, error: message });
+      return;
+    }
+    res.status(400).json({ success: false, error: message });
   }
 };
 
@@ -164,6 +249,7 @@ export const getPeriodSummaryByProfession = async (
       return;
     }
 
+    await PayrollService.ensurePeriodVisibleForRole(Number(periodId), getCurrentRole(req));
     const summary = await PayrollService.getPeriodSummaryByProfession(
       Number(periodId),
     );
@@ -172,6 +258,10 @@ export const getPeriodSummaryByProfession = async (
     const message = error.message || "เกิดข้อผิดพลาดในการสรุปข้อมูล";
     if (message === "Period not found") {
       res.status(404).json({ success: false, error: message });
+      return;
+    }
+    if (message === "Forbidden period access") {
+      res.status(403).json({ success: false, error: "You do not have permission to view this period" });
       return;
     }
     if (message === "Period not calculated") {
@@ -207,9 +297,11 @@ export const calculatePayroll = async (req: Request, res: Response) => {
       );
       res.json({ success: true, data });
     } else {
+      const actorId = (req.user as any)?.userId ?? (req.user as any)?.id ?? null;
       const period = await PayrollService.getOrCreatePeriod(
         Number(year),
         Number(month),
+        actorId,
       );
       const result = await PayrollService.processPeriodCalculation(
         Number(period.period_id),
@@ -240,9 +332,11 @@ export const calculateOnDemand = async (
       return;
     }
 
+    const actorId = (req.user as any)?.userId ?? (req.user as any)?.id ?? null;
     const period = await PayrollService.getOrCreatePeriod(
       Number(year),
       Number(month),
+      actorId,
     );
     const result = await PayrollService.processPeriodCalculation(
       Number(period.period_id),
@@ -271,7 +365,86 @@ export const submitToHR = async (req: Request, res: Response) => {
     );
     res.json(result);
   } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    if (error?.missingProfessionCodes) {
+      res.status(400).json({
+        success: false,
+        error: error.message || "ยังตรวจไม่ครบทุกวิชาชีพก่อนส่งให้ HR",
+        data: {
+          missing_profession_codes: error.missingProfessionCodes,
+        },
+      });
+      return;
+    }
+    const message = error?.message || "เกิดข้อผิดพลาดในการส่งให้ HR";
+    if (
+      message === "ยังไม่มีข้อมูลการคำนวณสำหรับรอบนี้" ||
+      message.startsWith("Invalid action")
+    ) {
+      res.status(400).json({ success: false, error: message });
+      return;
+    }
+    res.status(500).json({ success: false, error: message });
+  }
+};
+
+export const getPeriodReviewProgress = async (
+  req: Request,
+  res: Response<ApiResponse>,
+) => {
+  try {
+    const { periodId } = req.params;
+    const data = await PayrollService.getPeriodReviewProgress(
+      Number(periodId),
+      getCurrentRole(req),
+    );
+    res.json({ success: true, data });
+  } catch (error: any) {
+    const message = error?.message || "เกิดข้อผิดพลาดในการโหลดความคืบหน้า";
+    if (message === "Period not found") {
+      res.status(404).json({ success: false, error: message });
+      return;
+    }
+    if (message === "Forbidden period access") {
+      res.status(403).json({ success: false, error: message });
+      return;
+    }
+    res.status(500).json({ success: false, error: message });
+  }
+};
+
+export const setPeriodProfessionReview = async (
+  req: Request,
+  res: Response<ApiResponse>,
+) => {
+  try {
+    const { periodId } = req.params;
+    const { profession_code, reviewed } = req.body as {
+      profession_code: string;
+      reviewed: boolean;
+    };
+    const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
+    const data = await PayrollService.setPeriodProfessionReview(
+      Number(periodId),
+      profession_code,
+      reviewed,
+      actorId,
+    );
+    res.json({ success: true, data });
+  } catch (error: any) {
+    const message = error?.message || "เกิดข้อผิดพลาดในการบันทึกการยืนยันตรวจ";
+    if (message === "Period not found") {
+      res.status(404).json({ success: false, error: message });
+      return;
+    }
+    if (
+      message === "สามารถยืนยันตรวจได้เฉพาะรอบที่ยังเปิดอยู่" ||
+      message === "profession_code is required" ||
+      message === "วิชาชีพนี้ไม่มีในรอบการคำนวณปัจจุบัน"
+    ) {
+      res.status(400).json({ success: false, error: message });
+      return;
+    }
+    res.status(500).json({ success: false, error: message });
   }
 };
 
@@ -364,6 +537,7 @@ export const searchPayouts = async (req: Request, res: Response) => {
 export const getPeriodReport = async (req: Request, res: Response) => {
   try {
     const { periodId } = req.params;
+    await PayrollService.ensurePeriodVisibleForRole(Number(periodId), getCurrentRole(req));
     const buffer = await buildPeriodReport(Number(periodId));
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader(
@@ -372,120 +546,51 @@ export const getPeriodReport = async (req: Request, res: Response) => {
     );
     res.send(buffer);
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    const message = error?.message || "เกิดข้อผิดพลาดในการสร้างรายงาน";
+    if (message === "Period not found") {
+      res.status(404).json({ success: false, error: message });
+      return;
+    }
+    if (message === "Forbidden period access") {
+      res.status(403).json({ success: false, error: "You do not have permission to view this period" });
+      return;
+    }
+    if (
+      message === "Report is available only for closed and frozen periods" ||
+      message === "Report requires frozen snapshot" ||
+      message === "Snapshot not found for frozen period"
+    ) {
+      res.status(409).json({ success: false, error: message });
+      return;
+    }
+    res.status(500).json({ success: false, error: message });
   }
 };
 
-// ============================================================================
-// Leave Pay Exceptions & Return Reports (PTS_OFFICER)
-// ============================================================================
-
-export const createLeavePayException = async (
-  req: Request,
-  res: Response<ApiResponse>,
-) => {
+export const deletePeriod = async (req: Request, res: Response<ApiResponse>) => {
   try {
+    const { periodId } = req.params;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
-    const { citizen_id, start_date, end_date, reason } =
-      req.body as CreateLeavePayExceptionDto;
+    if (!actorId) {
+      res.status(401).json({ success: false, error: "Unauthorized" });
+      return;
+    }
 
-    const result = await PayrollService.createLeavePayException(
-      citizen_id,
-      start_date,
-      end_date,
-      reason ?? null,
-      actorId,
-    );
-
-    res.status(201).json({ success: true, data: result });
+    const data = await PayrollService.hardDeletePeriod(Number(periodId), Number(actorId));
+    res.json({ success: true, data });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-export const listLeavePayExceptions = async (
-  req: Request,
-  res: Response<ApiResponse>,
-) => {
-  try {
-    const citizenId =
-      typeof req.query.citizen_id === "string"
-        ? req.query.citizen_id
-        : undefined;
-    const rows = await PayrollService.listLeavePayExceptions(citizenId);
-    res.json({ success: true, data: rows });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-export const deleteLeavePayException = async (
-  req: Request,
-  res: Response<ApiResponse>,
-) => {
-  try {
-    const id = Number(req.params.id);
-    const deleted = await PayrollService.deleteLeavePayException(id);
-    res.json({ success: true, data: { deleted } });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-export const createLeaveReturnReport = async (
-  req: Request,
-  res: Response<ApiResponse>,
-) => {
-  try {
-    const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
-    const { leave_record_id, return_date, remark } =
-      req.body as CreateLeaveReturnReportDto;
-
-    const result = await PayrollService.createLeaveReturnReport(
-      leave_record_id,
-      return_date,
-      remark ?? null,
-      actorId,
-    );
-
-    res.status(201).json({ success: true, data: result });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-export const listLeaveReturnReports = async (
-  req: Request,
-  res: Response<ApiResponse>,
-) => {
-  try {
-    const citizenId =
-      typeof req.query.citizen_id === "string"
-        ? req.query.citizen_id
-        : undefined;
-    const leaveRecordId = req.query.leave_record_id
-      ? Number(req.query.leave_record_id)
-      : undefined;
-
-    const rows = await PayrollService.listLeaveReturnReports({
-      citizenId,
-      leaveRecordId,
-    });
-    res.json({ success: true, data: rows });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-};
-
-export const deleteLeaveReturnReport = async (
-  req: Request,
-  res: Response<ApiResponse>,
-) => {
-  try {
-    const id = Number(req.params.id);
-    const deleted = await PayrollService.deleteLeaveReturnReport(id);
-    res.json({ success: true, data: { deleted } });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    const message = error?.message || "เกิดข้อผิดพลาดในการลบรอบ";
+    if (message === "Period not found") {
+      res.status(404).json({ success: false, error: message });
+      return;
+    }
+    if (
+      message.includes("สามารถลบรอบได้เฉพาะรอบที่ยังเปิดอยู่") ||
+      message.includes("ไม่สามารถลบรอบได้:")
+    ) {
+      res.status(400).json({ success: false, error: message });
+      return;
+    }
+    res.status(500).json({ success: false, error: message });
   }
 };

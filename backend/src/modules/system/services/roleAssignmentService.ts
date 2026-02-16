@@ -1,6 +1,6 @@
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
-import db from "../../../config/database.js";
-import { clearScopeCache } from "../../request/scope/scope.service.js";
+import db from '@config/database.js';
+import { clearScopeCache } from '@/modules/request/scope/scope.service.js';
 
 type HrUserRow = {
   citizen_id: string;
@@ -23,6 +23,7 @@ const ASSISTANT_TOKENS = [
   "ผู้ช่วยหัวหน้าตึก",
   "รองหัวหน้าตึก",
 ];
+const HEAD_DEPT_TOKENS = ["หัวหน้ากลุ่มงาน", "หัวหน้ากลุ่มภารกิจ"];
 
 function includesAny(value: string, tokens: string[]): boolean {
   return tokens.some((token) => value.includes(token));
@@ -37,8 +38,7 @@ function isHeadWard(position: string): boolean {
 }
 
 function isHeadDept(position: string): boolean {
-  const deptTokens = ["หัวหน้ากลุ่มงาน", "หัวหน้ากลุ่มภารกิจ"];
-  return includesAny(position, deptTokens) && !isAssistant(position);
+  return includesAny(position, HEAD_DEPT_TOKENS) && !isAssistant(position);
 }
 
 function isDirector(position: string): boolean {
@@ -47,20 +47,20 @@ function isDirector(position: string): boolean {
   );
 }
 
-function normalize(value?: string | null): string {
+export function normalizeText(value?: string | null): string {
   return (value || "").trim();
 }
 
 function deriveRole(row: HrUserRow): string {
-  const positionName = normalize(row.position_name);
-  const specialPosition = normalize(row.special_position);
-  const department = normalize(row.department);
+  const positionName = normalizeText(row.position_name);
+  const specialPosition = normalizeText(row.special_position);
+  const department = normalizeText(row.department);
 
-  // 1. Director (ผอ. ตัวจริงเท่านั้น ไม่รวมรอง)
+  // 1) Director (ผอ. ตัวจริงเท่านั้น ไม่รวมรอง)
   if (isDirector(positionName) || isDirector(specialPosition))
     return "DIRECTOR";
 
-  // 2. Finance roles (ไม่รวมกลุ่มงานบัญชี)
+  // 2) Finance roles (ไม่รวมกลุ่มงานบัญชี)
   const isAccountingUnit = specialPosition.includes("บัญชี");
   if (
     department === "กลุ่มงานการเงิน" &&
@@ -72,16 +72,16 @@ function deriveRole(row: HrUserRow): string {
   if (department === "กลุ่มงานการเงิน" && !isAccountingUnit)
     return "FINANCE_OFFICER";
 
-  // 3. HR department stays USER for manual role assignment.
+  // 3) HR department stays USER for manual role assignment.
   if (department.includes("ทรัพยากรบุคคล")) return "USER";
 
-  // 4. Head Department (หัวหน้ากลุ่มงาน/กลุ่มภารกิจ)
+  // 4) Head Department (หัวหน้ากลุ่มงาน/กลุ่มภารกิจ)
   if (isHeadDept(specialPosition)) return "HEAD_DEPT";
 
-  // 5. Head Ward (หัวหน้าตึก)
+  // 5) Head Ward (หัวหน้าตึก)
   if (isHeadWard(specialPosition)) return "HEAD_WARD";
 
-  // 6. Default
+  // 6) Default
   return "USER";
 }
 

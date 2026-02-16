@@ -7,13 +7,24 @@
  */
 
 import { Router } from "express";
-import { protect, restrictTo } from "../../middlewares/authMiddleware.js";
-import { requestUpload } from "../../config/upload.js";
-import { requestController } from "./controllers/request.controller.js"; // Import instance
-import { validate } from "../../shared/validate.middleware.js";
-import { actionSchema, verificationSchema } from "./dto/update-status.dto.js"; // Use correct DTO file
-import { verificationSnapshotSchema } from "./dto/verification-snapshot.dto.js";
-import { UserRole } from "../../types/auth.js";
+import { protect, restrictTo } from '@middlewares/authMiddleware.js';
+import { requestUpload } from '@config/upload.js';
+import { requestController } from '@/modules/request/controllers/request.controller.js'; // Import instance
+import { validate } from '@shared/validate.middleware.js';
+import { actionSchema, verificationSchema } from '@/modules/request/dto/update-status.dto.js'; // Use correct DTO file
+import { verificationSnapshotSchema } from '@/modules/request/dto/verification-snapshot.dto.js';
+import {
+  requestAdjustLeaveSchema,
+  requestApproveBatchSchema,
+  requestEligibilityIdParamSchema,
+  requestEligibilityQuerySchema,
+  requestHistoryQuerySchema,
+  requestIdOrNoParamSchema,
+  requestIdParamSchema,
+  requestRateMappingSchema,
+  requestReassignSchema,
+} from '@/modules/request/dto/request-params.dto.js';
+import { UserRole } from '@/types/auth.js';
 // Note: createRequestSchema is used inside controller manually for file upload handling, or added here if middleware used.
 // Current controller implementation handles validation manually after file upload.
 
@@ -31,6 +42,7 @@ router.use(protect);
 router.post(
   "/batch-approve",
   restrictTo(UserRole.DIRECTOR),
+  validate(requestApproveBatchSchema),
   requestController.approveBatch,
 );
 
@@ -42,18 +54,27 @@ router.post(
 // Master rates and recommended rate
 router.get("/master-rates", requestController.getMasterRates);
 router.get("/prefill", requestController.getPrefill);
-router.post("/:id/attachments/confirm", requestController.confirmAttachments);
-router.get(
-  "/:id/recommended-classification",
-  requestController.getRecommendedClassification,
+
+
+router.post(
+  "/:id/rate-mapping",
+  validate(requestRateMappingSchema),
+  requestController.updateRateMapping,
 );
-router.post("/:id/classification", requestController.updateClassification);
+
+// Confirm attachments (license file)
+router.post(
+  "/:id/attachments/confirm",
+  validate(requestIdParamSchema),
+  requestController.confirmAttachments,
+);
 
 // Create new request with file uploads and signature
 router.post(
   "/",
   requestUpload.fields([
     { name: "files", maxCount: 10 },
+    { name: "files[]", maxCount: 10 },
     { name: "license_file", maxCount: 1 },
     { name: "applicant_signature", maxCount: 1 },
   ]),
@@ -68,6 +89,12 @@ router.get(
   "/my-scopes",
   restrictTo(UserRole.HEAD_WARD, UserRole.HEAD_DEPT),
   requestController.getMyScopes,
+);
+
+router.get(
+  "/my-scopes/members",
+  restrictTo(UserRole.HEAD_WARD, UserRole.HEAD_DEPT),
+  requestController.getMyScopeMembers,
 );
 
 // Get pending requests for approval (based on user's role)
@@ -85,15 +112,34 @@ router.get(
   requestController.getPendingApprovals,
 );
 
-// OCR for attachments (PTS_OFFICER only)
 router.get(
-  "/attachments/:attachmentId/ocr",
-  requestController.getAttachmentOcr,
+  "/eligibility",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityQuerySchema),
+  requestController.getEligibilityList,
 );
-router.post(
-  "/attachments/:attachmentId/ocr",
-  requestController.requestAttachmentOcr,
+
+router.get(
+  "/eligibility/summary",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityQuerySchema),
+  requestController.getEligibilitySummary,
 );
+
+router.get(
+  "/eligibility/export",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityQuerySchema),
+  requestController.exportEligibilityCsv,
+);
+
+router.get(
+  "/eligibility/:eligibilityId",
+  restrictTo(UserRole.PTS_OFFICER),
+  validate(requestEligibilityIdParamSchema),
+  requestController.getEligibilityById,
+);
+
 
 // Get approval history for current approver
 router.get(
@@ -105,8 +151,8 @@ router.get(
     UserRole.HEAD_HR,
     UserRole.HEAD_FINANCE,
     UserRole.DIRECTOR,
-    UserRole.ADMIN,
   ),
+  validate(requestHistoryQuerySchema),
   requestController.getHistory,
 );
 
@@ -117,14 +163,16 @@ router.get(
   requestController.getAvailableOfficers,
 );
 
-// Get request details by ID
-router.get("/:id", requestController.getRequestById);
+// Get request details by ID or request_no
+router.get("/:id", validate(requestIdOrNoParamSchema), requestController.getRequestById);
 
 // Update a request (Owner only, DRAFT or RETURNED status)
 router.put(
   "/:id",
+  validate(requestIdParamSchema),
   requestUpload.fields([
     { name: "files", maxCount: 10 },
+    { name: "files[]", maxCount: 10 },
     { name: "license_file", maxCount: 1 },
     { name: "applicant_signature", maxCount: 1 },
   ]),
@@ -135,18 +183,20 @@ router.put(
 router.put(
   "/:id/verification",
   restrictTo(UserRole.PTS_OFFICER, UserRole.HEAD_HR),
+  validate(requestIdParamSchema),
   validate(verificationSchema),
   requestController.updateVerificationChecks,
 );
 router.post(
   "/:id/verification-snapshot",
   restrictTo(UserRole.PTS_OFFICER, UserRole.HEAD_HR),
+  validate(requestIdParamSchema),
   validate(verificationSnapshotSchema),
   requestController.createVerificationSnapshot,
 );
 
 // Cancel a request (Owner only, before APPROVED)
-router.post("/:id/cancel", requestController.cancelRequest);
+router.post("/:id/cancel", validate(requestIdParamSchema), requestController.cancelRequest);
 
 // Unified action endpoint (APPROVE / REJECT / RETURN)
 router.post(
@@ -159,12 +209,13 @@ router.post(
     UserRole.DIRECTOR,
     UserRole.HEAD_FINANCE,
   ),
+  validate(requestIdParamSchema),
   validate(actionSchema),
   requestController.processAction,
 );
 
 // Submit a draft request
-router.post("/:id/submit", requestController.submitRequest);
+router.post("/:id/submit", validate(requestIdParamSchema), requestController.submitRequest);
 
 /**
  * Approver Routes
@@ -182,6 +233,7 @@ router.post(
     UserRole.DIRECTOR,
     UserRole.HEAD_FINANCE,
   ),
+  validate(requestIdParamSchema),
   requestController.approveRequest,
 );
 
@@ -196,6 +248,7 @@ router.post(
     UserRole.DIRECTOR,
     UserRole.HEAD_FINANCE,
   ),
+  validate(requestIdParamSchema),
   requestController.rejectRequest,
 );
 
@@ -210,6 +263,7 @@ router.post(
     UserRole.DIRECTOR,
     UserRole.HEAD_FINANCE,
   ),
+  validate(requestIdParamSchema),
   requestController.returnRequest,
 );
 
@@ -222,15 +276,17 @@ router.post(
 router.post(
   "/:id/reassign",
   restrictTo(UserRole.PTS_OFFICER),
+  validate(requestReassignSchema),
   requestController.reassignRequest,
 );
 
 // Get reassignment history for a request
-router.get("/:id/reassign-history", requestController.getReassignHistory);
+router.get("/:id/reassign-history", validate(requestIdParamSchema), requestController.getReassignHistory);
 // Adjust leave details (PTS_OFFICER only)
 router.put(
   "/:id/adjust-leave",
   restrictTo(UserRole.PTS_OFFICER),
+  validate(requestAdjustLeaveSchema),
   requestController.adjustLeaveRequest,
 );
 

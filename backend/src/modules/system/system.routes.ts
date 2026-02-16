@@ -1,13 +1,16 @@
 import { Router } from "express";
-import { protect, restrictTo } from "../../middlewares/authMiddleware.js";
-import { validate } from "../../shared/validate.middleware.js";
-import { UserRole } from "../../types/auth.js";
-import * as systemController from "./system.controller.js";
+import { protect, restrictTo } from '@middlewares/authMiddleware.js';
+import { validate } from '@shared/validate.middleware.js';
+import { UserRole } from '@/types/auth.js';
+import * as systemController from '@/modules/system/system.controller.js';
 import {
   searchUsersSchema,
+  getUserByIdSchema,
   updateUserRoleSchema,
   toggleMaintenanceModeSchema,
-} from "./system.schema.js";
+  syncUserSchema,
+  backupHistorySchema,
+} from '@/modules/system/system.schema.js';
 
 const router = Router();
 
@@ -23,6 +26,12 @@ router.get(
   validate(searchUsersSchema),
   systemController.searchUsers,
 );
+router.get(
+  "/users/:userId",
+  adminAuth,
+  validate(getUserByIdSchema),
+  systemController.getUserById,
+);
 router.put(
   "/users/:userId/role",
   adminAuth,
@@ -32,11 +41,26 @@ router.put(
 
 router.post("/sync", adminAuth, systemController.triggerSync);
 router.post(
+  "/users/:userId/sync",
+  adminAuth,
+  validate(syncUserSchema),
+  systemController.triggerUserSync,
+);
+router.post(
   "/maintenance",
   adminAuth,
   validate(toggleMaintenanceModeSchema),
   systemController.toggleMaintenanceMode,
 );
+router.get("/maintenance", adminAuth, systemController.getMaintenanceMode);
 router.post("/backup", adminAuth, systemController.triggerBackup);
+router.get(
+  "/backup/history",
+  adminAuth,
+  validate(backupHistorySchema),
+  systemController.getBackupHistory,
+);
+router.get("/jobs", adminAuth, systemController.getJobStatus);
+router.get("/version", adminAuth, systemController.getVersionInfo);
 
 export default router;

@@ -4,7 +4,7 @@ import {
   PersonnelType,
   PTSRequest,
   RequestWithDetails,
-} from "../request.types.js";
+} from '@/modules/request/request.types.js';
 
 export const REQUESTER_FIELDS = `
   u.citizen_id as requester_citizen_id,
@@ -26,8 +26,11 @@ export const mapRequestRow = (row: any): PTSRequest | RequestWithDetails => {
     citizen_id: row.citizen_id, // Ensure row has this
     request_no: row.request_no,
     personnel_type: row.personnel_type as PersonnelType,
+    // Keep both key styles for backward compatibility across clients.
     position_number: row.current_position_number,
+    current_position_number: row.current_position_number,
     department_group: row.current_department,
+    current_department: row.current_department,
     main_duty: row.main_duty,
     work_attributes:
       typeof row.work_attributes === "string"
@@ -46,6 +49,7 @@ export const mapRequestRow = (row: any): PTSRequest | RequestWithDetails => {
     has_verification_snapshot: Boolean(row.has_verification_snapshot),
     created_at: row.created_at,
     updated_at: row.updated_at,
+    step_started_at: row.step_started_at ?? null,
   };
   return baseRequest as RequestWithDetails; // Trusting the query returns necessary fields
 };
@@ -63,8 +67,16 @@ export const getRequestLinkForRole = (
   return `/dashboard/approver/requests/${requestId}`;
 };
 
-export const generateRequestNoFromId = (requestId: number): string => {
-  return `PTS-${String(requestId).padStart(6, "0")}`;
+export const generateRequestNoFromId = (
+  requestId: number,
+  createdAt: Date | string = new Date(),
+): string => {
+  const createdDate = createdAt instanceof Date ? createdAt : new Date(createdAt);
+  const adYear = Number.isNaN(createdDate.getTime())
+    ? new Date().getFullYear()
+    : createdDate.getFullYear();
+  const beYear = adYear + 543;
+  return `REQ-${beYear}-${Math.abs(Math.trunc(requestId))}`;
 };
 
 export const normalizeDateToYMD = (date: string | Date): string => {

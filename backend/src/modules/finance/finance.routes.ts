@@ -5,10 +5,10 @@
  */
 
 import { Router } from "express";
-import { protect, restrictTo } from "../../middlewares/authMiddleware.js";
-import { validate } from "../../shared/validate.middleware.js";
-import { UserRole } from "../../types/auth.js";
-import * as financeController from "./finance.controller.js";
+import { protect, restrictTo } from '@middlewares/authMiddleware.js';
+import { validate } from '@shared/validate.middleware.js';
+import { UserRole } from '@/types/auth.js';
+import * as financeController from '@/modules/finance/finance.controller.js';
 import {
   getSummarySchema,
   getYearlySummarySchema,
@@ -16,7 +16,7 @@ import {
   markAsPaidSchema,
   batchMarkAsPaidSchema,
   cancelPayoutSchema,
-} from "./finance.schema.js";
+} from '@/modules/finance/finance.schema.js';
 
 const router = Router();
 

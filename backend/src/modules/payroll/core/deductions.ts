@@ -1,11 +1,11 @@
 import { RowDataPacket } from "mysql2/promise";
-import { LEAVE_RULES } from "../payroll.constants.js";
+import { LEAVE_RULES } from '@/modules/payroll/payroll.constants.js';
 import {
   countBusinessDays,
   countCalendarDays,
   formatLocalDate,
   isHoliday,
-} from "./utils.js";
+} from '@/modules/payroll/core/utils.js';
 
 export interface LeaveRow extends RowDataPacket {
   id?: number;
@@ -13,7 +13,11 @@ export interface LeaveRow extends RowDataPacket {
   start_date: Date | string;
   end_date: Date | string;
   duration_days: number;
+  document_start_date?: Date | string | null;
+  document_end_date?: Date | string | null;
+  document_duration_days?: number | null;
   is_no_pay?: number | null;
+  pay_exception?: number | null;
 }
 
 type QuotaValue = number | string | null;
@@ -25,6 +29,8 @@ export interface QuotaRow extends RowDataPacket {
 }
 
 export interface NoSalaryPeriodRow extends RowDataPacket {
+  leave_record_id?: number | null;
+  leave_type?: string | null;
   start_date: Date | string;
   end_date: Date | string;
 }
@@ -34,20 +40,48 @@ export interface ReturnReportRow extends RowDataPacket {
   return_date: Date | string;
 }
 
+export type DeductionReasonCode = "NO_PAY" | "OVER_QUOTA";
+
+export type DeductionReason = {
+  code: DeductionReasonCode;
+  // Contribution weight for this date (0.5 or 1, or a partial overlap contribution)
+  weight: number;
+  leave_record_id?: number | null;
+  leave_type?: string | null;
+  exceed_date?: Date | null;
+};
+
+export type DeductionResult = {
+  deductionMap: Map<string, number>;
+  reasonsByDate: Map<string, DeductionReason[]>;
+};
+
 const isWeekend = (date: Date) => date.getDay() === 0 || date.getDay() === 6;
+const resolveEffectiveDate = (primary: Date | string | null | undefined, fallback: Date | string) =>
+  primary ? new Date(primary) : new Date(fallback);
 
 const applyNoPayLeave = (
   deductionMap: Map<string, number>,
+  reasonsByDate: Map<string, DeductionReason[]>,
   start: Date,
   end: Date,
   monthStart: Date,
   monthEnd: Date,
+  reasonBase: Omit<DeductionReason, "weight">,
 ) => {
   const cursor = new Date(start);
   while (cursor <= end) {
     const dateStr = formatLocalDate(cursor);
     if (cursor >= monthStart && cursor <= monthEnd) {
-      deductionMap.set(dateStr, Math.max(deductionMap.get(dateStr) || 0, 1));
+      const before = deductionMap.get(dateStr) || 0;
+      const after = Math.max(before, 1);
+      const contribution = after - before;
+      if (contribution > 0) {
+        deductionMap.set(dateStr, after);
+        const existing = reasonsByDate.get(dateStr) || [];
+        existing.push({ ...reasonBase, weight: contribution });
+        reasonsByDate.set(dateStr, existing);
+      }
     }
     cursor.setDate(cursor.getDate() + 1);
   }
@@ -83,7 +117,8 @@ const calculateLeaveDuration = (
   holidays: string[],
   ruleUnit: string,
 ): { duration: number; isHalfDay: boolean } => {
-  const isHalfDay = leave.duration_days > 0 && leave.duration_days < 1;
+  const durationOverride = leave.document_duration_days ?? leave.duration_days ?? null;
+  const isHalfDay = durationOverride !== null && durationOverride > 0 && durationOverride < 1;
   if (isHalfDay) {
     const dateStr = formatLocalDate(start);
     if (!isHoliday(dateStr, holidays) && !isWeekend(start)) {
@@ -143,6 +178,7 @@ const calculateExceedDate = (
 
 type PenaltyContext = {
   deductionMap: Map<string, number>;
+  reasonsByDate: Map<string, DeductionReason[]>;
   exceedDate: Date;
   end: Date;
   weight: number;
@@ -150,10 +186,17 @@ type PenaltyContext = {
   holidays: string[];
   monthStart: Date;
   monthEnd: Date;
+  reasonBase: Omit<DeductionReason, "weight">;
+};
+
+type QuotaDecision = {
+  overQuota: boolean;
+  exceedDate: Date | null;
 };
 
 const applyPenalty = ({
   deductionMap,
+  reasonsByDate,
   exceedDate,
   end,
   weight,
@@ -161,6 +204,7 @@ const applyPenalty = ({
   holidays,
   monthStart,
   monthEnd,
+  reasonBase,
 }: PenaltyContext) => {
   const penaltyCursor = new Date(exceedDate);
   while (penaltyCursor <= end) {
@@ -170,8 +214,15 @@ const applyPenalty = ({
 
     if (ruleUnit === "calendar_days" || (!isHol && !weekend)) {
       if (penaltyCursor >= monthStart && penaltyCursor <= monthEnd) {
-        const currentWeight = deductionMap.get(dateStr) || 0;
-        deductionMap.set(dateStr, Math.min(1, currentWeight + weight));
+        const before = deductionMap.get(dateStr) || 0;
+        const after = Math.min(1, before + weight);
+        const contribution = after - before;
+        if (contribution > 0) {
+          deductionMap.set(dateStr, after);
+          const existing = reasonsByDate.get(dateStr) || [];
+          existing.push({ ...reasonBase, weight: contribution });
+          reasonsByDate.set(dateStr, existing);
+        }
       }
     }
     penaltyCursor.setDate(penaltyCursor.getDate() + 1);
@@ -187,8 +238,10 @@ export function calculateDeductions(
   serviceStartDate: Date | null = null,
   noSalaryPeriods: NoSalaryPeriodRow[] = [],
   returnReports: Map<number, Date> = new Map(),
-): Map<string, number> {
+  quotaDecisions?: Map<number, QuotaDecision>,
+): DeductionResult {
   const deductionMap = new Map<string, number>();
+  const reasonsByDate = new Map<string, DeductionReason[]>();
   const usage: Record<string, number> = {
     sick: 0,
     personal: 0,
@@ -202,10 +255,11 @@ export function calculateDeductions(
   );
 
   for (const leave of sortedLeaves) {
-    const start = new Date(leave.start_date);
-    const end = new Date(leave.end_date);
+    const start = resolveEffectiveDate(leave.document_start_date, leave.start_date);
+    const end = resolveEffectiveDate(leave.document_end_date, leave.end_date);
     applyLeaveDeduction(leave, {
       deductionMap,
+      reasonsByDate,
       usage,
       quota,
       holidays,
@@ -215,16 +269,18 @@ export function calculateDeductions(
       end,
       serviceStartDate,
       returnReports,
+      quotaDecisions,
     });
   }
 
-  applyNoSalaryPeriods(deductionMap, noSalaryPeriods, monthStart, monthEnd);
+  applyNoSalaryPeriods(deductionMap, reasonsByDate, noSalaryPeriods, monthStart, monthEnd);
 
-  return deductionMap;
+  return { deductionMap, reasonsByDate };
 }
 
 type LeaveDeductionContext = {
   deductionMap: Map<string, number>;
+  reasonsByDate: Map<string, DeductionReason[]>;
   usage: Record<string, number>;
   quota: QuotaRow;
   holidays: string[];
@@ -234,22 +290,72 @@ type LeaveDeductionContext = {
   end: Date;
   serviceStartDate: Date | null;
   returnReports: Map<number, Date>;
+  quotaDecisions?: Map<number, QuotaDecision>;
 };
 
 function applyLeaveDeduction(leave: LeaveRow, context: LeaveDeductionContext) {
   if (isNoPayLeave(leave)) {
     applyNoPayLeave(
       context.deductionMap,
+      context.reasonsByDate,
       context.start,
       context.end,
       context.monthStart,
       context.monthEnd,
+      {
+        code: "NO_PAY",
+        leave_record_id: leave.id ?? null,
+        leave_type: leave.leave_type,
+      },
     );
     return;
   }
 
   const rule = LEAVE_RULES[leave.leave_type];
   if (!rule) return;
+
+  const decision =
+    leave.id !== undefined
+      ? context.quotaDecisions?.get(Number(leave.id))
+      : undefined;
+
+  const { duration, isHalfDay } = calculateLeaveDuration(
+    leave,
+    context.start,
+    context.end,
+    context.holidays,
+    rule.unit,
+  );
+
+  if (decision) {
+    if (decision.overQuota && decision.exceedDate) {
+      const weight = isHalfDay ? 0.5 : 1;
+      const penaltyEnd = resolvePenaltyEnd(
+        leave,
+        context.end,
+        context.monthEnd,
+        context.returnReports,
+      );
+      applyPenalty({
+        deductionMap: context.deductionMap,
+        reasonsByDate: context.reasonsByDate,
+        exceedDate: decision.exceedDate,
+        end: penaltyEnd,
+        weight,
+        ruleUnit: rule.unit,
+        holidays: context.holidays,
+        monthStart: context.monthStart,
+        monthEnd: context.monthEnd,
+        reasonBase: {
+          code: "OVER_QUOTA",
+          leave_record_id: leave.id ?? null,
+          leave_type: leave.leave_type,
+          exceed_date: decision.exceedDate,
+        },
+      });
+    }
+    return;
+  }
 
   let limit = resolveLeaveLimit(leave.leave_type, rule.limit, context.quota);
 
@@ -286,14 +392,6 @@ function applyLeaveDeduction(leave: LeaveRow, context: LeaveDeductionContext) {
       limit = 15; // First-year limit
     }
   }
-  const { duration, isHalfDay } = calculateLeaveDuration(
-    leave,
-    context.start,
-    context.end,
-    context.holidays,
-    rule.unit,
-  );
-
   const currentUsage = context.usage[leave.leave_type] || 0;
   if (rule.rule_type === "cumulative") {
     context.usage[leave.leave_type] = currentUsage + duration;
@@ -322,6 +420,7 @@ function applyLeaveDeduction(leave: LeaveRow, context: LeaveDeductionContext) {
   );
   applyPenalty({
     deductionMap: context.deductionMap,
+    reasonsByDate: context.reasonsByDate,
     exceedDate,
     end: penaltyEnd,
     weight,
@@ -329,6 +428,12 @@ function applyLeaveDeduction(leave: LeaveRow, context: LeaveDeductionContext) {
     holidays: context.holidays,
     monthStart: context.monthStart,
     monthEnd: context.monthEnd,
+    reasonBase: {
+      code: "OVER_QUOTA",
+      leave_record_id: leave.id ?? null,
+      leave_type: leave.leave_type,
+      exceed_date: exceedDate,
+    },
   });
 }
 
@@ -338,6 +443,7 @@ function isNoPayLeave(leave: LeaveRow): boolean {
 
 function applyNoSalaryPeriods(
   deductionMap: Map<string, number>,
+  reasonsByDate: Map<string, DeductionReason[]>,
   periods: NoSalaryPeriodRow[],
   monthStart: Date,
   monthEnd: Date,
@@ -345,7 +451,11 @@ function applyNoSalaryPeriods(
   for (const period of periods) {
     const start = new Date(period.start_date);
     const end = new Date(period.end_date);
-    applyNoPayLeave(deductionMap, start, end, monthStart, monthEnd);
+    applyNoPayLeave(deductionMap, reasonsByDate, start, end, monthStart, monthEnd, {
+      code: "NO_PAY",
+      leave_record_id: period.leave_record_id ?? null,
+      leave_type: period.leave_type ?? null,
+    });
   }
 }
 

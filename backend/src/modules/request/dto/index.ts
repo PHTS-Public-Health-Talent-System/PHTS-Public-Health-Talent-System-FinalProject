@@ -1,12 +1,12 @@
-export type { CreateRequestSchema, CreateRequestDTO } from "./create-request.dto.js";
-export type { ActionSchema, VerificationSchema } from "./update-status.dto.js";
-export type { UpdateRequestDTO } from "./update-request.dto.js";
+export type { CreateRequestSchema, CreateRequestDTO } from '@/modules/request/dto/create-request.dto.js';
+export type { ActionSchema, VerificationSchema } from '@/modules/request/dto/update-status.dto.js';
+export type { UpdateRequestDTO } from '@/modules/request/dto/update-request.dto.js';
 export type {
   CancelRequestDTO,
   SubmitRequestDTO,
   ApproveRequestDTO,
   RejectRequestDTO,
   ReturnRequestDTO,
-} from "./action-request.dto.js";
-export type { BatchApproveParams, BatchApproveResult } from "./batch-approve.dto.js";
-export type { RequestFilters, PaginatedResult } from "./request-query.dto.js";
+} from '@/modules/request/dto/action-request.dto.js';
+export type { BatchApproveParams, BatchApproveResult } from '@/modules/request/dto/batch-approve.dto.js';
+export type { RequestFilters, PaginatedResult } from '@/modules/request/dto/request-query.dto.js';

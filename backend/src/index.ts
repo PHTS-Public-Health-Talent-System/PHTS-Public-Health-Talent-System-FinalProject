@@ -37,6 +37,10 @@ import announcementRoutes from '@/modules/announcement/announcement.routes.js';
 import supportRoutes from '@/modules/support/support.routes.js';
 import dashboardRoutes from '@/modules/dashboard/dashboard.routes.js';
 import navigationRoutes from '@/modules/navigation/navigation.routes.js';
+import {
+  startOcrPrecheckWorker,
+  stopOcrPrecheckWorker,
+} from '@/modules/request/services/ocr-precheck.service.js';
 import { isMaintenanceModeEnabled } from '@/modules/system/services/maintenance.service.js';
 import { errorHandler, notFoundHandler } from '@middlewares/errorHandler.js';
 import { apiRateLimiter } from '@middlewares/rateLimiter.js';
@@ -257,6 +261,7 @@ async function gracefulShutdown(signal: string) {
   console.log(`\n${signal} received. Starting graceful shutdown...`);
 
   try {
+    await stopOcrPrecheckWorker();
     await closePool();
     console.log('Server shut down successfully');
     process.exit(0);
@@ -290,6 +295,7 @@ if (process.env.NODE_ENV !== 'test' && process.env.START_SERVER !== 'false') {
     // Verify database connectivity
     console.log('[Server] Verifying database connection...');
     await testConnection();
+    startOcrPrecheckWorker();
 
     // Start Express server
     app.listen(PORT, () => {

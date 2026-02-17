@@ -90,9 +90,12 @@ export class AuthService {
     };
 
     const jwtSecret = getJwtSecret();
-    const token = jwt.sign(jwtPayload, jwtSecret, {
-      expiresIn: "24h",
-    });
+    const disableTokenExpiry =
+      String(process.env.DEMO_DISABLE_TOKEN_EXPIRY || "").toLowerCase() === "true";
+    const jwtExpiresIn = process.env.JWT_EXPIRES_IN || "24h";
+    const token = disableTokenExpiry
+      ? jwt.sign(jwtPayload, jwtSecret)
+      : jwt.sign(jwtPayload, jwtSecret, { expiresIn: jwtExpiresIn });
 
     // Get user profile
     const userProfile = await AuthService.getUserProfile(user.user_id);

@@ -307,52 +307,35 @@ const getLicenseStatusLabel = (status?: string | null) => {
   }
 };
 
-// --- MOCK OCR LOGIC ---
+// --- OCR LOGIC ---
+const OCR_SERVICE_BASE = (process.env.NEXT_PUBLIC_OCR_API_URL || '').replace(/\/+$/, '');
 
-type OcrFieldStatus = 'match' | 'mismatch' | 'missing';
-type OcrExtractField = {
-  key: string;
-  label: string;
-  extractedValue: string;
-  expectedValue: string;
-  confidence: number;
-  status: OcrFieldStatus;
-};
 type MockOcrResult = {
   fileName: string;
   documentType: string;
-  summary: string;
-  fields: OcrExtractField[];
   checkedAt: string;
+  markdown: string;
+};
+
+type OcrPrecheckPayload = {
+  status?: 'queued' | 'processing' | 'completed' | 'failed' | 'skipped';
+  error?: string;
+  queued_at?: string;
+  started_at?: string;
+  finished_at?: string;
+  service_url?: string;
+  serviceUrl?: string;
+  results?: Array<{
+    name?: string;
+    ok?: boolean;
+    markdown?: string;
+    error?: string;
+  }>;
 };
 
 type MockOcrParams = {
   fileName: string;
-  citizenId: string;
-  requesterName: string;
-  department: string;
-  subDepartment: string;
-};
-
-const getOcrStatusBadgeClass = (status: OcrFieldStatus) => {
-  switch (status) {
-    case 'match':
-      return 'bg-emerald-50 text-emerald-700 border-emerald-200';
-    case 'mismatch':
-      return 'bg-rose-50 text-rose-700 border-rose-200';
-    default:
-      return 'bg-amber-50 text-amber-700 border-amber-200';
-  }
-};
-const getOcrStatusLabel = (status: OcrFieldStatus) => {
-  switch (status) {
-    case 'match':
-      return 'ตรง';
-    case 'mismatch':
-      return 'ไม่ตรง';
-    default:
-      return 'ไม่มีข้อมูล';
-  }
+  markdown: string;
 };
 
 const detectMockDocumentType = (fileName: string) => {
@@ -364,69 +347,13 @@ const detectMockDocumentType = (fileName: string) => {
 };
 
 const buildMockOcrResult = (params: MockOcrParams): MockOcrResult => {
-  const { fileName, citizenId, requesterName, department, subDepartment } = params;
-  const lower = fileName.toLowerCase();
-  const forceMismatch = lower.includes('mismatch') || lower.includes('ผิด');
-  const forceMissing = lower.includes('blur') || lower.includes('อ่านไม่ชัด');
-
-  const citizenExtracted = forceMissing
-    ? ''
-    : forceMismatch && citizenId?.length >= 2
-      ? `${citizenId.slice(0, citizenId.length - 2)}99`
-      : citizenId;
-  const nameExtracted = forceMissing ? '' : requesterName;
-  const departmentExtracted = forceMismatch ? `${department} (เอกสารเดิม)` : department;
-  const unitExtracted = forceMissing ? '' : subDepartment;
-
-  const fields: OcrExtractField[] = [
-    {
-      key: 'citizen_id',
-      label: 'เลขประจำตัวประชาชน',
-      extractedValue: citizenExtracted || '-',
-      expectedValue: citizenId || '-',
-      confidence: citizenExtracted ? (forceMismatch ? 87 : 97) : 41,
-      status: !citizenExtracted ? 'missing' : citizenExtracted === citizenId ? 'match' : 'mismatch',
-    },
-    {
-      key: 'full_name',
-      label: 'ชื่อ-นามสกุล',
-      extractedValue: nameExtracted || '-',
-      expectedValue: requesterName || '-',
-      confidence: nameExtracted ? 95 : 39,
-      status: !nameExtracted ? 'missing' : nameExtracted === requesterName ? 'match' : 'mismatch',
-    },
-    {
-      key: 'department',
-      label: 'กลุ่มงาน',
-      extractedValue: departmentExtracted || '-',
-      expectedValue: department || '-',
-      confidence: departmentExtracted ? (forceMismatch ? 84 : 93) : 45,
-      status: !departmentExtracted
-        ? 'missing'
-        : departmentExtracted === department
-          ? 'match'
-          : 'mismatch',
-    },
-    {
-      key: 'sub_department',
-      label: 'หน่วยงาน',
-      extractedValue: unitExtracted || '-',
-      expectedValue: subDepartment || '-',
-      confidence: unitExtracted ? 91 : 44,
-      status: !unitExtracted ? 'missing' : unitExtracted === subDepartment ? 'match' : 'mismatch',
-    },
-  ];
-
-  const matched = fields.filter((field) => field.status === 'match').length;
-  const mismatched = fields.filter((field) => field.status === 'mismatch').length;
-  const missing = fields.filter((field) => field.status === 'missing').length;
+  const { fileName, markdown } = params;
 
   return {
     fileName,
     documentType: detectMockDocumentType(fileName),
-    summary: `ตรง ${matched} รายการ, ไม่ตรง ${mismatched} รายการ, ไม่มีข้อมูล ${missing} รายการ`,
-    fields,
     checkedAt: new Date().toISOString(),
+    markdown: markdown.trim(),
   };
 };
 
@@ -449,6 +376,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const [ocrDialogOpen, setOcrDialogOpen] = useState(false);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrResult, setOcrResult] = useState<MockOcrResult | null>(null);
+  const [ocrError, setOcrError] = useState<string | null>(null);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [requestChecklistState, setRequestChecklistState] = useState<
@@ -498,6 +426,16 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     () => parseSubmission(request?.submission_data) as Record<string, unknown>,
     [request?.submission_data],
   );
+  const ocrPrecheck = useMemo(() => {
+    const raw = (submission as { ocr_precheck?: unknown }).ocr_precheck;
+    if (!raw || typeof raw !== 'object') return null;
+    return raw as OcrPrecheckPayload;
+  }, [submission]);
+  const ocrServiceBase = useMemo(() => {
+    if (OCR_SERVICE_BASE) return OCR_SERVICE_BASE;
+    const fromPrecheck = (ocrPrecheck?.service_url || ocrPrecheck?.serviceUrl || '').trim();
+    return fromPrecheck.replace(/\/+$/, '');
+  }, [ocrPrecheck]);
   const submissionTitle = getSubmissionString(submission, ['title']);
   const submissionFirstName = getSubmissionString(submission, ['first_name', 'firstName']);
   const submissionLastName = getSubmissionString(submission, ['last_name', 'lastName']);
@@ -735,25 +673,98 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
     }
   };
 
-  const runMockOcr = async (fileName: string) => {
+  const runMockOcr = async (fileName: string, fileUrl: string) => {
+    if (!ocrServiceBase) {
+      const message = 'ยังไม่ได้ตั้งค่า OCR URL (NEXT_PUBLIC_OCR_API_URL) และไม่พบ service_url จาก OCR precheck';
+      setOcrError(message);
+      setOcrDialogOpen(true);
+      toast.error(message);
+      return;
+    }
+
     setOcrDialogOpen(true);
     setOcrLoading(true);
     setOcrResult(null);
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    const result = buildMockOcrResult({
-      fileName,
-      citizenId: request?.citizen_id ?? '',
-      requesterName,
-      department,
-      subDepartment,
-    });
-    setOcrResult(result);
-    setOcrLoading(false);
+    setOcrError(null);
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('phts_token') : null;
+      const attachmentResponse = await fetch(fileUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!attachmentResponse.ok) {
+        throw new Error('ไม่สามารถดึงไฟล์แนบเพื่อส่ง OCR ได้');
+      }
+
+      const blob = await attachmentResponse.blob();
+      const formData = new FormData();
+      formData.append('files', new File([blob], fileName, { type: blob.type || 'application/octet-stream' }));
+
+      const ocrResponse = await fetch(`${ocrServiceBase}/ocr-batch`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!ocrResponse.ok) {
+        const errorText = await ocrResponse.text();
+        throw new Error(errorText || 'OCR service error');
+      }
+
+      const payload = (await ocrResponse.json()) as {
+        count?: number;
+        results?: Array<{ name?: string; ok?: boolean; markdown?: string; error?: string }>;
+      };
+      const firstResult = payload.results?.[0];
+      if (!firstResult?.ok) {
+        throw new Error(firstResult?.error || 'OCR ไม่สามารถประมวลผลเอกสารนี้ได้');
+      }
+
+      const markdown = String(firstResult.markdown ?? '').trim();
+      const result = buildMockOcrResult({
+        fileName,
+        markdown,
+      });
+      setOcrResult(result);
+      setOcrError(null);
+      toast.success('อ่านเอกสารด้วย OCR สำเร็จ');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'ไม่สามารถเรียก OCR service ได้';
+      setOcrError(message);
+      toast.error(message);
+    } finally {
+      setOcrLoading(false);
+    }
   };
 
   const isSectionComplete = (items: MinimumChecklistItem[]) => {
     return items.every((item) => requestChecklistState[item.key] === 'correct');
   };
+
+  useEffect(() => {
+    if (!ocrPrecheck || ocrResult) return;
+    if (ocrPrecheck.status !== 'completed') return;
+
+    const firstSuccess = ocrPrecheck.results?.find(
+      (result) => result.ok && typeof result.markdown === 'string' && result.markdown.trim(),
+    );
+    if (!firstSuccess?.markdown) return;
+
+    const loaded = buildMockOcrResult({
+      fileName: firstSuccess.name || 'ไฟล์แนบ',
+      markdown: firstSuccess.markdown,
+    });
+    setOcrResult(loaded);
+  }, [ocrPrecheck, ocrResult, request?.citizen_id, requesterName, department, subDepartment]);
+
+  const ocrPrecheckMessage = useMemo(() => {
+    if (!ocrPrecheck) return null;
+    if (ocrPrecheck.status === 'queued') return 'ระบบกำลังรอคิวประมวลผล OCR อัตโนมัติ';
+    if (ocrPrecheck.status === 'processing') return 'ระบบกำลังประมวลผล OCR อัตโนมัติ';
+    if (ocrPrecheck.status === 'failed')
+      return `OCR อัตโนมัติไม่สำเร็จ: ${ocrPrecheck.error || 'ไม่ทราบสาเหตุ'}`;
+    if (ocrPrecheck.status === 'skipped')
+      return `OCR อัตโนมัติถูกข้าม: ${ocrPrecheck.error || 'ไม่ได้ตั้งค่าบริการ OCR'}`;
+    return null;
+  }, [ocrPrecheck]);
 
   if (isLoading) {
     return (
@@ -1014,7 +1025,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                               </button>
                             )}
                             <button
-                              onClick={() => void runMockOcr(file.file_name)}
+                              onClick={() => void runMockOcr(file.file_name, fileUrl)}
                               className="text-xs flex items-center hover:text-primary transition-colors hover:underline"
                             >
                               <CheckCircle2 className="w-3 h-3 mr-1" /> ตรวจด้วย OCR
@@ -1309,7 +1320,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
             <CardHeader className="pb-3">
               <CardTitle className="text-base">ผู้ช่วยตรวจเอกสาร (OCR)</CardTitle>
               <CardDescription>
-                อ่านข้อมูลจากเอกสารและเทียบกับข้อมูลคำขอโดยอัตโนมัติ
+                แสดงข้อความที่อ่านได้จากเอกสารด้วย OCR
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -1318,7 +1329,12 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                   <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
                     <p className="font-medium">{ocrResult.fileName}</p>
                     <p className="text-muted-foreground">{ocrResult.documentType}</p>
-                    <p className="mt-1 text-foreground">{ocrResult.summary}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ตรวจเมื่อ {formatThaiDateTime(ocrResult.checkedAt)}
+                    </p>
+                    <p className="mt-2 text-foreground line-clamp-3 whitespace-pre-wrap">
+                      {ocrResult.markdown || '-'}
+                    </p>
                   </div>
                   <Button
                     variant="outline"
@@ -1330,7 +1346,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
                 </>
               ) : (
                 <div className="rounded-lg border border-dashed border-border p-3 text-sm text-muted-foreground">
-                  เลือกไฟล์แนบ แล้วกด “ตรวจด้วย OCR” เพื่อดูผลวิเคราะห์
+                  {ocrError || ocrPrecheckMessage || 'เลือกไฟล์แนบ แล้วกด “ตรวจด้วย OCR” เพื่อดูผลวิเคราะห์'}
                 </div>
               )}
             </CardContent>
@@ -1401,37 +1417,22 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
               <div className="rounded-lg border border-border/60 bg-muted/30 p-3 text-sm">
                 <p className="font-medium">{ocrResult.fileName}</p>
                 <p className="text-muted-foreground">{ocrResult.documentType}</p>
-                <p className="mt-1">{ocrResult.summary}</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   ตรวจเมื่อ {formatThaiDateTime(ocrResult.checkedAt)}
                 </p>
               </div>
 
-              <div className="space-y-2">
-                {ocrResult.fields.map((field) => (
-                  <div key={field.key} className="rounded-lg border border-border/60 p-3">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <p className="text-sm font-medium">{field.label}</p>
-                      <Badge variant="outline" className={getOcrStatusBadgeClass(field.status)}>
-                        {getOcrStatusLabel(field.status)} ({field.confidence}%)
-                      </Badge>
-                    </div>
-                    <div className="grid sm:grid-cols-2 gap-2 mt-2 text-xs">
-                      <div className="rounded bg-muted/40 p-2">
-                        <p className="text-muted-foreground">ค่าที่อ่านจากเอกสาร</p>
-                        <p className="font-medium text-foreground">{field.extractedValue}</p>
-                      </div>
-                      <div className="rounded bg-muted/40 p-2">
-                        <p className="text-muted-foreground">ค่าตามข้อมูลคำขอ</p>
-                        <p className="font-medium text-foreground">{field.expectedValue}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div className="rounded-lg border border-border/60 p-3">
+                <p className="text-sm font-medium mb-2">ข้อความจาก OCR</p>
+                <pre className="text-xs whitespace-pre-wrap break-words text-foreground leading-relaxed">
+                  {ocrResult.markdown || '-'}
+                </pre>
               </div>
             </div>
           ) : (
-            <div className="py-10 text-center text-sm text-muted-foreground">ยังไม่มีผล OCR</div>
+            <div className="py-10 text-center text-sm text-muted-foreground">
+              {ocrError || ocrPrecheckMessage || 'ยังไม่มีผล OCR'}
+            </div>
           )}
         </DialogContent>
       </Dialog>

@@ -24,6 +24,7 @@ import {
   parseJsonField,
 } from '@/modules/request/services/helpers.js';
 import { requestQueryService } from '@/modules/request/services/query.service.js'; // Use the class instance
+import { enqueueRequestOcrPrecheck } from '@/modules/request/services/ocr-precheck.service.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 import { requestRepository } from '@/modules/request/repositories/request.repository.js'; // [NEW]
 import { resolveProfessionCode } from '@shared/utils/profession.js';
@@ -64,6 +65,20 @@ export class RequestCommandService {
     if (looksLikeLicense) return FileType.LICENSE;
 
     return FileType.OTHER;
+  }
+
+  private parseSubmissionData(value: unknown): Record<string, unknown> {
+    if (!value) return {};
+    if (typeof value === 'object') return { ...(value as Record<string, unknown>) };
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return typeof parsed === 'object' && parsed ? (parsed as Record<string, unknown>) : {};
+      } catch {
+        return {};
+      }
+    }
+    return {};
   }
 
   // --- Helpers (Internal) ---
@@ -350,6 +365,9 @@ export class RequestCommandService {
         throw new Error('ไม่พบข้อมูลลายเซ็น กรุณาเซ็นชื่อก่อนส่งคำขอ');
       }
 
+      const submissionData = this.parseSubmissionData(requestEntity.submission_data);
+      const nowIso = new Date().toISOString();
+
       // [REFACTOR] Use Repo Update
       await requestRepository.update(
         requestId,
@@ -357,6 +375,14 @@ export class RequestCommandService {
           status: RequestStatus.PENDING,
           current_step: nextStep,
           step_started_at: new Date(),
+          submission_data: {
+            ...submissionData,
+            ocr_precheck: {
+              status: 'queued',
+              queued_at: nowIso,
+              source: 'AUTO_ON_SUBMIT',
+            },
+          },
         },
         connection,
       );
@@ -386,6 +412,11 @@ export class RequestCommandService {
         undefined,
         connection,
       );
+
+      // Fire-and-forget OCR precheck enqueue (worker handles processing).
+      void enqueueRequestOcrPrecheck(requestId).catch((error) => {
+        console.error('[OCRQueue] enqueue failed:', error);
+      });
 
       const updatedEntity = await requestRepository.findById(requestId);
       return mapRequestRow(updatedEntity!) as PTSRequest;

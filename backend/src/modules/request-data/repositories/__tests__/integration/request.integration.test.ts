@@ -6,12 +6,12 @@ import {
 jest.setTimeout(30000);
 
 describe("RequestRepository (integration)", () => {
-  let RequestRepository: typeof import("../request.repository.js").RequestRepository;
+  let RequestRepository: typeof import("../../request.repository.js").RequestRepository;
 
   beforeAll(async () => {
     process.env.NODE_ENV = "test";
     jest.resetModules();
-    ({ RequestRepository } = await import("../request.repository.js"));
+    ({ RequestRepository } = await import("../../request.repository.js"));
   });
 
   beforeEach(async () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveProfessionReviewTone } from './payrollDetail.helpers'
+import { resolveProfessionReviewTone } from "../model/detail.helpers"
 
 describe('resolveProfessionReviewTone', () => {
   it('returns reviewed tone when profession is reviewed', () => {

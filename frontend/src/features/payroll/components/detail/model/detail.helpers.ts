@@ -1,6 +1,6 @@
 "use client"
 
-import type { PeriodStatus, IssueKey, IssueTag } from "./payrollDetail.types"
+import type { PeriodStatus, IssueKey, IssueTag } from "./detail.types"
 import { formatThaiDate, formatThaiMonthYear } from "@/shared/utils/thai-locale"
 
 export const parseGroupNumber = (value?: string) => {

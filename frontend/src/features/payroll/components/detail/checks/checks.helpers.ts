@@ -1,0 +1,46 @@
+"use client"
+
+import { formatThaiDate } from "@/shared/utils/thai-locale"
+
+export const formatThaiShortDate = (value: unknown) => {
+  const raw = typeof value === "string" ? value : ""
+  const ymd = raw.length >= 10 ? raw.slice(0, 10) : ""
+  if (!ymd) return "-"
+  return formatThaiDate(`${ymd}T00:00:00`)
+}
+
+export const leaveTypeLabel = (leaveType: string) => {
+  switch (leaveType) {
+    case "sick":
+      return "ลาป่วย"
+    case "personal":
+      return "ลากิจส่วนตัว"
+    case "vacation":
+      return "ลาพักผ่อนประจำปี"
+    case "wife_help":
+      return "ลาไปช่วยเหลือภริยาที่คลอดบุตร"
+    case "maternity":
+      return "ลาคลอดบุตร"
+    case "ordain":
+      return "ลาอุปสมบทในพระพุทธศาสนา หรือลาไปประกอบพิธีฮัจย์"
+    case "military":
+      return "ลาไปเข้ารับการตรวจเลือก หรือเข้ารับการเตรียมพล"
+    case "education":
+      return "ลาไปศึกษา ฝึกอบรม ดูงาน หรือปฏิบัติการวิจัย"
+    case "rehab":
+      return "ลาไปฟื้นฟูสมรรถภาพด้านอาชีพ"
+    default:
+      return leaveType ? `ลา (${leaveType})` : "ลา"
+  }
+}
+
+export const quotaUnitLabel = (unit: string) => {
+  if (unit === "business_days") return "วันทำการ"
+  if (unit === "calendar_days") return "วันปฏิทิน (นับต่อเนื่องรวมวันหยุด)"
+  return unit || "-"
+}
+
+export const toNumber = (value: unknown, fallback = 0) => {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : fallback
+}

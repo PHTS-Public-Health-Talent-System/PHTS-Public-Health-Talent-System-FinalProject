@@ -1,7 +1,7 @@
 'use client';
 
 import { use } from 'react';
-import { PayrollDetailContent } from '@/features/payroll/components/PayrollDetailContent';
+import { PayrollDetailContent } from '@/features/payroll/components';
 import { usePayrollReviewProgress } from '@/features/payroll/usePayrollReviewProgress';
 
 export default function HeadFinancePayrollDetailPage({ params }: { params: Promise<{ id: string }> }) {

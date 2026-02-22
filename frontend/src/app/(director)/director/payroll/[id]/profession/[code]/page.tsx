@@ -1,7 +1,7 @@
 "use client"
 
 import { use } from "react"
-import { PayrollDetailContent } from "@/features/payroll/components/PayrollDetailContent"
+import { PayrollDetailContent } from "@/features/payroll/components"
 
 type PageParams = Promise<{ id: string; code: string }>
 

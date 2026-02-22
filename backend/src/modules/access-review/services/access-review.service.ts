@@ -16,7 +16,7 @@ import {
   inferScopeType,
   parseSpecialPositionScopes,
   removeOverlaps,
-} from '@/modules/scope/utils.js';
+} from '@/modules/request/scope/utils.js';
 import { getSyncRuntimeStatus } from '@/modules/sync/services/sync-status.service.js';
 
 /**

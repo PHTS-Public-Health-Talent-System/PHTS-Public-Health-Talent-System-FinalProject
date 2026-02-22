@@ -9,7 +9,7 @@ import {
   autoDisableTerminatedUsers,
   sendReviewReminders,
 } from '@/modules/access-review/services/access-review.service.js';
-import { runBackupJob } from '@/modules/system/backup/services/backup.service.js';
+import { runBackupJob } from '@/modules/backup/services/backup.service.js';
 import { sendLicenseAlertDigest } from '@/modules/workforce-compliance/services/license-compliance.digest.service.js';
 import { NotificationOutboxService } from '@/modules/notification/services/notification-outbox.service.js';
 import { ALERT_JOB_TIMEZONE } from '@/modules/workforce-compliance/constants/workforce-compliance-policy.js';

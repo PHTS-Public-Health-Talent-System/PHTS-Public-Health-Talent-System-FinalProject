@@ -8,7 +8,7 @@ import { validate } from "@shared/validate.middleware.js";
 import { UserRole } from "@/types/auth.js";
 import * as systemController from "@/modules/system/admin/admin.controller.js";
 import syncRoutes from "@/modules/sync/sync.routes.js";
-import backupRoutes from "@/modules/system/backup/backup.routes.js";
+import backupRoutes from "@/modules/backup/backup.routes.js";
 import {
   searchUsersSchema,
   getUserByIdSchema,

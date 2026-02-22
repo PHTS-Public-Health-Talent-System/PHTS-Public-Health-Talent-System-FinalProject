@@ -1,5 +1,4 @@
 import { supportRepository } from "../repositories/support.repository.js";
-import { getConnection } from "@config/database.js";
 import type {
   SupportTicket,
   SupportTicketStatus,
@@ -24,7 +23,7 @@ export class SupportService {
       file_size: number | null;
     }[];
   }) {
-    const connection = await getConnection();
+    const connection = await supportRepository.getConnection();
     let ticketId = 0;
     try {
       await connection.beginTransaction();
@@ -152,7 +151,7 @@ export class SupportService {
       file_size: number | null;
     }[];
   }): Promise<number> {
-    const connection = await getConnection();
+    const connection = await supportRepository.getConnection();
     try {
       await connection.beginTransaction();
       const messageId = await supportRepository.createMessage({
@@ -187,7 +186,7 @@ export class SupportService {
   }
 
   static async deleteTicket(ticketId: number): Promise<void> {
-    const connection = await getConnection();
+    const connection = await supportRepository.getConnection();
     try {
       await connection.beginTransaction();
       await supportRepository.deleteTicket(ticketId, connection);

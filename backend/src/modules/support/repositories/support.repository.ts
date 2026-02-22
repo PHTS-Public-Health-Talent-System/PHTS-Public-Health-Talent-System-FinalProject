@@ -195,6 +195,10 @@ export class SupportRepository {
     await db.execute(`DELETE FROM support_ticket_messages WHERE ticket_id = ?`, [ticketId]);
     await db.execute(`DELETE FROM support_tickets WHERE ticket_id = ?`, [ticketId]);
   }
+
+  async getConnection(): Promise<PoolConnection> {
+    return pool.getConnection();
+  }
 }
 
 export const supportRepository = new SupportRepository();

@@ -147,6 +147,10 @@ export class AnnouncementRepository {
     );
     return rows as Announcement[];
   }
+
+  async getConnection(): Promise<PoolConnection> {
+    return pool.getConnection();
+  }
 }
 
 export const announcementRepository = new AnnouncementRepository();

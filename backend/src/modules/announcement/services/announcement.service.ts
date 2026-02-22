@@ -1,4 +1,3 @@
-import { getConnection } from '@config/database.js';
 import { AnnouncementPriority } from "../entities/announcement.entity.js";
 import { announcementRepository } from "../repositories/announcement.repository.js";
 import { NotificationService } from "../../notification/services/notification.service.js";
@@ -21,7 +20,7 @@ export class AnnouncementService {
     roles: string[];
     created_by: number | null;
   }) {
-    const connection = await getConnection();
+    const connection = await announcementRepository.getConnection();
     try {
       await connection.beginTransaction();
       const announcementId = await announcementRepository.createAnnouncement(
@@ -80,7 +79,7 @@ export class AnnouncementService {
       roles: string[];
     }>,
   ) {
-    const connection = await getConnection();
+    const connection = await announcementRepository.getConnection();
     try {
       await connection.beginTransaction();
       await announcementRepository.updateAnnouncement(

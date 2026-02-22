@@ -22,7 +22,7 @@ import requestRoutes from '@/modules/request/request.routes.js';
 import signatureRoutes from '@/modules/signature/signature.routes.js';
 import payrollRoutes from '@/modules/payroll/payroll.routes.js';
 import reportRoutes from '@/modules/report/report.routes.js';
-import systemRoutes from '@/modules/system/system.routes.js';
+import systemRoutes from '@/modules/system/admin/admin.routes.js';
 import masterDataRoutes from '@/modules/master-data/master-data.routes.js';
 import leaveManagementRoutes from '@/modules/leave-management/leave-management.routes.js';
 import notificationRoutes from '@/modules/notification/notification.routes.js';

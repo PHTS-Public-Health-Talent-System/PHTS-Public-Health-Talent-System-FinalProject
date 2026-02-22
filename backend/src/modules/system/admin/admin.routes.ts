@@ -6,7 +6,7 @@ import { Router } from "express";
 import { protect, restrictTo } from "@middlewares/authMiddleware.js";
 import { validate } from "@shared/validate.middleware.js";
 import { UserRole } from "@/types/auth.js";
-import * as systemController from "@/modules/system/system.controller.js";
+import * as systemController from "@/modules/system/admin/admin.controller.js";
 import syncRoutes from "@/modules/system/sync/sync.routes.js";
 import backupRoutes from "@/modules/system/backup/backup.routes.js";
 import {
@@ -14,7 +14,7 @@ import {
   getUserByIdSchema,
   updateUserRoleSchema,
   toggleMaintenanceModeSchema,
-} from "@/modules/system/system.schema.js";
+} from "@/modules/system/admin/admin.schema.js";
 
 const router = Router();
 

@@ -3,7 +3,7 @@ import { protect, restrictTo } from "@middlewares/authMiddleware.js";
 import { validate } from "@shared/validate.middleware.js";
 import { UserRole } from "@/types/auth.js";
 import * as backupController from "@/modules/system/backup/backup.controller.js";
-import { backupHistorySchema } from "@/modules/system/system.schema.js";
+import { backupHistorySchema } from "@/modules/system/admin/admin.schema.js";
 
 const router = Router();
 const adminAuth = restrictTo(UserRole.ADMIN);

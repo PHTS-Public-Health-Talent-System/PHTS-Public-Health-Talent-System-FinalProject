@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { asyncHandler } from "@middlewares/errorHandler.js";
 import { BackupRepository } from "@/modules/system/repositories/backup.repository.js";
 import { runBackupJob } from "@/modules/system/backup/services/backup.service.js";
-import type { BackupHistoryQuery } from "@/modules/system/system.schema.js";
+import type { BackupHistoryQuery } from "@/modules/system/admin/admin.schema.js";
 
 export const triggerBackup = asyncHandler(async (req: Request, res: Response) => {
   const actorId = req.user?.userId ?? null;

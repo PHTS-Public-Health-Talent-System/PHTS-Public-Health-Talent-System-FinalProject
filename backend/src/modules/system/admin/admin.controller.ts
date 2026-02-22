@@ -21,7 +21,7 @@ import type {
   UpdateUserRoleParams,
   UpdateUserRoleBody,
   ToggleMaintenanceModeBody,
-} from "@/modules/system/system.schema.js";
+} from "@/modules/system/admin/admin.schema.js";
 
 export const searchUsers = asyncHandler(async (req: Request, res: Response) => {
   const { q, page, limit, role, is_active } = req.query as SearchUsersQuery;

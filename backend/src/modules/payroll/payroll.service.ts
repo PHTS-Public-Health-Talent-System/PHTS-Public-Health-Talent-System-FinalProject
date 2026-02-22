@@ -34,6 +34,20 @@ const REVIEW_PROFESSION_MAP: Record<string, string> = {
   CARDIO_TECH: "CARDIO_THORACIC_TECH",
 };
 
+type PayoutEditPayload = {
+  eligible_days?: number;
+  deducted_days?: number;
+  retroactive_amount?: number;
+  remark?: string | null;
+};
+
+type ResolvedPayoutValues = {
+  eligibleDays: number;
+  deductedDays: number;
+  retroactiveAmount: number;
+  remark: string | null;
+};
+
 function normalizeProfessionCodeForReview(code: string): string {
   const normalized = String(code ?? "")
     .trim()
@@ -43,6 +57,158 @@ function normalizeProfessionCodeForReview(code: string): string {
 }
 
 export class PayrollService {
+  private static async loadHolidayDates(
+    year: number,
+    conn: PoolConnection,
+  ): Promise<string[]> {
+    const holidayRows = await PayrollRepository.findHolidays(year - 1, year, conn);
+    return holidayRows.map((h: any) => calculator.formatLocalDate(h.holiday_date));
+  }
+
+  private static applyRetroDeductCheck(
+    currentResult: any,
+    retroDetails: any[] | undefined,
+  ): void {
+    if (!retroDetails || retroDetails.length === 0) return;
+    const negative = retroDetails.filter((detail) => detail.diff < -0.01);
+    if (negative.length === 0) return;
+    const total = Math.abs(
+      negative.reduce((sum, item) => sum + item.diff, 0),
+    );
+    const checks = currentResult.checks ?? [];
+    checks.push({
+      code: "RETRO_DEDUCT",
+      severity: "WARNING",
+      title: "ตกเบิกย้อนหลัง (หัก)",
+      summary: `มีตกเบิกย้อนหลังติดลบ ${total.toLocaleString("th-TH")} บาท`,
+      impactDays: 0,
+      impactAmount: Number.parseFloat(total.toFixed(2)),
+      startDate: null,
+      endDate: null,
+      evidence: negative.map((detail) => ({
+        type: "retro",
+        reference_month: detail.month,
+        reference_year: detail.year,
+        diff: detail.diff,
+        remark: detail.remark,
+      })),
+    });
+    currentResult.checks = checks;
+  }
+
+  private static buildReturnReportMap(leaveRows: any[], returnReportRows: any[]) {
+    const leaveIdToCitizen = new Map<number, string>();
+    leaveRows.forEach((row) => {
+      if (row.id) leaveIdToCitizen.set(row.id, row.citizen_id);
+    });
+    const returnReportMap = new Map<string, any[]>();
+    returnReportRows.forEach((row) => {
+      const citizenId = leaveIdToCitizen.get(row.leave_record_id);
+      if (!citizenId) return;
+      if (!returnReportMap.has(citizenId)) {
+        returnReportMap.set(citizenId, []);
+      }
+      returnReportMap.get(citizenId)!.push(row);
+    });
+    return returnReportMap;
+  }
+
+  private static async processCitizenChunk(
+    conn: PoolConnection,
+    params: {
+      year: number;
+      month: number;
+      periodId: number;
+      citizenIds: string[];
+      holidays: string[];
+    },
+  ): Promise<{ totalAmount: number; headCount: number }> {
+    const { year, month, periodId, citizenIds, holidays } = params;
+    const userIdMap = await PayrollRepository.findUserIdMapByCitizenIds(
+      citizenIds,
+      conn,
+    );
+    const startOfMonth = calculator.makeLocalDate(year, month - 1, 1);
+    const endOfMonth = calculator.makeLocalDate(year, month, 0);
+    const fiscalYear = month >= 10 ? year + 1 + 543 : year + 543;
+
+    const batchData = await PayrollRepository.fetchBatchData(
+      citizenIds,
+      startOfMonth,
+      endOfMonth,
+      fiscalYear,
+      conn,
+    );
+    const eligMap = buildGroupMap(batchData.eligibilityRows, (row) => {
+      if (!row.expiry_date && row.expiry_date_alt) row.expiry_date = row.expiry_date_alt;
+    });
+    const moveMap = buildGroupMap(batchData.movementRows);
+    const empMap = buildSingleMap(batchData.employeeRows);
+    const licMap = buildGroupMap(batchData.licenseRows);
+    const leaveMap = buildGroupMap(batchData.leaveRows);
+    const quotaMap = buildSingleMap(batchData.quotaRows);
+    const noSalaryMap = buildGroupMap(batchData.noSalaryRows);
+    const returnReportMap = PayrollService.buildReturnReportMap(
+      batchData.leaveRows as any[],
+      batchData.returnReportRows as any[],
+    );
+
+    let totalAmount = 0;
+    let headCount = 0;
+    for (const cid of citizenIds) {
+      const employeeData = {
+        eligibilityRows: eligMap.get(cid) || [],
+        movementRows: moveMap.get(cid) || [],
+        employeeRow: empMap.get(cid) || {},
+        licenseRows: licMap.get(cid) || [],
+        leaveRows: leaveMap.get(cid) || [],
+        quotaRow: quotaMap.get(cid) || null,
+        holidays,
+        noSalaryPeriods: noSalaryMap.get(cid) || [],
+        returnReportRows: returnReportMap.get(cid) || [],
+      };
+      const currentResult = await calculator.calculateMonthlyWithData(
+        year,
+        month,
+        employeeData,
+      );
+      const retroResult = await calculateRetroactive(
+        cid,
+        year,
+        month,
+        6,
+        conn as any,
+      );
+
+      currentResult.retroactiveTotal = retroResult.totalRetro;
+      currentResult.retroDetails = retroResult.retroDetails;
+      PayrollService.applyRetroDeductCheck(
+        currentResult,
+        retroResult.retroDetails as any[] | undefined,
+      );
+
+      const grandTotal = currentResult.netPayment + (currentResult.retroactiveTotal || 0);
+      if (grandTotal <= 0 && currentResult.netPayment <= 0) {
+        continue;
+      }
+      await calculator.savePayout({
+        conn,
+        periodId,
+        userId: userIdMap.get(cid) ?? null,
+        citizenId: cid,
+        result: currentResult,
+        masterRateId: currentResult.masterRateId,
+        baseRateSnapshot: currentResult.rateSnapshot,
+        referenceYear: year,
+        referenceMonth: month,
+      });
+      totalAmount += grandTotal;
+      headCount += 1;
+    }
+
+    return { totalAmount, headCount };
+  }
+
   static canRoleViewPeriod(
     role: string | null | undefined,
     status: PeriodStatus | string,
@@ -141,15 +307,7 @@ export class PayrollService {
       const periodItemCitizenIds =
         await PayrollRepository.findPeriodItemCitizenIds(periodId, conn);
 
-      // Pre-fetch holidays once
-      const holidayRows = await PayrollRepository.findHolidays(
-        year - 1,
-        year,
-        conn,
-      );
-      const holidays = holidayRows.map((h: any) =>
-        calculator.formatLocalDate(h.holiday_date),
-      );
+      const holidays = await PayrollService.loadHolidayDates(year, conn);
 
       const eligibleCitizenIds =
         periodItemCitizenIds.length > 0
@@ -163,130 +321,15 @@ export class PayrollService {
       for (let i = 0; i < eligibleCitizenIds.length; i += CHUNK_SIZE) {
         const citizenIds = eligibleCitizenIds.slice(i, i + CHUNK_SIZE);
         if (citizenIds.length === 0) continue;
-        const userIdMap = await PayrollRepository.findUserIdMapByCitizenIds(
+        const chunkResult = await PayrollService.processCitizenChunk(conn, {
+          year,
+          month,
+          periodId,
           citizenIds,
-          conn,
-        );
-
-        const startOfMonth = calculator.makeLocalDate(year, month - 1, 1);
-        const endOfMonth = calculator.makeLocalDate(year, month, 0);
-        const fiscalYear = month >= 10 ? year + 1 + 543 : year + 543;
-
-        const batchData = await PayrollRepository.fetchBatchData(
-          citizenIds,
-          startOfMonth,
-          endOfMonth,
-          fiscalYear,
-          conn,
-        );
-
-        // Build maps keyed by citizen_id
-        const eligMap = buildGroupMap(batchData.eligibilityRows, (row) => {
-          if (!row.expiry_date && row.expiry_date_alt)
-            row.expiry_date = row.expiry_date_alt;
+          holidays,
         });
-        const moveMap = buildGroupMap(batchData.movementRows);
-        const empMap = buildSingleMap(batchData.employeeRows);
-        const licMap = buildGroupMap(batchData.licenseRows);
-        const leaveMap = buildGroupMap(batchData.leaveRows);
-        const quotaMap = buildSingleMap(batchData.quotaRows);
-        const noSalaryMap = buildGroupMap(batchData.noSalaryRows);
-
-        // Map leave IDs to citizen for return reports
-        const leaveIdToCitizen = new Map<number, string>();
-        (batchData.leaveRows as any[]).forEach((row) => {
-          if (row.id) leaveIdToCitizen.set(row.id, row.citizen_id);
-        });
-
-        const returnReportMap = new Map<string, any[]>();
-        (batchData.returnReportRows as any[]).forEach((row) => {
-          const citizenId = leaveIdToCitizen.get(row.leave_record_id);
-          if (!citizenId) return;
-          if (!returnReportMap.has(citizenId))
-            returnReportMap.set(citizenId, []);
-          returnReportMap.get(citizenId)!.push(row);
-        });
-
-        // Process each employee in chunk
-        for (const cid of citizenIds) {
-          const employeeData = {
-            eligibilityRows: eligMap.get(cid) || [],
-            movementRows: moveMap.get(cid) || [],
-            employeeRow: empMap.get(cid) || {},
-            licenseRows: licMap.get(cid) || [],
-            leaveRows: leaveMap.get(cid) || [],
-            quotaRow: quotaMap.get(cid) || null,
-            holidays,
-            noSalaryPeriods: noSalaryMap.get(cid) || [],
-            returnReportRows: returnReportMap.get(cid) || [],
-          };
-
-          const currentResult = await calculator.calculateMonthlyWithData(
-            year,
-            month,
-            employeeData,
-          );
-
-          const retroResult = await calculateRetroactive(
-            cid,
-            year,
-            month,
-            6,
-            conn as any,
-          );
-
-          currentResult.retroactiveTotal = retroResult.totalRetro;
-          currentResult.retroDetails = retroResult.retroDetails;
-          if (retroResult.retroDetails && retroResult.retroDetails.length > 0) {
-            const negative = retroResult.retroDetails.filter(
-              (d) => d.diff < -0.01,
-            );
-            if (negative.length) {
-              const total = Math.abs(
-                negative.reduce((sum, item) => sum + item.diff, 0),
-              );
-              const checks = currentResult.checks ?? [];
-              checks.push({
-                code: "RETRO_DEDUCT",
-                severity: "WARNING",
-                title: "ตกเบิกย้อนหลัง (หัก)",
-                summary: `มีตกเบิกย้อนหลังติดลบ ${total.toLocaleString("th-TH")} บาท`,
-                impactDays: 0,
-                impactAmount: Number.parseFloat(total.toFixed(2)),
-                startDate: null,
-                endDate: null,
-                evidence: negative.map((d) => ({
-                  type: "retro",
-                  reference_month: d.month,
-                  reference_year: d.year,
-                  diff: d.diff,
-                  remark: d.remark,
-                })),
-              });
-              currentResult.checks = checks;
-            }
-          }
-
-          const grandTotal =
-            currentResult.netPayment + (currentResult.retroactiveTotal || 0);
-
-          if (grandTotal > 0 || currentResult.netPayment > 0) {
-            await calculator.savePayout({
-              conn,
-              periodId,
-              userId: userIdMap.get(cid) ?? null,
-              citizenId: cid,
-              result: currentResult,
-              masterRateId: currentResult.masterRateId,
-              baseRateSnapshot: currentResult.rateSnapshot,
-              referenceYear: year,
-              referenceMonth: month,
-            });
-
-            totalAmount += grandTotal;
-            headCount++;
-          }
-        }
+        totalAmount += chunkResult.totalAmount;
+        headCount += chunkResult.headCount;
       }
 
       await PayrollRepository.updatePeriodTotals(
@@ -825,12 +868,7 @@ export class PayrollService {
 
   static async updatePayout(
     payoutId: number,
-    payload: {
-      eligible_days?: number;
-      deducted_days?: number;
-      retroactive_amount?: number;
-      remark?: string | null;
-    },
+    payload: PayoutEditPayload,
     meta?: { actorId?: number | null },
   ) {
     const conn = await PayrollRepository.getConnection();
@@ -858,60 +896,16 @@ export class PayrollService {
         throw new Error("ข้อมูลเดือน/ปีของรอบไม่ถูกต้อง");
       }
 
-      const nextEligibleDays =
-        payload.eligible_days !== undefined
-          ? Number(payload.eligible_days)
-          : Number((ctx as any).eligible_days ?? 0);
-      const nextDeductedDays =
-        payload.deducted_days !== undefined
-          ? Number(payload.deducted_days)
-          : Number((ctx as any).deducted_days ?? 0);
-      const nextRetroactiveAmount =
-        payload.retroactive_amount !== undefined
-          ? Number(payload.retroactive_amount)
-          : Number((ctx as any).retroactive_amount ?? 0);
-      const nextRemark =
-        payload.remark !== undefined
-          ? payload.remark
-          : ((ctx as any).remark ?? null);
-
-      if (!Number.isFinite(nextEligibleDays) || nextEligibleDays < 0) {
-        throw new Error(
-          "eligible_days ต้องเป็นตัวเลขและต้องมากกว่าหรือเท่ากับ 0",
-        );
-      }
-      if (!Number.isFinite(nextDeductedDays) || nextDeductedDays < 0) {
-        throw new Error(
-          "deducted_days ต้องเป็นตัวเลขและต้องมากกว่าหรือเท่ากับ 0",
-        );
-      }
-      if (nextEligibleDays > daysInMonth) {
-        throw new Error(
-          `eligible_days ต้องไม่เกินจำนวนวันในเดือน (${daysInMonth})`,
-        );
-      }
-      if (nextDeductedDays > daysInMonth) {
-        throw new Error(
-          `deducted_days ต้องไม่เกินจำนวนวันในเดือน (${daysInMonth})`,
-        );
-      }
-      if (nextEligibleDays + nextDeductedDays > daysInMonth) {
-        throw new Error(
-          `eligible_days + deducted_days ต้องไม่เกินจำนวนวันในเดือน (${daysInMonth})`,
-        );
-      }
-      if (!Number.isFinite(nextRetroactiveAmount)) {
-        throw new Error("retroactive_amount ต้องเป็นตัวเลข");
-      }
+      const nextValues = resolvePayoutValues(ctx, payload, daysInMonth);
 
       const baseRate = Number((ctx as any).pts_rate_snapshot ?? 0);
       const calculatedAmount = new Decimal(baseRate)
         .div(daysInMonth)
-        .mul(nextEligibleDays)
+        .mul(nextValues.eligibleDays)
         .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
         .toNumber();
       const totalPayable = new Decimal(calculatedAmount)
-        .plus(nextRetroactiveAmount)
+        .plus(nextValues.retroactiveAmount)
         .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
         .toNumber();
 
@@ -927,101 +921,23 @@ export class PayrollService {
         WHERE payout_id = ?
         `,
         [
-          nextEligibleDays,
-          nextDeductedDays,
-          nextRetroactiveAmount,
+          nextValues.eligibleDays,
+          nextValues.deductedDays,
+          nextValues.retroactiveAmount,
           calculatedAmount,
           totalPayable,
-          nextRemark,
+          nextValues.remark,
           payoutId,
         ],
       );
 
-      // Keep item breakdown consistent:
-      // - update CURRENT item to match calculated_amount
-      // - keep existing retro items, but add a single "manual" retro item to make the sum match retroactive_amount
-      const manualDesc = "ตกเบิก (แก้ไขด้วยมือ)";
-
-      const [currentRows] = await conn.query<any[]>(
-        `
-        SELECT item_id
-        FROM pay_result_items
-        WHERE payout_id = ? AND item_type = 'CURRENT'
-        ORDER BY item_id ASC
-        LIMIT 1
-        `,
-        [payoutId],
-      );
-      const currentItemId = currentRows?.[0]?.item_id
-        ? Number(currentRows[0].item_id)
-        : null;
-      if (currentItemId) {
-        await conn.execute(
-          `UPDATE pay_result_items SET amount = ? WHERE item_id = ?`,
-          [calculatedAmount, currentItemId],
-        );
-      } else if (Math.abs(calculatedAmount) > 0.005) {
-        await conn.execute(
-          `
-          INSERT INTO pay_result_items
-            (payout_id, reference_month, reference_year, item_type, amount, description)
-          VALUES (?, ?, ?, 'CURRENT', ?, 'ค่าตอบแทนงวดปัจจุบัน')
-          `,
-          [payoutId, month, rawYear, calculatedAmount],
-        );
-      }
-
-      const [retroRows] = await conn.query<any[]>(
-        `
-        SELECT item_id, item_type, amount, reference_month, reference_year, description
-        FROM pay_result_items
-        WHERE payout_id = ?
-          AND item_type IN ('RETROACTIVE_ADD', 'RETROACTIVE_DEDUCT')
-        ORDER BY item_id ASC
-        `,
-        [payoutId],
-      );
-
-      const retroSumExcludingManual = (retroRows ?? []).reduce((sum, row) => {
-        const isManual =
-          Number(row.reference_month ?? 0) === 0 &&
-          Number(row.reference_year ?? 0) === 0 &&
-          String(row.description ?? "") === manualDesc;
-        if (isManual) return sum;
-        const amt = Number(row.amount ?? 0);
-        const sign = String(row.item_type) === "RETROACTIVE_DEDUCT" ? -1 : 1;
-        return sum + sign * (Number.isFinite(amt) ? amt : 0);
-      }, 0);
-
-      await conn.execute(
-        `
-        DELETE FROM pay_result_items
-        WHERE payout_id = ?
-          AND reference_month = 0
-          AND reference_year = 0
-          AND description = ?
-          AND item_type IN ('RETROACTIVE_ADD', 'RETROACTIVE_DEDUCT')
-        `,
-        [payoutId, manualDesc],
-      );
-
-      const retroDelta = new Decimal(nextRetroactiveAmount)
-        .minus(retroSumExcludingManual)
-        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
-        .toNumber();
-
-      if (Math.abs(retroDelta) > 0.01) {
-        const itemType =
-          retroDelta > 0 ? "RETROACTIVE_ADD" : "RETROACTIVE_DEDUCT";
-        await conn.execute(
-          `
-          INSERT INTO pay_result_items
-            (payout_id, reference_month, reference_year, item_type, amount, description)
-          VALUES (?, 0, 0, ?, ?, ?)
-          `,
-          [payoutId, itemType, Math.abs(retroDelta), manualDesc],
-        );
-      }
+      await syncPayoutItems(conn, {
+        payoutId,
+        month,
+        rawYear,
+        calculatedAmount,
+        retroactiveAmount: nextValues.retroactiveAmount,
+      });
 
       const totals = await PayrollRepository.sumPayResultsByPeriod(
         periodId,
@@ -1039,12 +955,12 @@ export class PayrollService {
       return {
         payout_id: payoutId,
         period_id: periodId,
-        eligible_days: nextEligibleDays,
-        deducted_days: nextDeductedDays,
+        eligible_days: nextValues.eligibleDays,
+        deducted_days: nextValues.deductedDays,
         calculated_amount: calculatedAmount,
-        retroactive_amount: nextRetroactiveAmount,
+        retroactive_amount: nextValues.retroactiveAmount,
         total_payable: totalPayable,
-        remark: nextRemark,
+        remark: nextValues.remark,
         updated_by: meta?.actorId ?? null,
       };
     } catch (error) {
@@ -1130,6 +1046,150 @@ function buildSingleMap(rows: any[]): Map<string, any> {
     map.set(row.citizen_id, row);
   }
   return map;
+}
+
+function resolvePayoutValues(
+  ctx: any,
+  payload: PayoutEditPayload,
+  daysInMonth: number,
+): ResolvedPayoutValues {
+  const eligibleDays =
+    payload.eligible_days !== undefined
+      ? Number(payload.eligible_days)
+      : Number(ctx.eligible_days ?? 0);
+  const deductedDays =
+    payload.deducted_days !== undefined
+      ? Number(payload.deducted_days)
+      : Number(ctx.deducted_days ?? 0);
+  const retroactiveAmount =
+    payload.retroactive_amount !== undefined
+      ? Number(payload.retroactive_amount)
+      : Number(ctx.retroactive_amount ?? 0);
+  const remark =
+    payload.remark !== undefined ? payload.remark : (ctx.remark ?? null);
+
+  if (!Number.isFinite(eligibleDays) || eligibleDays < 0) {
+    throw new Error("eligible_days ต้องเป็นตัวเลขและต้องมากกว่าหรือเท่ากับ 0");
+  }
+  if (!Number.isFinite(deductedDays) || deductedDays < 0) {
+    throw new Error("deducted_days ต้องเป็นตัวเลขและต้องมากกว่าหรือเท่ากับ 0");
+  }
+  if (eligibleDays > daysInMonth) {
+    throw new Error(`eligible_days ต้องไม่เกินจำนวนวันในเดือน (${daysInMonth})`);
+  }
+  if (deductedDays > daysInMonth) {
+    throw new Error(`deducted_days ต้องไม่เกินจำนวนวันในเดือน (${daysInMonth})`);
+  }
+  if (eligibleDays + deductedDays > daysInMonth) {
+    throw new Error(
+      `eligible_days + deducted_days ต้องไม่เกินจำนวนวันในเดือน (${daysInMonth})`,
+    );
+  }
+  if (!Number.isFinite(retroactiveAmount)) {
+    throw new Error("retroactive_amount ต้องเป็นตัวเลข");
+  }
+
+  return {
+    eligibleDays,
+    deductedDays,
+    retroactiveAmount,
+    remark,
+  };
+}
+
+async function syncPayoutItems(
+  conn: PoolConnection,
+  params: {
+    payoutId: number;
+    month: number;
+    rawYear: number;
+    calculatedAmount: number;
+    retroactiveAmount: number;
+  },
+): Promise<void> {
+  const { payoutId, month, rawYear, calculatedAmount, retroactiveAmount } = params;
+  const manualDesc = "ตกเบิก (แก้ไขด้วยมือ)";
+
+  const [currentRows] = await conn.query<any[]>(
+    `
+    SELECT item_id
+    FROM pay_result_items
+    WHERE payout_id = ? AND item_type = 'CURRENT'
+    ORDER BY item_id ASC
+    LIMIT 1
+    `,
+    [payoutId],
+  );
+  const currentItemId = currentRows?.[0]?.item_id
+    ? Number(currentRows[0].item_id)
+    : null;
+  if (currentItemId) {
+    await conn.execute(
+      `UPDATE pay_result_items SET amount = ? WHERE item_id = ?`,
+      [calculatedAmount, currentItemId],
+    );
+  } else if (Math.abs(calculatedAmount) > 0.005) {
+    await conn.execute(
+      `
+      INSERT INTO pay_result_items
+        (payout_id, reference_month, reference_year, item_type, amount, description)
+      VALUES (?, ?, ?, 'CURRENT', ?, 'ค่าตอบแทนงวดปัจจุบัน')
+      `,
+      [payoutId, month, rawYear, calculatedAmount],
+    );
+  }
+
+  const [retroRows] = await conn.query<any[]>(
+    `
+    SELECT item_id, item_type, amount, reference_month, reference_year, description
+    FROM pay_result_items
+    WHERE payout_id = ?
+      AND item_type IN ('RETROACTIVE_ADD', 'RETROACTIVE_DEDUCT')
+    ORDER BY item_id ASC
+    `,
+    [payoutId],
+  );
+
+  const retroSumExcludingManual = (retroRows ?? []).reduce((sum, row) => {
+    const isManual =
+      Number(row.reference_month ?? 0) === 0 &&
+      Number(row.reference_year ?? 0) === 0 &&
+      String(row.description ?? "") === manualDesc;
+    if (isManual) return sum;
+    const amt = Number(row.amount ?? 0);
+    const sign = String(row.item_type) === "RETROACTIVE_DEDUCT" ? -1 : 1;
+    return sum + sign * (Number.isFinite(amt) ? amt : 0);
+  }, 0);
+
+  await conn.execute(
+    `
+    DELETE FROM pay_result_items
+    WHERE payout_id = ?
+      AND reference_month = 0
+      AND reference_year = 0
+      AND description = ?
+      AND item_type IN ('RETROACTIVE_ADD', 'RETROACTIVE_DEDUCT')
+    `,
+    [payoutId, manualDesc],
+  );
+
+  const retroDelta = new Decimal(retroactiveAmount)
+    .minus(retroSumExcludingManual)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+    .toNumber();
+
+  if (Math.abs(retroDelta) <= 0.01) {
+    return;
+  }
+  const itemType = retroDelta > 0 ? "RETROACTIVE_ADD" : "RETROACTIVE_DEDUCT";
+  await conn.execute(
+    `
+    INSERT INTO pay_result_items
+      (payout_id, reference_month, reference_year, item_type, amount, description)
+    VALUES (?, 0, 0, ?, ?, ?)
+    `,
+    [payoutId, itemType, Math.abs(retroDelta), manualDesc],
+  );
 }
 
 async function sendWorkflowNotification(

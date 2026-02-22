@@ -183,6 +183,225 @@ const buildLeaveSeriesKey = (row: LeavePolicyInputRow): string | null => {
   return null;
 };
 
+type NormalizedLeaveEntry = {
+  row: LeavePolicyInputRow;
+  start: Date;
+  end: Date;
+};
+
+type LeaveUsageState = {
+  byType: Record<string, number>;
+  bySeries: Record<string, number>;
+};
+
+type QuotaEvaluation = {
+  limit: number | null;
+  duration: number;
+  overQuota: boolean;
+  exceedDate: Date | null;
+  seriesKey: string | null;
+  useSeriesCumulative: boolean;
+  useCumulativeQuota: boolean;
+};
+
+const normalizeLeavesInRange = (
+  leaveRows: LeavePolicyInputRow[],
+  rangeStartDate: Date | null,
+  rangeEndDate: Date | null,
+): NormalizedLeaveEntry[] => {
+  return leaveRows
+    .map((row) => {
+      if (Number(row.is_no_pay ?? 0) === 1 || Number(row.pay_exception ?? 0) === 1) {
+        return null;
+      }
+      const start = resolveEffectiveDate(row.document_start_date, row.start_date);
+      const end = resolveEffectiveDate(row.document_end_date, row.end_date);
+      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
+        return null;
+      }
+
+      const clampedStart =
+        rangeStartDate && start < rangeStartDate ? new Date(rangeStartDate) : start;
+      const clampedEnd =
+        rangeEndDate && end > rangeEndDate ? new Date(rangeEndDate) : end;
+      if (clampedEnd < clampedStart) return null;
+
+      return { row, start: clampedStart, end: clampedEnd };
+    })
+    .filter((entry): entry is NormalizedLeaveEntry => Boolean(entry))
+    .sort((a, b) => a.start.getTime() - b.start.getTime());
+};
+
+const applyDynamicLimitOverrides = (
+  leaveType: string,
+  limit: number | null,
+  leaveStart: Date,
+  serviceStartDate: Date | null,
+): number | null => {
+  if (leaveType === "ordain" && serviceStartDate) {
+    const serviceDays = Math.floor(
+      (leaveStart.getTime() - serviceStartDate.getTime()) / (1000 * 60 * 60 * 24),
+    );
+    if (serviceDays < 365) return 0;
+  }
+
+  if (leaveType === "personal" && serviceStartDate && limit !== null) {
+    const leaveFiscalYear = getFiscalYear(leaveStart);
+    const serviceFiscalYear = getFiscalYear(serviceStartDate);
+    if (leaveFiscalYear === serviceFiscalYear) return 15;
+  }
+
+  return limit;
+};
+
+const getCurrentUsage = (
+  usageState: LeaveUsageState,
+  leaveType: string,
+  seriesKey: string | null,
+  useSeriesCumulative: boolean,
+  isCumulativeRule: boolean,
+): number => {
+  if (useSeriesCumulative) return usageState.bySeries[seriesKey as string] ?? 0;
+  if (isCumulativeRule) return usageState.byType[leaveType] ?? 0;
+  return 0;
+};
+
+const updateUsage = (
+  usageState: LeaveUsageState,
+  leaveType: string,
+  seriesKey: string | null,
+  useSeriesCumulative: boolean,
+  isCumulativeRule: boolean,
+  nextUsage: number,
+): void => {
+  if (useSeriesCumulative) {
+    usageState.bySeries[seriesKey as string] = nextUsage;
+    return;
+  }
+  if (isCumulativeRule) {
+    usageState.byType[leaveType] = nextUsage;
+  }
+};
+
+const evaluateLeaveQuota = (
+  entry: NormalizedLeaveEntry,
+  rule: LeaveRule,
+  quota: LeaveQuotaRow,
+  serviceStartDate: Date | null,
+  holidays: string[],
+  usageState: LeaveUsageState,
+): QuotaEvaluation => {
+  const leaveType = normalizeLeaveTypeForPolicy(entry.row.leave_type);
+  const baseLimit = resolveLeaveLimit(leaveType, rule.limit, quota);
+  const limit = applyDynamicLimitOverrides(leaveType, baseLimit, entry.start, serviceStartDate);
+  const { duration, isHalfDay } = calculateDuration(entry.row, entry.start, entry.end, rule.unit, holidays);
+  const seriesKey = buildLeaveSeriesKey(entry.row);
+  const useSeriesCumulative = Boolean(seriesKey);
+  const isCumulativeRule = rule.rule_type === "cumulative";
+  const useCumulativeQuota = isCumulativeRule || useSeriesCumulative;
+  const currentUsage = getCurrentUsage(
+    usageState,
+    leaveType,
+    seriesKey,
+    useSeriesCumulative,
+    isCumulativeRule,
+  );
+  const nextUsage = useCumulativeQuota ? currentUsage + duration : currentUsage;
+  updateUsage(usageState, leaveType, seriesKey, useSeriesCumulative, isCumulativeRule, nextUsage);
+
+  let overQuota = false;
+  let exceedDate: Date | null = null;
+  if (limit !== null) {
+    if (useCumulativeQuota) {
+      overQuota = currentUsage + duration > limit;
+      if (overQuota) {
+        const remainingQuota = Math.max(0, limit - currentUsage);
+        exceedDate = calculateExceedDate(
+          entry.start,
+          entry.end,
+          remainingQuota,
+          isHalfDay,
+          rule.unit,
+          holidays,
+        );
+      }
+    } else {
+      overQuota = duration > limit;
+      if (overQuota) {
+        exceedDate = calculateExceedDate(
+          entry.start,
+          entry.end,
+          limit,
+          isHalfDay,
+          rule.unit,
+          holidays,
+        );
+      }
+    }
+  }
+
+  return {
+    limit,
+    duration,
+    overQuota,
+    exceedDate,
+    seriesKey,
+    useSeriesCumulative,
+    useCumulativeQuota,
+  };
+};
+
+const updatePerLeave = (
+  perLeave: LeaveQuotaStatus["perLeave"],
+  row: LeavePolicyInputRow,
+  sourceLeaveType: string,
+  evaluation: QuotaEvaluation,
+): void => {
+  if (row.id === undefined) return;
+  perLeave[row.id] = {
+    leaveType: sourceLeaveType,
+    duration: evaluation.duration,
+    limit: evaluation.limit,
+    overQuota: evaluation.overQuota,
+    exceedDate: evaluation.exceedDate ? formatLocalDate(evaluation.exceedDate) : null,
+  };
+};
+
+const updatePerType = (
+  perType: Record<string, LeaveQuotaStatusByType>,
+  leaveType: string,
+  evaluation: QuotaEvaluation,
+  usageState: LeaveUsageState,
+): void => {
+  if (!perType[leaveType]) {
+    perType[leaveType] = {
+      limit: evaluation.limit,
+      used: 0,
+      remaining: evaluation.useCumulativeQuota && evaluation.limit !== null ? evaluation.limit : null,
+      overQuota: false,
+      exceedDate: null,
+    };
+  }
+
+  const item = perType[leaveType];
+  item.used += evaluation.duration;
+
+  if (evaluation.useCumulativeQuota && evaluation.limit !== null) {
+    const usedForRemaining = evaluation.useSeriesCumulative
+      ? (usageState.bySeries[evaluation.seriesKey as string] ?? 0)
+      : (usageState.byType[leaveType] ?? 0);
+    item.remaining = Math.max(0, evaluation.limit - usedForRemaining);
+  }
+
+  if (evaluation.overQuota) {
+    item.overQuota = true;
+    if (!item.exceedDate && evaluation.exceedDate) {
+      item.exceedDate = formatLocalDate(evaluation.exceedDate);
+    }
+  }
+  item.limit = evaluation.limit;
+};
+
 export function calculateLeaveQuotaStatus({
   leaveRows,
   holidays,
@@ -202,134 +421,27 @@ export function calculateLeaveQuotaStatus({
 }): LeaveQuotaStatus {
   const rangeStartDate = rangeStart ? new Date(rangeStart) : null;
   const rangeEndDate = rangeEnd ? new Date(rangeEnd) : null;
-  const normalizedLeaves = leaveRows
-    .map((row) => {
-      if (Number(row.is_no_pay ?? 0) === 1 || Number(row.pay_exception ?? 0) === 1) {
-        return null;
-      }
-      const start = resolveEffectiveDate(row.document_start_date, row.start_date);
-      const end = resolveEffectiveDate(row.document_end_date, row.end_date);
-      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
-        return null;
-      }
-
-      const clampedStart =
-        rangeStartDate && start < rangeStartDate ? new Date(rangeStartDate) : start;
-      const clampedEnd =
-        rangeEndDate && end > rangeEndDate ? new Date(rangeEndDate) : end;
-      if (clampedEnd < clampedStart) {
-        return null;
-      }
-
-      return { row, start: clampedStart, end: clampedEnd };
-    })
-    .filter(Boolean)
-    .sort((a, b) => a!.start.getTime() - b!.start.getTime());
-
-  const usage: Record<string, number> = {};
-  const seriesUsage: Record<string, number> = {};
+  const normalizedLeaves = normalizeLeavesInRange(leaveRows, rangeStartDate, rangeEndDate);
+  const usageState: LeaveUsageState = { byType: {}, bySeries: {} };
   const perType: Record<string, LeaveQuotaStatusByType> = {};
   const perLeave: LeaveQuotaStatus["perLeave"] = {};
 
   for (const entry of normalizedLeaves) {
-    const row = entry!.row;
+    const row = entry.row;
     const leaveType = normalizeLeaveTypeForPolicy(row.leave_type);
     const sourceLeaveType = row.leave_type;
     const rule = rules[leaveType];
     if (!rule) continue;
-    const start = entry!.start;
-    const end = entry!.end;
-
-    let limit = resolveLeaveLimit(leaveType, rule.limit, quota);
-
-    if (leaveType === "ordain" && serviceStartDate) {
-      const serviceDays = Math.floor((start.getTime() - serviceStartDate.getTime()) / (1000 * 60 * 60 * 24));
-      if (serviceDays < 365) {
-        limit = 0;
-      }
-    }
-
-    if (leaveType === "personal" && serviceStartDate && limit !== null) {
-      const leaveFiscalYear = getFiscalYear(start);
-      const serviceFiscalYear = getFiscalYear(serviceStartDate);
-      if (leaveFiscalYear === serviceFiscalYear) {
-        limit = 15;
-      }
-    }
-
-    const { duration, isHalfDay } = calculateDuration(row, start, end, rule.unit, holidays);
-    const seriesKey = buildLeaveSeriesKey(row);
-    const useSeriesCumulative = Boolean(seriesKey);
-    const useCumulativeQuota = rule.rule_type === "cumulative" || useSeriesCumulative;
-    const currentUsage = useSeriesCumulative
-      ? seriesUsage[seriesKey as string] ?? 0
-      : rule.rule_type === "cumulative"
-        ? usage[leaveType] ?? 0
-        : 0;
-    const nextUsage = useCumulativeQuota ? currentUsage + duration : currentUsage;
-
-    if (useSeriesCumulative) {
-      seriesUsage[seriesKey as string] = nextUsage;
-    } else if (rule.rule_type === "cumulative") {
-      usage[leaveType] = nextUsage;
-    }
-
-    let overQuota = false;
-    let exceedDate: Date | null = null;
-    if (limit !== null) {
-      if (useCumulativeQuota) {
-        overQuota = currentUsage + duration > limit;
-        if (overQuota) {
-          const remainingQuota = Math.max(0, limit - currentUsage);
-          exceedDate = calculateExceedDate(start, end, remainingQuota, isHalfDay, rule.unit, holidays);
-        }
-      } else {
-        overQuota = duration > limit;
-        if (overQuota) {
-          exceedDate = calculateExceedDate(start, end, limit, isHalfDay, rule.unit, holidays);
-        }
-      }
-    }
-
-    if (row.id !== undefined) {
-      perLeave[row.id] = {
-        leaveType: sourceLeaveType,
-        duration,
-        limit,
-        overQuota,
-        exceedDate: exceedDate ? formatLocalDate(exceedDate) : null,
-      };
-    }
-
-    if (!perType[leaveType]) {
-      perType[leaveType] = {
-        limit,
-        used: 0,
-        remaining: useCumulativeQuota ? (limit !== null ? limit : null) : null,
-        overQuota: false,
-        exceedDate: null,
-      };
-    }
-
-    perType[leaveType].used += duration;
-    if (useCumulativeQuota) {
-      if (limit !== null) {
-        const usedForRemaining = useSeriesCumulative
-          ? seriesUsage[seriesKey as string] ?? 0
-          : usage[leaveType] ?? 0;
-        perType[leaveType].remaining = Math.max(0, limit - usedForRemaining);
-      }
-    }
-
-    if (overQuota) {
-      perType[leaveType].overQuota = true;
-      if (!perType[leaveType].exceedDate && exceedDate) {
-        perType[leaveType].exceedDate = formatLocalDate(exceedDate);
-      }
-    }
-
-    // Keep limit updated in case it is overridden by rules (personal/ordain).
-    perType[leaveType].limit = limit;
+    const evaluation = evaluateLeaveQuota(
+      entry,
+      rule,
+      quota,
+      serviceStartDate,
+      holidays,
+      usageState,
+    );
+    updatePerLeave(perLeave, row, sourceLeaveType, evaluation);
+    updatePerType(perType, leaveType, evaluation, usageState);
   }
 
   return { perType, perLeave };
@@ -349,11 +461,12 @@ export async function getLeaveQuotaStatus(citizenId: string, fiscalYear: number)
     repository.findEmployeeServiceDates(citizenId),
   ]);
 
-  const serviceStartDate = serviceDates?.start_work_date
-    ? new Date(serviceDates.start_work_date)
-    : serviceDates?.first_entry_date
-      ? new Date(serviceDates.first_entry_date)
-      : null;
+  let serviceStartDate: Date | null = null;
+  if (serviceDates?.start_work_date) {
+    serviceStartDate = new Date(serviceDates.start_work_date);
+  } else if (serviceDates?.first_entry_date) {
+    serviceStartDate = new Date(serviceDates.first_entry_date);
+  }
 
   const result = calculateLeaveQuotaStatus({
     leaveRows,

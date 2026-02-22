@@ -357,133 +357,55 @@ const addDaysToLocalDateString = (value: string, deltaDays: number): string => {
   return formatLocalDate(d);
 };
 
-export async function calculateMonthlyWithData(
-  year: number,
-  month: number,
-  data: EmployeeBatchData,
-): Promise<CalculationResult> {
-  const startOfMonth = makeLocalDate(year, month - 1, 1);
-  const endOfMonth = makeLocalDate(year, month, 0);
-  const daysInMonth = endOfMonth.getDate();
-  const fiscalYearStart =
-    month >= 10
-      ? makeLocalDate(year, 9, 1)
-      : makeLocalDate(year - 1, 9, 1);
-  const fiscalYearEnd =
-    month >= 10
-      ? makeLocalDate(year + 1, 9, 0)
-      : makeLocalDate(year, 9, 0);
+type QuotaInfoByLeaveId = Map<
+  number,
+  { limit: number | null; duration: number; exceedDate: string | null; leaveType: string }
+>;
 
-  const eligibilities = buildEligibilities(
-    data.eligibilityRows as EligibilityRow[],
-  );
-  const movements = data.movementRows as MovementRow[];
-  const employee = (data.employeeRow as EmployeeRow) || {};
-  const licenses = data.licenseRows as LicenseRow[];
-  const leaves = data.leaveRows as LeaveRow[];
-  const quota = (data.quotaRow as QuotaRow) || ({} as QuotaRow);
-  const holidays = data.holidays;
-  const noSalaryPeriods = (data.noSalaryPeriods as NoSalaryPeriodRow[]) || [];
-  const returnReportRows = (data.returnReportRows as ReturnReportRow[]) || [];
+const buildReturnReportsMap = (rows: ReturnReportRow[]): Map<number, Date> => {
   const returnReports = new Map<number, Date>();
-
-  // สร้าง map วันรายงานตัวกลับ (เอาวันที่เร็วที่สุดต่อ 1 ใบลา)
-  // ข้อมูลนี้ถูกส่งต่อให้ deductions.ts ผ่านตัวแปร returnReports
-  // เพื่อใช้หยุดช่วงหักใน resolveOverQuotaPenaltyEnd()
-  for (const row of returnReportRows) {
+  for (const row of rows) {
     const existing = returnReports.get(row.leave_record_id);
     const candidate = new Date(row.return_date);
     if (!existing || candidate < existing) {
       returnReports.set(row.leave_record_id, candidate);
     }
   }
+  return returnReports;
+};
 
-  // สร้างใบลา education จาก movement_type = STUDY
-  // แล้วรวมกับ leave จริงจากฐานข้อมูล
-  const studyLeaveRows = buildStudyLeaveRowsFromMovements(movements, endOfMonth);
-  const mergedLeaves = assignSyntheticIdsToLeaves([...leaves, ...studyLeaveRows]);
-
-  const { periods, remark } = resolveWorkPeriods(
-    movements,
-    startOfMonth,
-    endOfMonth,
-  );
-  if (periods.length === 0) {
-    return emptyResult(remark || "ไม่ได้ปฏิบัติงานในเดือนนี้");
-  }
-
-  // ส่งวันเริ่มงานให้ leave-domain ใช้คำนวณกฎที่อิงอายุงาน
-  // (เช่น personal ปีแรก, ordain ไม่ถึง 1 ปี)
-  const startWorkDateStr = formatLocalDate(employee.start_work_date ?? null);
-  const serviceStartDate = startWorkDateStr
-    ? parseLocalDateString(startWorkDateStr)
-    : null;
-
-  const quotaStatus = calculateLeaveQuotaStatus({
-    leaveRows: mergedLeaves,
-    holidays,
-    quota,
-    rules: LEAVE_RULES,
-    serviceStartDate,
-    rangeStart: fiscalYearStart,
-    rangeEnd: endOfMonth < fiscalYearEnd ? endOfMonth : fiscalYearEnd,
-  });
-  // แปลงผลจาก leave-domain ให้อยู่ในรูป Map<leave_id, QuotaDecision>
-  // เพื่อส่งเข้าฟังก์ชัน calculateDeductions() ใน deductions.ts
+const buildQuotaMaps = (quotaStatus: ReturnType<typeof calculateLeaveQuotaStatus>): {
+  quotaDecisions: Map<number, QuotaDecision>;
+  quotaInfoByLeaveId: QuotaInfoByLeaveId;
+} => {
   const quotaDecisions = new Map<number, QuotaDecision>();
-  const quotaInfoByLeaveId = new Map<number, { limit: number | null; duration: number; exceedDate: string | null; leaveType: string }>();
+  const quotaInfoByLeaveId: QuotaInfoByLeaveId = new Map();
   Object.entries(quotaStatus.perLeave).forEach(([leaveId, info]) => {
     const id = Number(leaveId);
-    if (!Number.isNaN(id)) {
-      quotaDecisions.set(id, {
-        overQuota: info.overQuota,
-        exceedDate: info.exceedDate ? new Date(info.exceedDate) : null,
-      });
-      quotaInfoByLeaveId.set(id, {
-        limit: info.limit === null || info.limit === undefined ? null : Number(info.limit),
-        duration: Number(info.duration ?? 0),
-        exceedDate: info.exceedDate ?? null,
-        leaveType: String(info.leaveType ?? ""),
-      });
-    }
+    if (Number.isNaN(id)) return;
+    quotaDecisions.set(id, {
+      overQuota: info.overQuota,
+      exceedDate: info.exceedDate ? new Date(info.exceedDate) : null,
+    });
+    quotaInfoByLeaveId.set(id, {
+      limit: info.limit === null || info.limit === undefined ? null : Number(info.limit),
+      duration: Number(info.duration ?? 0),
+      exceedDate: info.exceedDate ?? null,
+      leaveType: String(info.leaveType ?? ""),
+    });
   });
-  const deductionResult: DeductionResult = calculateDeductions(
-    mergedLeaves,
-    holidays,
-    startOfMonth,
-    endOfMonth,
-    quotaDecisions,
-    noSalaryPeriods,
-    returnReports,
-  );
-  const deductionMap = deductionResult.deductionMap;
-  const reasonsByDate = deductionResult.reasonsByDate;
-  // สรุปจำนวนวันถูกหักทั้งเดือน เพื่อนำไปบันทึก pay_results.deducted_days
-  const totalDeductionDaysInMonth = Array.from(deductionMap.values()).reduce(
-    (sum, value) => sum + value,
-    0,
-  );
-  const licenseChecker = createLicenseChecker(
-    licenses,
-    employee.position_name || "",
-  );
-  const eligibilityState: EligibilityState = { index: 0, current: null };
-  const totals: PaymentTotals = {
-    totalPayment: new Decimal(0),
-    validLicenseDays: 0,
-    totalDeductionDays: 0,
-    daysCounted: 0,
-    lastRateSnapshot: 0,
-    lastMasterRateId: null,
-    lastProfessionCode: null,
-    lastGroupNo: null,
-    lastItemNo: null,
-  };
+  return { quotaDecisions, quotaInfoByLeaveId };
+};
 
+const buildWorkDayWindow = (periods: WorkPeriod[]): {
+  orderedPeriods: WorkPeriod[];
+  workDaySet: Set<string>;
+  firstWorkDay: string | null;
+  lastWorkDay: string | null;
+} => {
   const orderedPeriods = [...periods].sort(
     (a, b) => a.start.getTime() - b.start.getTime(),
   );
-
   const workDaySet = new Set<string>();
   for (const period of orderedPeriods) {
     for (
@@ -494,13 +416,65 @@ export async function calculateMonthlyWithData(
       workDaySet.add(formatLocalDate(d));
     }
   }
+
   let firstWorkDay: string | null = null;
   let lastWorkDay: string | null = null;
   for (const day of workDaySet) {
     if (!firstWorkDay || day < firstWorkDay) firstWorkDay = day;
     if (!lastWorkDay || day > lastWorkDay) lastWorkDay = day;
   }
+  return { orderedPeriods, workDaySet, firstWorkDay, lastWorkDay };
+};
 
+type EnsureAggFn = (code: PayrollCheckCode) => CheckAgg;
+type UpdateAggRangeFn = (agg: CheckAgg, dateStr: string) => void;
+
+const addPendingReturnReportChecks = (
+  mergedLeaves: LeaveRow[],
+  endOfMonth: Date,
+  ensureAgg: EnsureAggFn,
+  updateAggRange: UpdateAggRangeFn,
+): void => {
+  const returnReportRequiredTypes = new Set<string>(RETURN_REPORT_REQUIRED_LEAVE_TYPES);
+  const monthEndStr = formatLocalDate(endOfMonth);
+  for (const leave of mergedLeaves) {
+    const leaveType = String(leave.leave_type ?? "");
+    if (!returnReportRequiredTypes.has(leaveType)) continue;
+    if (leave.id === undefined || leave.id === null || Number(leave.id) <= 0) continue;
+
+    const status = String((leave as any).return_report_status ?? "").toUpperCase();
+    if (status === "DONE") continue;
+
+    const leaveEndStr = formatLocalDate((leave as any).document_end_date ?? leave.end_date);
+    if (!leaveEndStr || leaveEndStr > monthEndStr) continue;
+
+    const agg = ensureAgg("PENDING_RETURN_REPORT");
+    agg.impactDays += 1;
+    updateAggRange(agg, leaveEndStr);
+    pushEvidence(agg, `leave:${leave.id}:pending_return`, {
+      type: "leave",
+      leave_record_id: Number(leave.id),
+      leave_type: leaveType,
+      start_date: formatLocalDate((leave as any).document_start_date ?? leave.start_date),
+      end_date: leaveEndStr,
+      return_report_status: status || null,
+    });
+  }
+};
+
+type CheckAccumulator = {
+  checkAggs: Map<PayrollCheckCode, CheckAgg>;
+  ensureAgg: EnsureAggFn;
+  updateAggRange: UpdateAggRangeFn;
+};
+
+type EligibilityCoverage = {
+  daysWithEligibilityRate: number;
+  firstEligibilityDay: string | null;
+  lastEligibilityDay: string | null;
+};
+
+const createCheckAccumulator = (): CheckAccumulator => {
   const checkAggs = new Map<PayrollCheckCode, CheckAgg>();
   const ensureAgg = (code: PayrollCheckCode): CheckAgg => {
     const existing = checkAggs.get(code);
@@ -517,71 +491,197 @@ export async function calculateMonthlyWithData(
     checkAggs.set(code, next);
     return next;
   };
+  const updateAggRange = (agg: CheckAgg, dateStr: string): void => {
+    if (!agg.startDate || dateStr < agg.startDate) agg.startDate = dateStr;
+    if (!agg.endDate || dateStr > agg.endDate) agg.endDate = dateStr;
+  };
+  return { checkAggs, ensureAgg, updateAggRange };
+};
 
+const buildLeaveByIdMap = (mergedLeaves: LeaveRow[]): Map<number, LeaveRow> => {
   const leaveById = new Map<number, LeaveRow>();
-  mergedLeaves.forEach((leave) => {
-    if (leave.id !== undefined && leave.id !== null) leaveById.set(Number(leave.id), leave);
-  });
-
-  if (!startWorkDateStr) {
-    const agg = ensureAgg("MISSING_START_WORK_DATE");
-    agg.impactDays = workDaySet.size > 0 ? workDaySet.size : daysInMonth;
-    agg.impactAmount = 0;
-    agg.startDate = firstWorkDay ?? formatLocalDate(startOfMonth);
-    agg.endDate = lastWorkDay ?? formatLocalDate(endOfMonth);
-  }
-
-  const returnReportRequiredTypes = new Set<string>(RETURN_REPORT_REQUIRED_LEAVE_TYPES);
-  const monthEndStr = formatLocalDate(endOfMonth);
   for (const leave of mergedLeaves) {
-    const leaveType = String(leave.leave_type ?? "");
-    if (!returnReportRequiredTypes.has(leaveType)) continue;
-    if (leave.id === undefined || leave.id === null || Number(leave.id) <= 0) continue;
+    if (leave.id !== undefined && leave.id !== null) leaveById.set(Number(leave.id), leave);
+  }
+  return leaveById;
+};
 
-    const status = String((leave as any).return_report_status ?? "").toUpperCase();
-    if (status === "DONE") continue;
+type MissingStartWorkDateContext = {
+  startWorkDateStr: string | null;
+  workDaySet: Set<string>;
+  daysInMonth: number;
+  firstWorkDay: string | null;
+  lastWorkDay: string | null;
+  startOfMonth: Date;
+  endOfMonth: Date;
+  ensureAgg: EnsureAggFn;
+};
 
-    const leaveEndStr = formatLocalDate((leave as any).document_end_date ?? leave.end_date);
-    if (!leaveEndStr || leaveEndStr > monthEndStr) continue;
+const markMissingStartWorkDateCheck = ({
+  startWorkDateStr,
+  workDaySet,
+  daysInMonth,
+  firstWorkDay,
+  lastWorkDay,
+  startOfMonth,
+  endOfMonth,
+  ensureAgg,
+}: MissingStartWorkDateContext): void => {
+  if (startWorkDateStr) return;
+  const agg = ensureAgg("MISSING_START_WORK_DATE");
+  agg.impactDays = workDaySet.size > 0 ? workDaySet.size : daysInMonth;
+  agg.impactAmount = 0;
+  agg.startDate = firstWorkDay ?? formatLocalDate(startOfMonth);
+  agg.endDate = lastWorkDay ?? formatLocalDate(endOfMonth);
+};
 
-    const agg = ensureAgg("PENDING_RETURN_REPORT");
+const updateEligibilityCoverage = (
+  coverage: EligibilityCoverage,
+  dateStr: string,
+  currentRate: number,
+): void => {
+  if (currentRate <= 0) return;
+  coverage.daysWithEligibilityRate += 1;
+  if (!coverage.firstEligibilityDay || dateStr < coverage.firstEligibilityDay) {
+    coverage.firstEligibilityDay = dateStr;
+  }
+  if (!coverage.lastEligibilityDay || dateStr > coverage.lastEligibilityDay) {
+    coverage.lastEligibilityDay = dateStr;
+  }
+};
+
+const resolveReasonLeaveType = (
+  reason: DeductionReason,
+  leave: LeaveRow | undefined,
+  quotaInfo: { leaveType: string } | undefined,
+): string => {
+  if (reason.leave_type) return String(reason.leave_type);
+  if (quotaInfo?.leaveType) return String(quotaInfo.leaveType);
+  if (leave) return String(leave.leave_type);
+  return "unknown";
+};
+
+type ReasonImpactContext = {
+  ensureAgg: EnsureAggFn;
+  updateAggRange: UpdateAggRangeFn;
+  leaveById: Map<number, LeaveRow>;
+  quotaInfoByLeaveId: QuotaInfoByLeaveId;
+};
+
+const applyReasonImpact = (
+  reason: DeductionReason,
+  dateStr: string,
+  dailyRate: number,
+  context: ReasonImpactContext,
+): void => {
+  const { ensureAgg, updateAggRange, leaveById, quotaInfoByLeaveId } = context;
+  const code = normalizeReasonCode(reason.code);
+  const agg = ensureAgg(code);
+  agg.impactDays += reason.weight;
+  agg.impactAmount += dailyRate * reason.weight;
+  updateAggRange(agg, dateStr);
+
+  if (!reason.leave_record_id) return;
+  const leaveId = Number(reason.leave_record_id);
+  const leave = leaveById.get(leaveId);
+  const quotaInfo = quotaInfoByLeaveId.get(leaveId);
+  const leaveStartRaw = leave ? ((leave as any).document_start_date ?? leave.start_date) : null;
+  const leaveEndRaw = leave ? ((leave as any).document_end_date ?? leave.end_date) : null;
+  const start = leaveStartRaw ? formatLocalDate(leaveStartRaw) : dateStr;
+  const end = leaveEndRaw ? formatLocalDate(leaveEndRaw) : dateStr;
+  const leaveType = resolveReasonLeaveType(reason, leave, quotaInfo);
+
+  pushEvidence(agg, `leave:${reason.leave_record_id}:${code}`, {
+    type: "leave",
+    leave_record_id: leaveId,
+    leave_type: leaveType,
+    start_date: start,
+    end_date: end,
+    is_no_pay: code === "NO_PAY",
+    over_quota: code === "OVER_QUOTA",
+    exceed_date: reason.exceed_date
+      ? formatLocalDate(reason.exceed_date)
+      : quotaInfo?.exceedDate ?? null,
+    quota_limit: quotaInfo?.limit ?? null,
+    leave_duration: Number.isFinite(quotaInfo?.duration ?? NaN)
+      ? Number(quotaInfo?.duration ?? 0)
+      : null,
+    quota_unit: LEAVE_RULES[leaveType]?.unit ?? null,
+  });
+};
+
+type DailyCheckImpactInput = {
+  currentRate: number;
+  hasLicense: boolean;
+  reasons: DeductionReason[];
+  deductionWeight: number;
+  dateStr: string;
+};
+
+type DailyCheckImpactContext = ReasonImpactContext & {
+  daysInMonth: number;
+};
+
+const applyDailyCheckImpact = (
+  input: DailyCheckImpactInput,
+  context: DailyCheckImpactContext,
+): void => {
+  const { currentRate, hasLicense, reasons, deductionWeight, dateStr } = input;
+  const { ensureAgg, updateAggRange, daysInMonth } = context;
+  if (currentRate <= 0) return;
+  const dailyRate = Number(new Decimal(currentRate).div(daysInMonth).toFixed(10));
+
+  if (!hasLicense) {
+    const agg = ensureAgg("NO_LICENSE");
     agg.impactDays += 1;
-    agg.impactAmount += 0;
-    agg.startDate = agg.startDate
-      ? (leaveEndStr < agg.startDate ? leaveEndStr : agg.startDate)
-      : leaveEndStr;
-    agg.endDate = agg.endDate
-      ? (leaveEndStr > agg.endDate ? leaveEndStr : agg.endDate)
-      : leaveEndStr;
-
-    pushEvidence(agg, `leave:${leave.id}:pending_return`, {
-      type: "leave",
-      leave_record_id: Number(leave.id),
-      leave_type: leaveType,
-      start_date: formatLocalDate((leave as any).document_start_date ?? leave.start_date),
-      end_date: leaveEndStr,
-      return_report_status: status || null,
-    });
+    agg.impactAmount += dailyRate;
+    updateAggRange(agg, dateStr);
+    return;
   }
 
-  let daysWithEligibilityRate = 0;
-  let firstEligibilityDay: string | null = null;
-  let lastEligibilityDay: string | null = null;
+  if (reasons.length === 0) {
+    if (deductionWeight <= 0) return;
+    const agg = ensureAgg("OVER_QUOTA");
+    agg.impactDays += deductionWeight;
+    agg.impactAmount += dailyRate * deductionWeight;
+    updateAggRange(agg, dateStr);
+    return;
+  }
+
+  for (const reason of reasons) applyReasonImpact(reason, dateStr, dailyRate, context);
+};
+
+type DailyPeriodsContext = {
+  orderedPeriods: WorkPeriod[];
+  eligibilities: EligibilityInfo[];
+  eligibilityState: EligibilityState;
+  totals: PaymentTotals;
+  licenseChecker: (dateStr: string) => boolean;
+  reasonsByDate: Map<string, DeductionReason[]>;
+  deductionMap: Map<string, number>;
+  dailyCheckContext: DailyCheckImpactContext;
+};
+
+const processDailyPeriods = ({
+  orderedPeriods,
+  eligibilities,
+  eligibilityState,
+  totals,
+  licenseChecker,
+  reasonsByDate,
+  deductionMap,
+  dailyCheckContext,
+}: DailyPeriodsContext): EligibilityCoverage => {
+  const coverage: EligibilityCoverage = {
+    daysWithEligibilityRate: 0,
+    firstEligibilityDay: null,
+    lastEligibilityDay: null,
+  };
 
   for (const period of orderedPeriods) {
-    for (
-      let d = new Date(period.start);
-      d <= period.end;
-      d.setDate(d.getDate() + 1)
-    ) {
+    for (let d = new Date(period.start); d <= period.end; d.setDate(d.getDate() + 1)) {
       const dateStr = formatLocalDate(d);
-      const dayTs = d.getTime();
-
-      const activeEligibility = getActiveEligibility(
-        eligibilityState,
-        eligibilities,
-        dayTs,
-      );
+      const activeEligibility = getActiveEligibility(eligibilityState, eligibilities, d.getTime());
       const currentRate = activeEligibility ? activeEligibility.rate : 0;
 
       if (activeEligibility) {
@@ -591,103 +691,39 @@ export async function calculateMonthlyWithData(
         totals.lastGroupNo = activeEligibility.groupNo;
         totals.lastItemNo = activeEligibility.itemNo;
       }
-      if (currentRate > 0) {
-        daysWithEligibilityRate += 1;
-        if (!firstEligibilityDay || dateStr < firstEligibilityDay) {
-          firstEligibilityDay = dateStr;
-        }
-        if (!lastEligibilityDay || dateStr > lastEligibilityDay) {
-          lastEligibilityDay = dateStr;
-        }
-      }
+      updateEligibilityCoverage(coverage, dateStr, currentRate);
 
       const hasLicense = licenseChecker(dateStr);
-      const reasons: DeductionReason[] = reasonsByDate.get(dateStr) || [];
+      const reasons = reasonsByDate.get(dateStr) || [];
       const deductionWeight = deductionMap.get(dateStr) || 0;
       applyDailyTotals(
         totals,
         currentRate,
         hasLicense,
         deductionWeight,
-        daysInMonth,
+        dailyCheckContext.daysInMonth,
       );
-
-      if (currentRate > 0) {
-        const dailyRate = Number(new Decimal(currentRate).div(daysInMonth).toFixed(10));
-        if (!hasLicense) {
-          const agg = ensureAgg("NO_LICENSE");
-          agg.impactDays += 1;
-          agg.impactAmount += dailyRate;
-          agg.startDate = agg.startDate ? (dateStr < agg.startDate ? dateStr : agg.startDate) : dateStr;
-          agg.endDate = agg.endDate ? (dateStr > agg.endDate ? dateStr : agg.endDate) : dateStr;
-        } else if (reasons.length > 0) {
-          for (const reason of reasons) {
-            const code = normalizeReasonCode(reason.code);
-            const agg = ensureAgg(code);
-            agg.impactDays += reason.weight;
-            agg.impactAmount += dailyRate * reason.weight;
-            agg.startDate = agg.startDate ? (dateStr < agg.startDate ? dateStr : agg.startDate) : dateStr;
-            agg.endDate = agg.endDate ? (dateStr > agg.endDate ? dateStr : agg.endDate) : dateStr;
-
-              if (reason.leave_record_id) {
-                const leave = leaveById.get(Number(reason.leave_record_id));
-                const quotaInfo = quotaInfoByLeaveId.get(Number(reason.leave_record_id));
-                const leaveStartRaw = leave
-                  ? ((leave as any).document_start_date ?? leave.start_date)
-                  : null;
-                const leaveEndRaw = leave
-                  ? ((leave as any).document_end_date ?? leave.end_date)
-                  : null;
-                const start = leaveStartRaw ? formatLocalDate(leaveStartRaw) : dateStr;
-                const end = leaveEndRaw ? formatLocalDate(leaveEndRaw) : dateStr;
-                const leaveType =
-                  reason.leave_type
-                    ? String(reason.leave_type)
-                    : quotaInfo?.leaveType
-                      ? String(quotaInfo.leaveType)
-                      : leave
-                        ? String(leave.leave_type)
-                        : "unknown";
-                pushEvidence(
-                  agg,
-                  `leave:${reason.leave_record_id}:${code}`,
-                  {
-                    type: "leave",
-                    leave_record_id: Number(reason.leave_record_id),
-                    leave_type: leaveType,
-                    start_date: start,
-                    end_date: end,
-                    is_no_pay: code === "NO_PAY",
-                    over_quota: code === "OVER_QUOTA",
-                    exceed_date: reason.exceed_date
-                      ? formatLocalDate(reason.exceed_date)
-                      : quotaInfo?.exceedDate ?? null,
-                    quota_limit: quotaInfo?.limit ?? null,
-                    leave_duration: Number.isFinite(quotaInfo?.duration ?? NaN)
-                      ? Number(quotaInfo?.duration ?? 0)
-                      : null,
-                    quota_unit: LEAVE_RULES[leaveType]?.unit ?? null,
-                  },
-                );
-              }
-          }
-        } else if (deductionWeight > 0) {
-          // Fallback (should be rare): weights applied without reason metadata.
-          const agg = ensureAgg("OVER_QUOTA");
-          agg.impactDays += deductionWeight;
-          agg.impactAmount += dailyRate * deductionWeight;
-          agg.startDate = agg.startDate ? (dateStr < agg.startDate ? dateStr : agg.startDate) : dateStr;
-          agg.endDate = agg.endDate ? (dateStr > agg.endDate ? dateStr : agg.endDate) : dateStr;
-        }
-      }
+      applyDailyCheckImpact(
+        { currentRate, hasLicense, reasons, deductionWeight, dateStr },
+        dailyCheckContext,
+      );
     }
   }
 
-  // Add license evidence once if license check was triggered
-  if (checkAggs.has("NO_LICENSE")) {
-    const agg = checkAggs.get("NO_LICENSE")!;
-    for (const lic of licenses) {
-      pushEvidence(agg, `license:${formatLocalDate(lic.valid_from)}:${formatLocalDate(lic.valid_until)}:${lic.status}`, {
+  return coverage;
+};
+
+const addLicenseEvidence = (
+  checkAggs: Map<PayrollCheckCode, CheckAgg>,
+  licenses: LicenseRow[],
+): void => {
+  if (!checkAggs.has("NO_LICENSE")) return;
+  const agg = checkAggs.get("NO_LICENSE")!;
+  for (const lic of licenses) {
+    pushEvidence(
+      agg,
+      `license:${formatLocalDate(lic.valid_from)}:${formatLocalDate(lic.valid_until)}:${lic.status}`,
+      {
         type: "license",
         valid_from: formatLocalDate(lic.valid_from),
         valid_until: formatLocalDate(lic.valid_until),
@@ -695,90 +731,175 @@ export async function calculateMonthlyWithData(
         license_name: (lic as any).license_name ?? undefined,
         license_type: (lic as any).license_type ?? undefined,
         occupation_name: (lic as any).occupation_name ?? undefined,
-      });
-    }
+      },
+    );
   }
+};
 
-  if (workDaySet.size > 0 && workDaySet.size < daysInMonth) {
-    const agg = ensureAgg("NOT_WORKING");
-    agg.impactDays = daysInMonth - workDaySet.size;
-    agg.impactAmount = 0;
-    // Evidence: include movements around month range
-    movements
-      .filter((m) => new Date(m.effective_date) <= endOfMonth)
-      .slice(-10)
-      .forEach((m) => {
-        pushEvidence(agg, `movement:${formatLocalDate(m.effective_date)}:${m.movement_type}`, {
-          type: "movement",
-          movement_type: String(m.movement_type),
-          effective_date: formatLocalDate(m.effective_date),
-        });
+const addNotWorkingCheck = (
+  workDaySet: Set<string>,
+  daysInMonth: number,
+  movements: MovementRow[],
+  endOfMonth: Date,
+  ensureAgg: EnsureAggFn,
+): void => {
+  if (!(workDaySet.size > 0 && workDaySet.size < daysInMonth)) return;
+  const agg = ensureAgg("NOT_WORKING");
+  agg.impactDays = daysInMonth - workDaySet.size;
+  agg.impactAmount = 0;
+  movements
+    .filter((m) => new Date(m.effective_date) <= endOfMonth)
+    .slice(-10)
+    .forEach((m) => {
+      pushEvidence(agg, `movement:${formatLocalDate(m.effective_date)}:${m.movement_type}`, {
+        type: "movement",
+        movement_type: String(m.movement_type),
+        effective_date: formatLocalDate(m.effective_date),
       });
+    });
+};
+
+type EligibilityGapContext = {
+  totals: PaymentTotals;
+  workDaySet: Set<string>;
+  coverage: EligibilityCoverage;
+  startOfMonth: Date;
+  endOfMonth: Date;
+  firstWorkDay: string | null;
+  lastWorkDay: string | null;
+  eligibilities: EligibilityInfo[];
+  ensureAgg: EnsureAggFn;
+};
+
+const buildMissingEligibilityRanges = (
+  firstWorkDay: string | null,
+  lastWorkDay: string | null,
+  coverage: EligibilityCoverage,
+): { start: string; end: string }[] => {
+  const missingRanges: { start: string; end: string }[] = [];
+  if (
+    firstWorkDay &&
+    coverage.firstEligibilityDay &&
+    coverage.firstEligibilityDay > firstWorkDay
+  ) {
+    const end = addDaysToLocalDateString(coverage.firstEligibilityDay, -1);
+    if (end >= firstWorkDay) missingRanges.push({ start: firstWorkDay, end });
   }
+  if (
+    lastWorkDay &&
+    coverage.lastEligibilityDay &&
+    coverage.lastEligibilityDay < lastWorkDay
+  ) {
+    const start = addDaysToLocalDateString(coverage.lastEligibilityDay, 1);
+    if (start <= lastWorkDay) missingRanges.push({ start, end: lastWorkDay });
+  }
+  return missingRanges;
+};
 
-  // Eligibility gap: has some eligibility in month but does not cover all work days.
-  if (totals.lastRateSnapshot > 0 && workDaySet.size > 0 && daysWithEligibilityRate < workDaySet.size) {
-    const agg = ensureAgg("ELIGIBILITY_GAP");
-    agg.impactDays = workDaySet.size - daysWithEligibilityRate;
-    const expectedFull = totals.lastRateSnapshot;
-    const impact = Math.max(0, expectedFull - Number(totals.totalPayment.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber()));
-    agg.impactAmount = impact;
-    const monthStartStr = formatLocalDate(startOfMonth);
-    const monthEndStr = formatLocalDate(endOfMonth);
-    // Prefer showing the "missing eligibility" range(s) (what to check) rather than the eligible span.
-    // NOTE: We only derive up to 2 ranges (head/tail). If eligibility is fragmented in the middle,
-    // the evidence section still lists all overlapping eligibility rows.
-    const missingRanges: { start: string; end: string }[] = [];
-    if (firstWorkDay && firstEligibilityDay && firstEligibilityDay > firstWorkDay) {
-      const end = addDaysToLocalDateString(firstEligibilityDay, -1);
-      if (end >= firstWorkDay) missingRanges.push({ start: firstWorkDay, end });
-    }
-    if (lastWorkDay && lastEligibilityDay && lastEligibilityDay < lastWorkDay) {
-      const start = addDaysToLocalDateString(lastEligibilityDay, 1);
-      if (start <= lastWorkDay) missingRanges.push({ start, end: lastWorkDay });
-    }
-    if (missingRanges.length === 1) {
-      agg.startDate = missingRanges[0]!.start;
-      agg.endDate = missingRanges[0]!.end;
-    } else {
-      agg.startDate = null;
-      agg.endDate = null;
-    }
-    if (missingRanges.length > 0) {
-      agg.rangeLabel = missingRanges.map((r) => `${r.start} ถึง ${r.end}`).join(", ");
-      pushEvidence(agg, `elig_gap:${monthStartStr}:${monthEndStr}`, {
-        type: "eligibility_gap" as any,
-        work_start_date: firstWorkDay ?? monthStartStr,
-        work_end_date: lastWorkDay ?? monthEndStr,
-        missing_ranges: missingRanges,
-      } as any);
-    }
+const setEligibilityGapRange = (
+  agg: CheckAgg,
+  missingRanges: { start: string; end: string }[],
+): void => {
+  if (missingRanges.length === 1) {
+    agg.startDate = missingRanges[0]!.start;
+    agg.endDate = missingRanges[0]!.end;
+    return;
+  }
+  agg.startDate = null;
+  agg.endDate = null;
+};
 
-    // Evidence: include eligibilities overlapping the month window (rate > 0).
-    for (const elig of eligibilities) {
-      if (elig.rate <= 0) continue;
-      const overlaps =
-        elig.effectiveDate <= monthEndStr &&
-        (elig.expiryDate ? elig.expiryDate >= monthStartStr : true);
-      if (!overlaps) continue;
-      pushEvidence(agg, `elig:${elig.effectiveDate}:${elig.expiryDate ?? "null"}:${elig.rate}:${elig.rateId ?? "null"}`, {
+const addEligibilityGapRangeEvidence = (
+  agg: CheckAgg,
+  missingRanges: { start: string; end: string }[],
+  monthStartStr: string,
+  monthEndStr: string,
+  firstWorkDay: string | null,
+  lastWorkDay: string | null,
+): void => {
+  if (missingRanges.length === 0) return;
+  agg.rangeLabel = missingRanges.map((r) => `${r.start} ถึง ${r.end}`).join(", ");
+  pushEvidence(agg, `elig_gap:${monthStartStr}:${monthEndStr}`, {
+    type: "eligibility_gap" as any,
+    work_start_date: firstWorkDay ?? monthStartStr,
+    work_end_date: lastWorkDay ?? monthEndStr,
+    missing_ranges: missingRanges,
+  } as any);
+};
+
+const addOverlappingEligibilityEvidence = (
+  agg: CheckAgg,
+  eligibilities: EligibilityInfo[],
+  monthStartStr: string,
+  monthEndStr: string,
+): void => {
+  for (const elig of eligibilities) {
+    if (elig.rate <= 0) continue;
+    const overlaps =
+      elig.effectiveDate <= monthEndStr &&
+      (elig.expiryDate ? elig.expiryDate >= monthStartStr : true);
+    if (!overlaps) continue;
+    pushEvidence(
+      agg,
+      `elig:${elig.effectiveDate}:${elig.expiryDate ?? "null"}:${elig.rate}:${elig.rateId ?? "null"}`,
+      {
         type: "eligibility",
         effective_date: elig.effectiveDate,
         expiry_date: elig.expiryDate,
         rate: elig.rate,
         rate_id: elig.rateId,
-      });
-    }
+      },
+    );
   }
+};
 
-  const checks: PayrollCheck[] = Array.from(checkAggs.values())
+const addEligibilityGapCheck = ({
+  totals,
+  workDaySet,
+  coverage,
+  startOfMonth,
+  endOfMonth,
+  firstWorkDay,
+  lastWorkDay,
+  eligibilities,
+  ensureAgg,
+}: EligibilityGapContext): void => {
+  if (!(totals.lastRateSnapshot > 0 && workDaySet.size > 0)) return;
+  if (coverage.daysWithEligibilityRate >= workDaySet.size) return;
+
+  const agg = ensureAgg("ELIGIBILITY_GAP");
+  agg.impactDays = workDaySet.size - coverage.daysWithEligibilityRate;
+  const expectedFull = totals.lastRateSnapshot;
+  agg.impactAmount = Math.max(
+    0,
+    expectedFull -
+      Number(totals.totalPayment.toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toNumber()),
+  );
+  const monthStartStr = formatLocalDate(startOfMonth);
+  const monthEndStr = formatLocalDate(endOfMonth);
+  const missingRanges = buildMissingEligibilityRanges(firstWorkDay, lastWorkDay, coverage);
+  setEligibilityGapRange(agg, missingRanges);
+  addEligibilityGapRangeEvidence(
+    agg,
+    missingRanges,
+    monthStartStr,
+    monthEndStr,
+    firstWorkDay,
+    lastWorkDay,
+  );
+  addOverlappingEligibilityEvidence(agg, eligibilities, monthStartStr, monthEndStr);
+};
+
+const buildPayrollChecks = (checkAggs: Map<PayrollCheckCode, CheckAgg>): PayrollCheck[] => {
+  return Array.from(checkAggs.values())
     .filter((agg) => agg.impactDays > 0.0001 || Math.abs(agg.impactAmount) > 0.01)
     .map((agg) => {
       const severity = reasonSeverity(agg.code);
       const impactDays = Number.parseFloat(agg.impactDays.toFixed(2));
-      const impactAmount = agg.code === "NOT_WORKING"
-        ? null
-        : Number.parseFloat(agg.impactAmount.toFixed(2));
+      const impactAmount =
+        agg.code === "NOT_WORKING"
+          ? null
+          : Number.parseFloat(agg.impactAmount.toFixed(2));
       const title = checkTitle(agg.code);
       const summaryParts: string[] = [];
       if (agg.code === "PENDING_RETURN_REPORT") {
@@ -815,6 +936,152 @@ export async function calculateMonthlyWithData(
       if (amtA !== amtB) return amtB - amtA;
       return b.impactDays - a.impactDays;
     });
+};
+
+export async function calculateMonthlyWithData(
+  year: number,
+  month: number,
+  data: EmployeeBatchData,
+): Promise<CalculationResult> {
+  const startOfMonth = makeLocalDate(year, month - 1, 1);
+  const endOfMonth = makeLocalDate(year, month, 0);
+  const daysInMonth = endOfMonth.getDate();
+  const fiscalYearStart =
+    month >= 10
+      ? makeLocalDate(year, 9, 1)
+      : makeLocalDate(year - 1, 9, 1);
+  const fiscalYearEnd =
+    month >= 10
+      ? makeLocalDate(year + 1, 9, 0)
+      : makeLocalDate(year, 9, 0);
+
+  const eligibilities = buildEligibilities(
+    data.eligibilityRows as EligibilityRow[],
+  );
+  const movements = data.movementRows as MovementRow[];
+  const employee = (data.employeeRow as EmployeeRow) || {};
+  const licenses = data.licenseRows as LicenseRow[];
+  const leaves = data.leaveRows as LeaveRow[];
+  const quota = (data.quotaRow as QuotaRow) || ({} as QuotaRow);
+  const holidays = data.holidays;
+  const noSalaryPeriods = (data.noSalaryPeriods as NoSalaryPeriodRow[]) || [];
+  const returnReportRows = (data.returnReportRows as ReturnReportRow[]) || [];
+  const returnReports = buildReturnReportsMap(returnReportRows);
+
+  // สร้างใบลา education จาก movement_type = STUDY
+  // แล้วรวมกับ leave จริงจากฐานข้อมูล
+  const studyLeaveRows = buildStudyLeaveRowsFromMovements(movements, endOfMonth);
+  const mergedLeaves = assignSyntheticIdsToLeaves([...leaves, ...studyLeaveRows]);
+
+  const { periods, remark } = resolveWorkPeriods(
+    movements,
+    startOfMonth,
+    endOfMonth,
+  );
+  if (periods.length === 0) {
+    return emptyResult(remark || "ไม่ได้ปฏิบัติงานในเดือนนี้");
+  }
+
+  // ส่งวันเริ่มงานให้ leave-domain ใช้คำนวณกฎที่อิงอายุงาน
+  // (เช่น personal ปีแรก, ordain ไม่ถึง 1 ปี)
+  const startWorkDateStr = formatLocalDate(employee.start_work_date ?? null);
+  const serviceStartDate = startWorkDateStr
+    ? parseLocalDateString(startWorkDateStr)
+    : null;
+
+  const quotaStatus = calculateLeaveQuotaStatus({
+    leaveRows: mergedLeaves,
+    holidays,
+    quota,
+    rules: LEAVE_RULES,
+    serviceStartDate,
+    rangeStart: fiscalYearStart,
+    rangeEnd: endOfMonth < fiscalYearEnd ? endOfMonth : fiscalYearEnd,
+  });
+  // แปลงผลจาก leave-domain ให้อยู่ในรูป Map<leave_id, QuotaDecision>
+  // เพื่อส่งเข้าฟังก์ชัน calculateDeductions() ใน deductions.ts
+  const { quotaDecisions, quotaInfoByLeaveId } = buildQuotaMaps(quotaStatus);
+  const deductionResult: DeductionResult = calculateDeductions(
+    mergedLeaves,
+    holidays,
+    startOfMonth,
+    endOfMonth,
+    quotaDecisions,
+    noSalaryPeriods,
+    returnReports,
+  );
+  const deductionMap = deductionResult.deductionMap;
+  const reasonsByDate = deductionResult.reasonsByDate;
+  // สรุปจำนวนวันถูกหักทั้งเดือน เพื่อนำไปบันทึก pay_results.deducted_days
+  const totalDeductionDaysInMonth = Array.from(deductionMap.values()).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  const licenseChecker = createLicenseChecker(
+    licenses,
+    employee.position_name || "",
+  );
+  const eligibilityState: EligibilityState = { index: 0, current: null };
+  const totals: PaymentTotals = {
+    totalPayment: new Decimal(0),
+    validLicenseDays: 0,
+    totalDeductionDays: 0,
+    daysCounted: 0,
+    lastRateSnapshot: 0,
+    lastMasterRateId: null,
+    lastProfessionCode: null,
+    lastGroupNo: null,
+    lastItemNo: null,
+  };
+
+  const { orderedPeriods, workDaySet, firstWorkDay, lastWorkDay } = buildWorkDayWindow(periods);
+  const { checkAggs, ensureAgg, updateAggRange } = createCheckAccumulator();
+  const leaveById = buildLeaveByIdMap(mergedLeaves);
+  markMissingStartWorkDateCheck({
+    startWorkDateStr,
+    workDaySet,
+    daysInMonth,
+    firstWorkDay,
+    lastWorkDay,
+    startOfMonth,
+    endOfMonth,
+    ensureAgg,
+  });
+  addPendingReturnReportChecks(mergedLeaves, endOfMonth, ensureAgg, updateAggRange);
+
+  const dailyCheckContext: DailyCheckImpactContext = {
+    daysInMonth,
+    ensureAgg,
+    updateAggRange,
+    leaveById,
+    quotaInfoByLeaveId,
+  };
+  const coverage = processDailyPeriods({
+    orderedPeriods,
+    eligibilities,
+    eligibilityState,
+    totals,
+    licenseChecker,
+    reasonsByDate,
+    deductionMap,
+    dailyCheckContext,
+  });
+
+  addLicenseEvidence(checkAggs, licenses);
+  addNotWorkingCheck(workDaySet, daysInMonth, movements, endOfMonth, ensureAgg);
+  addEligibilityGapCheck({
+    totals,
+    workDaySet,
+    coverage,
+    startOfMonth,
+    endOfMonth,
+    firstWorkDay,
+    lastWorkDay,
+    eligibilities,
+    ensureAgg,
+  });
+
+  const checks = buildPayrollChecks(checkAggs);
 
   return {
     netPayment: totals.totalPayment
@@ -970,6 +1237,98 @@ type SavePayoutInput = {
   referenceMonth: number;
 };
 
+const insertCurrentPayoutItem = async (
+  conn: PoolConnection,
+  payoutId: number,
+  referenceMonth: number,
+  referenceYear: number,
+  netPayment: number,
+): Promise<void> => {
+  if (netPayment === 0) return;
+  await conn.query(
+    `
+      INSERT INTO pay_result_items (payout_id, reference_month, reference_year, item_type, amount, description)
+      VALUES (?, ?, ?, 'CURRENT', ?, 'ค่าตอบแทนงวดปัจจุบัน')
+    `,
+    [payoutId, referenceMonth, referenceYear, netPayment],
+  );
+};
+
+const resolveRetroItemType = (value: number): "RETROACTIVE_ADD" | "RETROACTIVE_DEDUCT" => {
+  return value > 0 ? "RETROACTIVE_ADD" : "RETROACTIVE_DEDUCT";
+};
+
+const insertRetroPayoutItems = async (
+  conn: PoolConnection,
+  payoutId: number,
+  result: CalculationResult,
+): Promise<void> => {
+  if (result.retroDetails && result.retroDetails.length > 0) {
+    for (const detail of result.retroDetails) {
+      await conn.query(
+        `
+          INSERT INTO pay_result_items (payout_id, reference_month, reference_year, item_type, amount, description)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `,
+        [
+          payoutId,
+          detail.month,
+          detail.year,
+          resolveRetroItemType(detail.diff),
+          Math.abs(detail.diff),
+          detail.remark,
+        ],
+      );
+    }
+    return;
+  }
+
+  if (!result.retroactiveTotal || Math.abs(result.retroactiveTotal) <= 0.01) return;
+  await conn.query(
+    `
+      INSERT INTO pay_result_items (payout_id, reference_month, reference_year, item_type, amount, description)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `,
+    [
+      payoutId,
+      0,
+      0,
+      resolveRetroItemType(result.retroactiveTotal),
+      Math.abs(result.retroactiveTotal),
+      "ปรับตกเบิกย้อนหลัง (รวมยอด)",
+    ],
+  );
+};
+
+const insertPayoutChecks = async (
+  conn: PoolConnection,
+  payoutId: number,
+  checks: PayrollCheck[] | undefined,
+): Promise<void> => {
+  if (!checks || checks.length === 0) return;
+  for (const check of checks) {
+    await conn.query(
+      `
+        INSERT INTO pay_result_checks
+        (payout_id, code, severity, title, summary, impact_days, impact_amount, start_date, end_date, evidence_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+      [
+        payoutId,
+        check.code,
+        check.severity,
+        check.title,
+        check.summary,
+        check.impactDays,
+        check.impactAmount,
+        check.startDate,
+        check.endDate,
+        check.evidence.length ? JSON.stringify(check.evidence) : null,
+      ],
+    );
+  }
+};
+
 export async function savePayout({
   conn,
   periodId,
@@ -1006,81 +1365,9 @@ export async function savePayout({
   );
 
   const payoutId = res.insertId;
-
-  if (result.netPayment !== 0) {
-    await conn.query(
-      `
-        INSERT INTO pay_result_items (payout_id, reference_month, reference_year, item_type, amount, description)
-        VALUES (?, ?, ?, 'CURRENT', ?, 'ค่าตอบแทนงวดปัจจุบัน')
-      `,
-      [payoutId, referenceMonth, referenceYear, result.netPayment],
-    );
-  }
-
-  if (result.retroDetails && result.retroDetails.length > 0) {
-    for (const detail of result.retroDetails) {
-      const itemType =
-        detail.diff > 0 ? "RETROACTIVE_ADD" : "RETROACTIVE_DEDUCT";
-      await conn.query(
-        `
-          INSERT INTO pay_result_items (payout_id, reference_month, reference_year, item_type, amount, description)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `,
-        [
-          payoutId,
-          detail.month,
-          detail.year,
-          itemType,
-          Math.abs(detail.diff),
-          detail.remark,
-        ],
-      );
-    }
-  } else if (
-    result.retroactiveTotal &&
-    Math.abs(result.retroactiveTotal) > 0.01
-  ) {
-    const itemType =
-      result.retroactiveTotal > 0 ? "RETROACTIVE_ADD" : "RETROACTIVE_DEDUCT";
-    await conn.query(
-      `
-        INSERT INTO pay_result_items (payout_id, reference_month, reference_year, item_type, amount, description)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `,
-      [
-        payoutId,
-        0,
-        0,
-        itemType,
-        Math.abs(result.retroactiveTotal),
-        "ปรับตกเบิกย้อนหลัง (รวมยอด)",
-      ],
-    );
-  }
-
-  if (result.checks && result.checks.length > 0) {
-    for (const check of result.checks) {
-      await conn.query(
-        `
-          INSERT INTO pay_result_checks
-          (payout_id, code, severity, title, summary, impact_days, impact_amount, start_date, end_date, evidence_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-        [
-          payoutId,
-          check.code,
-          check.severity,
-          check.title,
-          check.summary,
-          check.impactDays,
-          check.impactAmount,
-          check.startDate,
-          check.endDate,
-          check.evidence.length ? JSON.stringify(check.evidence) : null,
-        ],
-      );
-    }
-  }
+  await insertCurrentPayoutItem(conn, payoutId, referenceMonth, referenceYear, result.netPayment);
+  await insertRetroPayoutItems(conn, payoutId, result);
+  await insertPayoutChecks(conn, payoutId, result.checks);
 
   return payoutId;
 }

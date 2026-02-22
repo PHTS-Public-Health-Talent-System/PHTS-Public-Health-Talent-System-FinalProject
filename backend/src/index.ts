@@ -26,7 +26,7 @@ import systemRoutes from '@/modules/system/system.routes.js';
 import syncRoutes from '@/modules/sync/sync.routes.js';
 import backupRoutes from '@/modules/backup/backup.routes.js';
 import masterDataRoutes from '@/modules/master-data/master-data.routes.js';
-import leaveRecordsRoutes from '@/modules/leave-records/leave-records.routes.js';
+import leaveManagementRoutes from '@/modules/leave-management/leave-management.routes.js';
 import notificationRoutes from '@/modules/notification/notification.routes.js';
 import financeRoutes from '@/modules/finance/finance.routes.js';
 import auditRoutes from '@/modules/audit/audit.routes.js';
@@ -43,6 +43,10 @@ import {
   startOcrPrecheckWorker,
   stopOcrPrecheckWorker,
 } from '@/modules/request/services/ocr-precheck.service.js';
+import {
+  startSnapshotWorker,
+  stopSnapshotWorker,
+} from '@/modules/snapshot/services/snapshot-worker.service.js';
 import { isMaintenanceModeEnabled } from '@/modules/system/services/maintenance.service.js';
 import { errorHandler, notFoundHandler } from '@middlewares/errorHandler.js';
 import { apiRateLimiter } from '@middlewares/rateLimiter.js';
@@ -231,7 +235,9 @@ app.use('/api/system', systemRoutes);
 app.use('/api/system', syncRoutes);
 app.use('/api/system', backupRoutes);
 app.use('/api/config', masterDataRoutes);
-app.use('/api/leave-records', leaveRecordsRoutes);
+app.use('/api/leave-management', leaveManagementRoutes);
+// Backward-compatible alias for legacy frontend clients.
+app.use('/api/leave-records', leaveManagementRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/finance', financeRoutes);
 app.use('/api/audit', auditRoutes);
@@ -264,6 +270,7 @@ async function gracefulShutdown(signal: string) {
 
   try {
     await stopOcrPrecheckWorker();
+    await stopSnapshotWorker();
     await closePool();
     console.log('Server shut down successfully');
     process.exit(0);
@@ -298,6 +305,7 @@ if (process.env.NODE_ENV !== 'test' && process.env.START_SERVER !== 'false') {
     console.log('[Server] Verifying database connection...');
     await testConnection();
     startOcrPrecheckWorker();
+    startSnapshotWorker();
 
     // Start Express server
     app.listen(PORT, () => {

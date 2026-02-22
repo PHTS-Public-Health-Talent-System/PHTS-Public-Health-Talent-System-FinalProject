@@ -1,14 +1,15 @@
 import { describe, expect, test, jest } from "@jest/globals";
 
 const mockRepo = {
-  listLeaveRowsForQuota: jest.fn(),
+  listLeaveManagementRowsForQuota: jest.fn(),
+  listLeaveReturnReportEventsByLeaveIds: jest.fn(),
   findQuotaRow: jest.fn(),
   findHolidaysForFiscalYear: jest.fn(),
   findEmployeeServiceDates: jest.fn(),
 };
 
-jest.mock("../repositories/leave-records.repository", () => ({
-  LeaveRecordsRepository: jest.fn().mockImplementation(() => mockRepo),
+jest.mock("../repositories/leave-management.repository", () => ({
+  LeaveManagementRepository: jest.fn().mockImplementation(() => mockRepo),
 }));
 
 import { getLeaveQuotaStatus } from "../services/leave-domain.service";
@@ -29,7 +30,8 @@ const baseLeaveRows = [
 
 describe("getLeaveQuotaStatus", () => {
   test("uses repository data and caches results", async () => {
-    mockRepo.listLeaveRowsForQuota.mockResolvedValue(baseLeaveRows);
+    mockRepo.listLeaveManagementRowsForQuota.mockResolvedValue(baseLeaveRows);
+    mockRepo.listLeaveReturnReportEventsByLeaveIds.mockResolvedValue([]);
     mockRepo.findQuotaRow.mockResolvedValue({ quota_vacation: 10, quota_personal: 45, quota_sick: 60 });
     mockRepo.findHolidaysForFiscalYear.mockResolvedValue([]);
     mockRepo.findEmployeeServiceDates.mockResolvedValue({ start_work_date: "2026-10-10", first_entry_date: null });
@@ -41,7 +43,8 @@ describe("getLeaveQuotaStatus", () => {
     expect(result1.perType.personal.overQuota).toBe(true);
     expect(result2.perType.personal.overQuota).toBe(true);
 
-    expect(mockRepo.listLeaveRowsForQuota).toHaveBeenCalledTimes(1);
+    expect(mockRepo.listLeaveManagementRowsForQuota).toHaveBeenCalledTimes(1);
+    expect(mockRepo.listLeaveReturnReportEventsByLeaveIds).toHaveBeenCalledTimes(1);
     expect(mockRepo.findQuotaRow).toHaveBeenCalledTimes(1);
     expect(mockRepo.findHolidaysForFiscalYear).toHaveBeenCalledTimes(1);
     expect(mockRepo.findEmployeeServiceDates).toHaveBeenCalledTimes(1);

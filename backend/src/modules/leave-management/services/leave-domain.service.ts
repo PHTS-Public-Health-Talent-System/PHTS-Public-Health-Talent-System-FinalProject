@@ -1,7 +1,7 @@
-import { countBusinessDays, countCalendarDays, formatLocalDate, isHoliday } from "@/modules/payroll/core/utils.js";
+import { countBusinessDays, countCalendarDays, formatLocalDate, isHoliday } from "@/modules/payroll/core/utils/date.utils.js";
 import { LEAVE_RULES } from "@/modules/payroll/payroll.constants.js";
 import type { LeaveUnit, LeaveRuleType } from "@/modules/payroll/payroll.constants.js";
-import { LeaveRecordsRepository } from "../repositories/leave-records.repository.js";
+import { LeaveManagementRepository } from "../repositories/leave-management.repository.js";
 
 export type LeaveRule = {
   limit: number | null;
@@ -33,6 +33,13 @@ export type LeavePolicyInputRow = {
   study_institution?: string | null;
   study_program?: string | null;
   study_major?: string | null;
+  return_report_events?: Array<{
+    report_date: string | Date;
+    resume_date?: string | Date | null;
+    resume_study_institution?: string | null;
+    resume_study_program?: string | null;
+    resume_study_major?: string | null;
+  }>;
 };
 
 export type LeaveQuotaStatusByType = {
@@ -57,7 +64,7 @@ export type LeaveQuotaStatus = {
 const isWeekend = (date: Date) => date.getDay() === 0 || date.getDay() === 6;
 const CACHE_TTL_MS = 60 * 1000;
 const quotaCache = new Map<string, { expiresAt: number; value: LeaveQuotaStatus }>();
-const repository = new LeaveRecordsRepository();
+const repository = new LeaveManagementRepository();
 
 const getFiscalYear = (date: Date): number => {
   const month = date.getMonth();
@@ -187,6 +194,16 @@ type NormalizedLeaveEntry = {
   row: LeavePolicyInputRow;
   start: Date;
   end: Date;
+  seriesContext: {
+    study_institution?: string | null;
+    study_program?: string | null;
+    study_major?: string | null;
+  };
+};
+
+type LeaveInterval = {
+  start: Date;
+  end: Date;
 };
 
 type LeaveUsageState = {
@@ -209,26 +226,134 @@ const normalizeLeavesInRange = (
   rangeStartDate: Date | null,
   rangeEndDate: Date | null,
 ): NormalizedLeaveEntry[] => {
+  const splitByReturnReportEvents = (
+    start: Date,
+    end: Date,
+    events: LeavePolicyInputRow["return_report_events"],
+    baseSeriesContext: NormalizedLeaveEntry["seriesContext"],
+  ): Array<LeaveInterval & { seriesContext: NormalizedLeaveEntry["seriesContext"] }> => {
+    if (!events || events.length === 0) return [{ start, end, seriesContext: baseSeriesContext }];
+    const sorted = [...events]
+      .map((event) => {
+        const reportDate = new Date(event.report_date);
+        const resumeDate =
+          event.resume_date === null || event.resume_date === undefined
+            ? null
+            : new Date(event.resume_date);
+        if (Number.isNaN(reportDate.getTime())) return null;
+        if (resumeDate && Number.isNaN(resumeDate.getTime())) return null;
+        return {
+          reportDate,
+          resumeDate,
+          resume_study_institution: event.resume_study_institution ?? null,
+          resume_study_program: event.resume_study_program ?? null,
+          resume_study_major: event.resume_study_major ?? null,
+        };
+      })
+      .filter((event): event is {
+        reportDate: Date;
+        resumeDate: Date | null;
+        resume_study_institution: string | null;
+        resume_study_program: string | null;
+        resume_study_major: string | null;
+      } => Boolean(event))
+      .sort((a, b) => a.reportDate.getTime() - b.reportDate.getTime());
+
+    const intervals: Array<LeaveInterval & { seriesContext: NormalizedLeaveEntry["seriesContext"] }> = [];
+    let cursor = new Date(start);
+    let currentSeriesContext: NormalizedLeaveEntry["seriesContext"] = { ...baseSeriesContext };
+    for (const event of sorted) {
+      if (event.reportDate > end) break;
+
+      const reportDate =
+        event.reportDate < cursor
+          ? new Date(cursor)
+          : event.reportDate < start
+            ? new Date(start)
+            : event.reportDate;
+      const prePauseEnd = new Date(reportDate);
+      prePauseEnd.setDate(prePauseEnd.getDate() - 1);
+      if (prePauseEnd >= cursor) {
+        intervals.push({
+          start: new Date(cursor),
+          end: prePauseEnd,
+          seriesContext: { ...currentSeriesContext },
+        });
+      }
+
+      if (!event.resumeDate) {
+        return intervals;
+      }
+
+      let resumeDate =
+        event.resumeDate < cursor
+          ? new Date(cursor)
+          : event.resumeDate < start
+            ? new Date(start)
+            : new Date(event.resumeDate);
+      if (resumeDate <= reportDate) {
+        resumeDate = new Date(reportDate);
+        resumeDate.setDate(resumeDate.getDate() + 1);
+      }
+      if (resumeDate > end) {
+        return intervals;
+      }
+      currentSeriesContext = {
+        study_institution:
+          event.resume_study_institution ?? currentSeriesContext.study_institution ?? null,
+        study_program:
+          event.resume_study_program ?? currentSeriesContext.study_program ?? null,
+        study_major:
+          event.resume_study_major ?? currentSeriesContext.study_major ?? null,
+      };
+      cursor = resumeDate;
+    }
+
+    if (cursor <= end) {
+      intervals.push({
+        start: new Date(cursor),
+        end: new Date(end),
+        seriesContext: { ...currentSeriesContext },
+      });
+    }
+    return intervals;
+  };
+
   return leaveRows
-    .map((row) => {
+    .flatMap((row) => {
       if (Number(row.is_no_pay ?? 0) === 1 || Number(row.pay_exception ?? 0) === 1) {
-        return null;
+        return [];
       }
       const start = resolveEffectiveDate(row.document_start_date, row.start_date);
       const end = resolveEffectiveDate(row.document_end_date, row.end_date);
       if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) {
-        return null;
+        return [];
       }
 
       const clampedStart =
         rangeStartDate && start < rangeStartDate ? new Date(rangeStartDate) : start;
       const clampedEnd =
         rangeEndDate && end > rangeEndDate ? new Date(rangeEndDate) : end;
-      if (clampedEnd < clampedStart) return null;
+      if (clampedEnd < clampedStart) return [];
 
-      return { row, start: clampedStart, end: clampedEnd };
+      const baseSeriesContext: NormalizedLeaveEntry["seriesContext"] = {
+        study_institution: row.study_institution ?? null,
+        study_program: row.study_program ?? null,
+        study_major: row.study_major ?? null,
+      };
+      const intervals = splitByReturnReportEvents(
+        clampedStart,
+        clampedEnd,
+        row.return_report_events,
+        baseSeriesContext,
+      );
+      return intervals.map((interval: any) => ({
+        row,
+        start: interval.start,
+        end: interval.end,
+        seriesContext: interval.seriesContext,
+      }));
     })
-    .filter((entry): entry is NormalizedLeaveEntry => Boolean(entry))
     .sort((a, b) => a.start.getTime() - b.start.getTime());
 };
 
@@ -295,7 +420,13 @@ const evaluateLeaveQuota = (
   const baseLimit = resolveLeaveLimit(leaveType, rule.limit, quota);
   const limit = applyDynamicLimitOverrides(leaveType, baseLimit, entry.start, serviceStartDate);
   const { duration, isHalfDay } = calculateDuration(entry.row, entry.start, entry.end, rule.unit, holidays);
-  const seriesKey = buildLeaveSeriesKey(entry.row);
+  const seriesRow: LeavePolicyInputRow = {
+    ...entry.row,
+    study_institution: entry.seriesContext.study_institution ?? entry.row.study_institution ?? null,
+    study_program: entry.seriesContext.study_program ?? entry.row.study_program ?? null,
+    study_major: entry.seriesContext.study_major ?? entry.row.study_major ?? null,
+  };
+  const seriesKey = buildLeaveSeriesKey(seriesRow);
   const useSeriesCumulative = Boolean(seriesKey);
   const isCumulativeRule = rule.rule_type === "cumulative";
   const useCumulativeQuota = isCumulativeRule || useSeriesCumulative;
@@ -358,13 +489,29 @@ const updatePerLeave = (
   evaluation: QuotaEvaluation,
 ): void => {
   if (row.id === undefined) return;
-  perLeave[row.id] = {
-    leaveType: sourceLeaveType,
-    duration: evaluation.duration,
-    limit: evaluation.limit,
-    overQuota: evaluation.overQuota,
-    exceedDate: evaluation.exceedDate ? formatLocalDate(evaluation.exceedDate) : null,
-  };
+  const existing = perLeave[row.id];
+  const nextExceedDate = evaluation.exceedDate
+    ? formatLocalDate(evaluation.exceedDate)
+    : null;
+  if (!existing) {
+    perLeave[row.id] = {
+      leaveType: sourceLeaveType,
+      duration: evaluation.duration,
+      limit: evaluation.limit,
+      overQuota: evaluation.overQuota,
+      exceedDate: nextExceedDate,
+    };
+    return;
+  }
+
+  existing.duration += evaluation.duration;
+  existing.limit = evaluation.limit;
+  existing.overQuota = existing.overQuota || evaluation.overQuota;
+  if (!existing.exceedDate) {
+    existing.exceedDate = nextExceedDate;
+  } else if (nextExceedDate && nextExceedDate < existing.exceedDate) {
+    existing.exceedDate = nextExceedDate;
+  }
 };
 
 const updatePerType = (
@@ -455,11 +602,50 @@ export async function getLeaveQuotaStatus(citizenId: string, fiscalYear: number)
   }
 
   const [leaveRows, quotaRow, holidayRows, serviceDates] = await Promise.all([
-    repository.listLeaveRowsForQuota(citizenId, fiscalYear),
+    repository.listLeaveManagementRowsForQuota(citizenId, fiscalYear),
     repository.findQuotaRow(citizenId, fiscalYear),
     repository.findHolidaysForFiscalYear(fiscalYear),
     repository.findEmployeeServiceDates(citizenId),
   ]);
+  const leaveIds = (leaveRows ?? [])
+    .map((row: any) => Number(row.id))
+    .filter((id: number) => Number.isFinite(id) && id > 0);
+  const returnEvents = await repository.listLeaveReturnReportEventsByLeaveIds(leaveIds);
+  const eventMap = new Map<number, Array<{
+    report_date: string;
+    resume_date: string | null;
+    resume_study_institution: string | null;
+    resume_study_program: string | null;
+    resume_study_major: string | null;
+  }>>();
+  for (const event of returnEvents) {
+    const leaveId = Number((event as any).leave_record_id);
+    if (!Number.isFinite(leaveId)) continue;
+    if (!eventMap.has(leaveId)) eventMap.set(leaveId, []);
+    eventMap.get(leaveId)!.push({
+      report_date: String((event as any).report_date),
+      resume_date:
+        (event as any).resume_date === null || (event as any).resume_date === undefined
+          ? null
+          : String((event as any).resume_date),
+      resume_study_institution:
+        (event as any).resume_study_institution === null || (event as any).resume_study_institution === undefined
+          ? null
+          : String((event as any).resume_study_institution),
+      resume_study_program:
+        (event as any).resume_study_program === null || (event as any).resume_study_program === undefined
+          ? null
+          : String((event as any).resume_study_program),
+      resume_study_major:
+        (event as any).resume_study_major === null || (event as any).resume_study_major === undefined
+          ? null
+          : String((event as any).resume_study_major),
+    });
+  }
+  const leaveRowsWithEvents = (leaveRows ?? []).map((row: any) => ({
+    ...row,
+    return_report_events: eventMap.get(Number(row.id)) ?? [],
+  }));
 
   let serviceStartDate: Date | null = null;
   if (serviceDates?.start_work_date) {
@@ -469,7 +655,7 @@ export async function getLeaveQuotaStatus(citizenId: string, fiscalYear: number)
   }
 
   const result = calculateLeaveQuotaStatus({
-    leaveRows,
+    leaveRows: leaveRowsWithEvents,
     holidays: holidayRows ?? [],
     quota: quotaRow ?? {},
     rules: LEAVE_RULES,

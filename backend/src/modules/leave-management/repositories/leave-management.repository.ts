@@ -1,12 +1,12 @@
 import { RowDataPacket, ResultSetHeader } from "mysql2/promise";
 import db from '@/config/database.js';
 import type {
-  LeaveRecordListQuery,
+  LeaveManagementListQuery,
   LeavePersonnelListQuery,
-  LeaveRecordExtensionBody,
-} from '../leave-records.schema.js';
+  LeaveManagementExtensionBody,
+} from '../leave-management.schema.js';
 
-export type LeaveRecordRow = RowDataPacket & {
+export type LeaveManagementRow = RowDataPacket & {
   id: number;
   citizen_id: string;
   leave_type: string;
@@ -38,8 +38,8 @@ export type LeaveRecordRow = RowDataPacket & {
   profession_code?: string | null;
 };
 
-export type LeaveRecordDocumentInput = {
-  leave_record_id: number;
+export type LeaveManagementDocumentInput = {
+  leave_management_id: number;
   file_name: string;
   file_type: string;
   file_size: number;
@@ -47,7 +47,7 @@ export type LeaveRecordDocumentInput = {
   uploaded_by?: number | null;
 };
 
-export type LeaveRecordDocumentRow = RowDataPacket & {
+export type LeaveManagementDocumentRow = RowDataPacket & {
   document_id: number;
   leave_record_id: number;
   file_name: string;
@@ -58,7 +58,7 @@ export type LeaveRecordDocumentRow = RowDataPacket & {
   uploaded_at: string;
 };
 
-export type LeaveRecordCreateInput = {
+export type LeaveManagementCreateInput = {
   citizen_id: string;
   leave_type: string;
   start_date: string;
@@ -68,7 +68,7 @@ export type LeaveRecordCreateInput = {
   remark?: string | null;
 };
 
-export type LeaveRecordStats = {
+export type LeaveManagementStats = {
   total: number;
   study: number;
   pending_report: number;
@@ -113,6 +113,24 @@ export type EmployeeServiceDatesRow = RowDataPacket & {
   first_entry_date?: string | null;
 };
 
+export type LeaveReturnReportEventRow = RowDataPacket & {
+  event_id: number;
+  leave_record_id: number;
+  report_date: string;
+  resume_date?: string | null;
+  resume_study_institution?: string | null;
+  resume_study_program?: string | null;
+  resume_study_major?: string | null;
+  remark?: string | null;
+  created_at?: string | null;
+};
+
+export type LeaveReturnReportEventInput = {
+  report_date: string;
+  resume_date?: string | null;
+  resume_study_program?: string | null;
+};
+
 const buildProfessionCaseSql = (positionExpr: string) => `
   CASE
     WHEN ${positionExpr} LIKE '%ทันตแพทย์%' THEN 'DENTIST'
@@ -138,7 +156,7 @@ const buildProfessionCaseSql = (positionExpr: string) => `
   END
 `;
 
-const buildLeaveRecordFilters = (params: LeaveRecordListQuery) => {
+const buildLeaveManagementFilters = (params: LeaveManagementListQuery) => {
   const clauses: string[] = [];
   const values: unknown[] = [];
   const positionExpr = "COALESCE(ep.position_name, ss.position_name, '')";
@@ -195,7 +213,7 @@ const buildLeaveRecordFilters = (params: LeaveRecordListQuery) => {
   return { whereClause, values };
 };
 
-export class LeaveRecordsRepository {
+export class LeaveManagementRepository {
   async listPersonnel(params: LeavePersonnelListQuery): Promise<LeavePersonnelRow[]> {
     const q = (params.q ?? "").trim().toLowerCase();
     const limit = params.limit ?? 2000;
@@ -233,8 +251,8 @@ export class LeaveRecordsRepository {
     return rows as LeavePersonnelRow[];
   }
 
-  async listLeaveRecords(params: LeaveRecordListQuery): Promise<LeaveRecordRow[]> {
-    const { whereClause, values } = buildLeaveRecordFilters(params);
+  async listLeaveManagement(params: LeaveManagementListQuery): Promise<LeaveManagementRow[]> {
+    const { whereClause, values } = buildLeaveManagementFilters(params);
     const positionExpr = "COALESCE(ep.position_name, ss.position_name, '')";
     const professionCaseSql = buildProfessionCaseSql(positionExpr);
     const hasLimit = typeof params.limit === "number";
@@ -287,10 +305,10 @@ export class LeaveRecordsRepository {
       values,
     );
 
-    return rows as LeaveRecordRow[];
+    return rows as LeaveManagementRow[];
   }
 
-  async insertLeaveRecord(data: LeaveRecordCreateInput): Promise<number> {
+  async insertLeaveManagement(data: LeaveManagementCreateInput): Promise<number> {
     const [result] = await db.execute<ResultSetHeader>(
       `
         INSERT INTO leave_records (
@@ -316,8 +334,8 @@ export class LeaveRecordsRepository {
     return result.insertId;
   }
 
-  async countLeaveRecords(params: LeaveRecordListQuery): Promise<number> {
-    const { whereClause, values } = buildLeaveRecordFilters(params);
+  async countLeaveManagement(params: LeaveManagementListQuery): Promise<number> {
+    const { whereClause, values } = buildLeaveManagementFilters(params);
 
     const [rows] = await db.query<RowDataPacket[]>(
       `
@@ -333,7 +351,7 @@ export class LeaveRecordsRepository {
     return Number(rows[0]?.total ?? 0);
   }
 
-  async getStats(): Promise<LeaveRecordStats> {
+  async getStats(): Promise<LeaveManagementStats> {
     const [rows] = await db.query<RowDataPacket[]>(
       `
         SELECT
@@ -359,7 +377,10 @@ export class LeaveRecordsRepository {
   }
 
   async upsertExtension(
-    data: LeaveRecordExtensionBody & { created_by?: number | null; updated_by?: number | null; }
+    data: LeaveManagementExtensionBody & {
+      created_by?: number | null;
+      updated_by?: number | null;
+    },
   ): Promise<void> {
     const sql = `
       INSERT INTO leave_record_extensions (
@@ -404,7 +425,7 @@ export class LeaveRecordsRepository {
     `;
 
     const values = [
-      data.leave_record_id,
+      data.leave_management_id,
       data.document_start_date ?? null,
       data.document_end_date ?? null,
       data.document_duration_days ?? null,
@@ -428,13 +449,66 @@ export class LeaveRecordsRepository {
     await db.execute<ResultSetHeader>(sql, values);
   }
 
-  async insertDocument(data: LeaveRecordDocumentInput): Promise<number> {
+  async replaceLeaveReturnReportEvents(
+    leaveRecordId: number,
+    events: LeaveReturnReportEventInput[],
+    actorId?: number | null,
+  ): Promise<void> {
+    try {
+      const conn = await db.getConnection();
+      try {
+        await conn.beginTransaction();
+
+        await conn.execute<ResultSetHeader>(
+          `DELETE FROM leave_return_report_events WHERE leave_record_id = ?`,
+          [leaveRecordId],
+        );
+
+        if (events.length > 0) {
+          for (const event of events) {
+            await conn.execute<ResultSetHeader>(
+              `
+                INSERT INTO leave_return_report_events (
+                  leave_record_id,
+                  report_date,
+                  resume_date,
+                  resume_study_program,
+                  created_by
+                ) VALUES (?, ?, ?, ?, ?)
+              `,
+              [
+                leaveRecordId,
+                event.report_date,
+                event.resume_date ?? null,
+                event.resume_study_program ?? null,
+                actorId ?? null,
+              ],
+            );
+          }
+        }
+
+        await conn.commit();
+      } catch (error) {
+        await conn.rollback();
+        throw error;
+      } finally {
+        conn.release();
+      }
+    } catch (error: any) {
+      if (error?.code === "ER_NO_SUCH_TABLE") {
+        return;
+      }
+      throw error;
+    }
+  }
+
+  async insertDocument(data: LeaveManagementDocumentInput): Promise<number> {
     const [res] = await db.execute<ResultSetHeader>(
       `INSERT INTO leave_record_documents
        (leave_record_id, file_name, file_type, file_size, file_path, uploaded_by)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [
-        data.leave_record_id,
+        data.leave_management_id,
         data.file_name,
         data.file_type,
         data.file_size,
@@ -445,20 +519,20 @@ export class LeaveRecordsRepository {
     return res.insertId;
   }
 
-  async listDocuments(leaveRecordId: number): Promise<LeaveRecordDocumentRow[]> {
+  async listDocuments(leaveManagementId: number): Promise<LeaveManagementDocumentRow[]> {
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT * FROM leave_record_documents WHERE leave_record_id = ? ORDER BY uploaded_at DESC`,
-      [leaveRecordId],
+      [leaveManagementId],
     );
-    return rows as LeaveRecordDocumentRow[];
+    return rows as LeaveManagementDocumentRow[];
   }
 
-  async findDocumentById(documentId: number): Promise<LeaveRecordDocumentRow | null> {
+  async findDocumentById(documentId: number): Promise<LeaveManagementDocumentRow | null> {
     const [rows] = await db.query<RowDataPacket[]>(
       `SELECT * FROM leave_record_documents WHERE document_id = ? LIMIT 1`,
       [documentId],
     );
-    return (rows[0] as LeaveRecordDocumentRow) ?? null;
+    return (rows[0] as LeaveManagementDocumentRow) ?? null;
   }
 
   async deleteDocument(documentId: number): Promise<boolean> {
@@ -469,15 +543,15 @@ export class LeaveRecordsRepository {
     return res.affectedRows > 0;
   }
 
-  async deleteExtension(leaveRecordId: number): Promise<boolean> {
+  async deleteExtension(leaveManagementId: number): Promise<boolean> {
     const [res] = await db.execute<ResultSetHeader>(
       `DELETE FROM leave_record_extensions WHERE leave_record_id = ?`,
-      [leaveRecordId],
+      [leaveManagementId],
     );
     return res.affectedRows > 0;
   }
 
-  async listLeaveRowsForQuota(
+  async listLeaveManagementRowsForQuota(
     citizenId: string,
     fiscalYear: number,
   ): Promise<LeaveQuotaLeaveRow[]> {
@@ -542,5 +616,104 @@ export class LeaveRecordsRepository {
       [citizenId],
     );
     return (rows[0] as EmployeeServiceDatesRow) ?? null;
+  }
+
+  async listLeaveReturnReportEventsByLeaveIds(
+    leaveRecordIds: number[],
+  ): Promise<LeaveReturnReportEventRow[]> {
+    const uniqueIds = Array.from(
+      new Set(
+        (leaveRecordIds ?? []).filter(
+          (id) => Number.isFinite(Number(id)) && Number(id) > 0,
+        ),
+      ),
+    );
+    if (uniqueIds.length === 0) return [];
+
+    const placeholders = uniqueIds.map(() => "?").join(",");
+    try {
+      const [rows] = await db.query<RowDataPacket[]>(
+        `
+          SELECT
+            event_id,
+            leave_record_id,
+            report_date,
+            resume_date,
+            resume_study_institution,
+            resume_study_program,
+            resume_study_major,
+            remark,
+            created_at
+          FROM leave_return_report_events
+          WHERE leave_record_id IN (${placeholders})
+          ORDER BY leave_record_id ASC, report_date ASC, event_id ASC
+        `,
+        uniqueIds,
+      );
+      return rows as LeaveReturnReportEventRow[];
+    } catch (error: any) {
+      if (error?.code === "ER_NO_SUCH_TABLE") {
+        return [];
+      }
+      throw error;
+    }
+  }
+
+  async findExtensionReturnMeta(
+    leaveRecordId: number,
+  ): Promise<{ require_return_report: number | null } | null> {
+    const [rows] = await db.query<RowDataPacket[]>(
+      `
+        SELECT require_return_report
+        FROM leave_record_extensions
+        WHERE leave_record_id = ?
+        LIMIT 1
+      `,
+      [leaveRecordId],
+    );
+    const row = rows[0] as any;
+    if (!row) return null;
+    return {
+      require_return_report:
+        row.require_return_report === null || row.require_return_report === undefined
+          ? null
+          : Number(row.require_return_report),
+    };
+  }
+
+  async upsertLegacyReturnReportCompat(
+    leaveRecordId: number,
+    input: {
+      require_return_report: number;
+      return_report_status: "PENDING" | "DONE" | "NOT_REQUIRED";
+      return_date: string | null;
+      actor_id?: number | null;
+    },
+  ): Promise<void> {
+    await db.execute<ResultSetHeader>(
+      `
+        INSERT INTO leave_record_extensions (
+          leave_record_id,
+          require_return_report,
+          return_report_status,
+          return_date,
+          created_by,
+          updated_by
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          require_return_report = VALUES(require_return_report),
+          return_report_status = VALUES(return_report_status),
+          return_date = VALUES(return_date),
+          updated_by = VALUES(updated_by)
+      `,
+      [
+        leaveRecordId,
+        input.require_return_report,
+        input.return_report_status,
+        input.return_date,
+        input.actor_id ?? null,
+        input.actor_id ?? null,
+      ],
+    );
   }
 }

@@ -5,8 +5,8 @@
 import { Request, Response } from "express";
 import { catchAsync } from "@shared/utils/errors.js";
 import type { ApiResponse } from "@/types/auth.js";
-import { getUserDashboard } from "@/modules/dashboard/user-dashboard.service.js";
-import { getApproverDashboard } from "@/modules/dashboard/approver-dashboard.service.js";
+import { getUserDashboard } from "@/modules/dashboard/services/user-dashboard.service.js";
+import { getApproverDashboard } from "@/modules/dashboard/services/approver-dashboard.service.js";
 import { UserRole } from "@/types/auth.js";
 
 export const getUserDashboardSummary = catchAsync(

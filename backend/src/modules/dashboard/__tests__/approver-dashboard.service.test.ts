@@ -1,4 +1,4 @@
-import { buildApproverDashboard } from '@/modules/dashboard/approver-dashboard.service.js';
+import { buildApproverDashboard } from '@/modules/dashboard/services/approver-dashboard.service.js';
 
 describe('buildApproverDashboard', () => {
   it('maps stats and pending items with SLA status', () => {

@@ -1,4 +1,4 @@
-import { buildUserDashboard } from '@/modules/dashboard/user-dashboard.service.js';
+import { buildUserDashboard } from '@/modules/dashboard/services/user-dashboard.service.js';
 import { RequestStatus } from '@/modules/request/contracts/request.types.js';
 
 describe('buildUserDashboard', () => {

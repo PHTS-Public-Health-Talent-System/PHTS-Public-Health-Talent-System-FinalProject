@@ -5,7 +5,7 @@
 import { Request, Response } from "express";
 import { catchAsync } from "@shared/utils/errors.js";
 import type { ApiResponse } from "@/types/auth.js";
-import { getNavigationPayload } from "@/modules/navigation/navigation.service.js";
+import { getNavigationPayload } from "@/modules/navigation/services/navigation.service.js";
 
 export const getNavigation = catchAsync(
   async (req: Request, res: Response<ApiResponse>) => {

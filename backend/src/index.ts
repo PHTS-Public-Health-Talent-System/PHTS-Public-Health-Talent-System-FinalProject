@@ -32,11 +32,11 @@ import slaRoutes from '@/modules/sla/sla.routes.js';
 import accessReviewRoutes from '@/modules/access-review/access-review.routes.js';
 import snapshotRoutes from '@/modules/snapshot/snapshot.routes.js';
 import alertsRoutes from '@/modules/alerts/alerts.routes.js';
-import healthRoutes from '@/modules/health/health.routes.js';
+import healthRoutes from '@/modules/health/routes/health.routes.js';
 import announcementRoutes from '@/modules/announcement/announcement.routes.js';
 import supportRoutes from '@/modules/support/support.routes.js';
-import dashboardRoutes from '@/modules/dashboard/dashboard.routes.js';
-import navigationRoutes from '@/modules/navigation/navigation.routes.js';
+import dashboardRoutes from '@/modules/dashboard/routes/dashboard.routes.js';
+import navigationRoutes from '@/modules/navigation/routes/navigation.routes.js';
 import {
   startOcrPrecheckWorker,
   stopOcrPrecheckWorker,

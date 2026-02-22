@@ -8,12 +8,12 @@ import { AuthRepository } from "@/modules/auth/repositories/auth.repository.js";
 import {
   getPendingPayrollCount,
   getPendingRequestCount,
-} from "@/modules/dashboard/counters.service.js";
+} from "@/modules/dashboard/services/counters.service.js";
 import {
   buildMenu,
   type NavigationBadgeKey,
   type NavigationItem,
-} from "@/modules/navigation/navigation.menu.js";
+} from "@/modules/navigation/services/navigation.menu.js";
 
 export type { NavigationBadgeKey, NavigationItem };
 

@@ -8,7 +8,7 @@ import { UserRole } from "@/types/auth.js";
 import {
   getUserDashboardSummary,
   getApproverDashboardSummary,
-} from "@/modules/dashboard/dashboard.controller.js";
+} from "@/modules/dashboard/controllers/dashboard.controller.js";
 
 const router = Router();
 

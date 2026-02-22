@@ -2,7 +2,6 @@
  * dashboard module - business logic
  *
  */
-import db from "@config/database.js";
 import { requestQueryService } from "@/modules/request/read/services/query.service.js";
 import { PayrollRepository } from "@/modules/payroll/repositories/payroll.repository.js";
 import { PayPeriod } from "@/modules/payroll/entities/payroll.entity.js";
@@ -16,7 +15,8 @@ import type { RequestSLAInfo } from "@/modules/sla/entities/sla.entity.js";
 import {
   getPendingPayrollCount,
   getPendingPayrollStatusForApprover,
-} from "@/modules/dashboard/counters.service.js";
+} from "@/modules/dashboard/services/counters.service.js";
+import { DashboardRepository } from "@/modules/dashboard/repositories/dashboard.repository.js";
 
 export type ApproverDashboardStats = {
   pending_requests: number;
@@ -194,19 +194,10 @@ export const getApproverDashboard = async (userId: number, role: UserRole) => {
   const now = new Date();
   const month = now.getMonth() + 1;
   const year = now.getFullYear();
-  const [rows] = await db.query(
-    `
-      SELECT COUNT(*) as count
-      FROM req_submissions
-      WHERE status = 'APPROVED'
-        AND MONTH(COALESCE(updated_at, created_at)) = ?
-        AND YEAR(COALESCE(updated_at, created_at)) = ?
-    `,
-    [month, year],
-  );
-  const approvedMonthCount = Number(
-    (rows as { count?: number }[])[0]?.count ?? 0,
-  );
+  const approvedMonthCount = await DashboardRepository.countApprovedRequestsByMonth({
+    month,
+    year,
+  });
 
   const payload = buildApproverDashboard({
     pendingRequests,

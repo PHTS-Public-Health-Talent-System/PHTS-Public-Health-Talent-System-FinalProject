@@ -4,7 +4,7 @@ import {
   getPendingPayrollCount,
   getPendingRequestCount,
   getPendingPayrollStatusForApprover,
-} from "@/modules/dashboard/counters.service.js";
+} from "@/modules/dashboard/services/counters.service.js";
 
 jest.mock("@/modules/request/read/services/query.service.js", () => ({
   requestQueryService: {

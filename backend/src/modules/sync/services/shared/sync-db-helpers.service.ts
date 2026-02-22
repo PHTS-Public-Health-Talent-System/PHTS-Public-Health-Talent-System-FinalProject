@@ -17,7 +17,7 @@ export const hasSupportLevelColumn = async (conn: PoolConnection): Promise<boole
     `SELECT COLUMN_NAME
      FROM information_schema.COLUMNS
      WHERE TABLE_SCHEMA = DATABASE()
-       AND TABLE_NAME = 'vw_hrms_support_staff'
+       AND TABLE_NAME = 'emp_support_staff'
        AND COLUMN_NAME IN ('level')`,
   );
   const supportColumnSet = new Set((supportCols as RowDataPacket[]).map((row) => row.COLUMN_NAME));

@@ -15,8 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useCheckSignature, useMySignature } from '@/features/signature/hooks';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
-import SignaturePad from '@/components/common/signature-pad';
+import { EntitySummaryCard, SignaturePad } from '@/components/common';
 import { RequestFormData, PERSONNEL_TYPE_LABELS } from '@/types/request.types';
 import { useEffect } from 'react';
 import { formatThaiNumber } from '@/shared/utils/thai-locale';
@@ -93,6 +92,17 @@ export function Step5Review({ data, updateData, onGoToStep, prefillOriginal }: S
       : data.rateMapping.itemId.replace('item', '').replace('_', '.')
     : '-';
 
+  const renderChangedValue = (value: string, changed: boolean) => (
+    <div className="font-medium flex items-center gap-2">
+      {value}
+      {changed && (
+        <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+          แก้ไข
+        </Badge>
+      )}
+    </div>
+  );
+
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="space-y-1">
@@ -130,102 +140,70 @@ export function Step5Review({ data, updateData, onGoToStep, prefillOriginal }: S
         {/* Left Column: Summary */}
         <div className="md:col-span-7 lg:col-span-8 space-y-6">
           {/* Section 1: Personal & Dept Info */}
-          <Card className="border border-border/60 shadow-sm overflow-hidden">
-            <div className="bg-secondary/30 p-4 border-b border-border/60 flex items-center gap-2">
-              <User className="h-5 w-5 text-primary" />
-              <h4 className="font-semibold text-foreground">ข้อมูลผู้ยื่นและสังกัด</h4>
-            </div>
-            <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4 text-sm">
-              <div>
-                <span className="block text-muted-foreground text-xs mb-1">ชื่อ-นามสกุล</span>
-                <div className="font-medium flex items-center gap-2">
-                  {fullName}
-                  {isChanged(
+          <EntitySummaryCard
+            title="ข้อมูลผู้ยื่นและสังกัด"
+            icon={User}
+            fields={[
+              {
+                label: 'ชื่อ-นามสกุล',
+                value: renderChangedValue(
+                  fullName,
+                  isChanged(
                     fullName,
                     prefillOriginal
                       ? `${prefillOriginal.title ?? ''} ${prefillOriginal.first_name ?? ''} ${prefillOriginal.last_name ?? ''}`.trim()
                       : '',
-                  ) && (
-                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-                      แก้ไข
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <div>
-                <span className="block text-muted-foreground text-xs mb-1">เลขบัตรประชาชน</span>
-                <div className="font-medium flex items-center gap-2">
-                  {data.citizenId || '-'}
-                  {isChanged(data.citizenId, prefillOriginal?.citizen_id) && (
-                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-                      แก้ไข
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <div>
-                <span className="block text-muted-foreground text-xs mb-1">ตำแหน่ง</span>
-                <div className="font-medium flex items-center gap-2">
-                  {positionName}
-                  {isChanged(positionName, prefillOriginal?.position_name) && (
-                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-                      แก้ไข
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <div>
-                <span className="block text-muted-foreground text-xs mb-1">เลขตำแหน่ง</span>
-                <div className="font-medium flex items-center gap-2">
-                  {data.positionNumber || '-'}
-                  {isChanged(data.positionNumber, prefillOriginal?.position_number) && (
-                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-                      แก้ไข
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <div>
-                <span className="block text-muted-foreground text-xs mb-1">หน่วยงาน</span>
-                <div className="font-medium flex items-center gap-2">
-                  {subDepartment}
-                  {isChanged(subDepartment, prefillOriginal?.sub_department) && (
-                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-                      แก้ไข
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <div>
-                <span className="block text-muted-foreground text-xs mb-1">กลุ่มงาน</span>
-                <div className="font-medium flex items-center gap-2">
-                  {department}
-                  {isChanged(department, prefillOriginal?.department) && (
-                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-                      แก้ไข
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <div>
-                <span className="block text-muted-foreground text-xs mb-1">ประเภทบุคลากร</span>
-                <div className="font-medium flex items-center gap-2">
-                  {employeeTypeLabel}
-                  {isChanged(employeeTypeLabel, prefillOriginal?.employee_type) && (
-                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-                      แก้ไข
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <div>
-                <span className="block text-muted-foreground text-xs mb-1">ปฏิบัติงานในราชการ</span>
-                <div className="font-medium">
-                  {data.employmentRegion === 'REGIONAL' ? 'ส่วนภูมิภาค' : 'ส่วนกลาง'}
-                </div>
-              </div>
-            </div>
-          </Card>
+                  ),
+                ),
+              },
+              {
+                label: 'เลขบัตรประชาชน',
+                value: renderChangedValue(
+                  data.citizenId || '-',
+                  isChanged(data.citizenId, prefillOriginal?.citizen_id),
+                ),
+              },
+              {
+                label: 'ตำแหน่ง',
+                value: renderChangedValue(
+                  positionName,
+                  isChanged(positionName, prefillOriginal?.position_name),
+                ),
+              },
+              {
+                label: 'เลขตำแหน่ง',
+                value: renderChangedValue(
+                  data.positionNumber || '-',
+                  isChanged(data.positionNumber, prefillOriginal?.position_number),
+                ),
+              },
+              {
+                label: 'หน่วยงาน',
+                value: renderChangedValue(
+                  subDepartment,
+                  isChanged(subDepartment, prefillOriginal?.sub_department),
+                ),
+              },
+              {
+                label: 'กลุ่มงาน',
+                value: renderChangedValue(
+                  department,
+                  isChanged(department, prefillOriginal?.department),
+                ),
+              },
+              {
+                label: 'ประเภทบุคลากร',
+                value: renderChangedValue(
+                  employeeTypeLabel,
+                  isChanged(employeeTypeLabel, prefillOriginal?.employee_type),
+                ),
+              },
+              {
+                label: 'ปฏิบัติงานในราชการ',
+                value: data.employmentRegion === 'REGIONAL' ? 'ส่วนภูมิภาค' : 'ส่วนกลาง',
+              },
+            ]}
+          />
 
           {/* Section 2: Work Details */}
           <Card className="border border-border/60 shadow-sm overflow-hidden">

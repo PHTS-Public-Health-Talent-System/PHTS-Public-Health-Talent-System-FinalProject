@@ -2,9 +2,9 @@
 import { CloudUpload, FileText, Lightbulb, Eye, X } from 'lucide-react';
 import { useState } from 'react';
 import { Label } from '@/components/ui/label';
-import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AttachmentPreviewDialog } from '@/components/common/attachment-preview-dialog';
+import { AttachmentPreviewDialog } from '@/components/common';
+import { AttachmentList } from '@/components/common';
 import { toast } from 'sonner';
 
 import { RequestFormData } from '@/types/request.types';
@@ -51,8 +51,6 @@ export function Step3Attachments({
     setPreviewName(name);
     setPreviewOpen(true);
   };
-
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 
   return (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -144,31 +142,16 @@ export function Step3Attachments({
             <Label className="text-base font-medium text-muted-foreground">
               ไฟล์เดิมในระบบ ({data.attachments.length})
             </Label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 opacity-80">
-              {data.attachments.map((att) => (
-                <div
-                  key={att.attachment_id}
-                  className="flex items-center justify-between p-3 rounded-lg border bg-secondary/20"
-                >
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    <div className="p-2 bg-background rounded border shrink-0">
-                      <FileText className="h-4 w-4 text-muted-foreground" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{att.file_name}</p>
-                      <p className="text-[10px] text-muted-foreground uppercase">{att.file_type}</p>
-                    </div>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handlePreview(`${apiBase}/${att.file_path}`, att.file_name)}
-                    className="h-8 w-8 text-muted-foreground hover:text-primary"
-                  >
-                    <Eye className="h-4 w-4" />
-                  </Button>
-                </div>
-              ))}
+            <div className="opacity-80">
+              <AttachmentList
+                items={data.attachments.map((att) => ({
+                  id: att.attachment_id,
+                  name: att.file_name,
+                  type: att.file_type,
+                  path: att.file_path,
+                }))}
+                onPreview={handlePreview}
+              />
             </div>
           </div>
         )}

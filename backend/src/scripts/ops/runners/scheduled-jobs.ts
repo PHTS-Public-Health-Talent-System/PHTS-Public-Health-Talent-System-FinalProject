@@ -9,7 +9,10 @@ import {
   autoDisableTerminatedUsers,
   sendReviewReminders,
 } from '@/modules/access-review/services/access-review.service.js';
-import { runBackupJob } from '@/modules/backup/services/backup.service.js';
+import {
+  runBackupJob,
+  shouldRunScheduledBackup,
+} from '@/modules/backup/services/backup.service.js';
 import { sendLicenseAlertDigest } from '@/modules/workforce-compliance/services/license-compliance.digest.service.js';
 import { NotificationOutboxService } from '@/modules/notification/services/notification-outbox.service.js';
 import { ALERT_JOB_TIMEZONE } from '@/modules/workforce-compliance/constants/workforce-compliance-policy.js';
@@ -65,6 +68,12 @@ async function runJob(job: JobName): Promise<void> {
 
 
   if (job === "backup") {
+    const shouldRun = await shouldRunScheduledBackup();
+    if (!shouldRun) {
+      console.log("[backup] skipped (not scheduled time or already run today)");
+      console.log(`[job:done] ${job} duration_ms=${Date.now() - startedAt}`);
+      return;
+    }
     const result = await runBackupJob({ triggerSource: "SCHEDULED" });
     console.log("[backup]", result);
     console.log(`[job:done] ${job} duration_ms=${Date.now() - startedAt}`);

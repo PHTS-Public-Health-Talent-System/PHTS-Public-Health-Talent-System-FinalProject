@@ -79,3 +79,23 @@ export const backupHistorySchema = z.object({
 });
 
 export type BackupHistoryQuery = z.infer<typeof backupHistorySchema>["query"];
+
+// PUT /system/backup/schedule
+export const updateBackupScheduleSchema = z.object({
+  body: z.object({
+    hour: z
+      .number({ error: "hour ต้องเป็นตัวเลข" })
+      .int("hour ต้องเป็นจำนวนเต็ม")
+      .min(0, "hour ต้องอยู่ระหว่าง 0-23")
+      .max(23, "hour ต้องอยู่ระหว่าง 0-23"),
+    minute: z
+      .number({ error: "minute ต้องเป็นตัวเลข" })
+      .int("minute ต้องเป็นจำนวนเต็ม")
+      .min(0, "minute ต้องอยู่ระหว่าง 0-59")
+      .max(59, "minute ต้องอยู่ระหว่าง 0-59"),
+  }),
+});
+
+export type UpdateBackupScheduleBody = z.infer<
+  typeof updateBackupScheduleSchema
+>["body"];

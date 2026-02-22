@@ -30,6 +30,10 @@ jest.mock('node:fs/promises', () => ({
 }));
 
 describe('Backup Service Configuration', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('validates backup service can be imported', async () => {
     const { runBackupJob } = await import('@/modules/backup/services/backup.service.js');
     expect(runBackupJob).toBeDefined();
@@ -78,5 +82,28 @@ describe('Backup Service Configuration', () => {
     else delete process.env.BACKUP_ARGS;
     if (oldWorkdir !== undefined) process.env.BACKUP_WORKDIR = oldWorkdir;
     else delete process.env.BACKUP_WORKDIR;
+  });
+
+  it('uses default schedule (02:00) when no config is set', async () => {
+    const redis = (await import('@config/redis.js')).default as unknown as {
+      get: jest.Mock;
+    };
+    redis.get.mockResolvedValueOnce(null);
+
+    jest.resetModules();
+    const { getBackupScheduleConfig } = await import('@/modules/backup/services/backup.service.js');
+    const schedule = await getBackupScheduleConfig();
+
+    expect(schedule.hour).toBe(2);
+    expect(schedule.minute).toBe(0);
+  });
+
+  it('persists schedule and returns normalized values', async () => {
+    jest.resetModules();
+    const { setBackupScheduleConfig } = await import('@/modules/backup/services/backup.service.js');
+    const schedule = await setBackupScheduleConfig({ hour: 3, minute: 15 });
+
+    expect(schedule.hour).toBe(3);
+    expect(schedule.minute).toBe(15);
   });
 });

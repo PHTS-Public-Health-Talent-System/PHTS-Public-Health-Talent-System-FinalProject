@@ -3,7 +3,10 @@ import { protect, restrictTo } from "@middlewares/authMiddleware.js";
 import { validate } from "@shared/validate.middleware.js";
 import { UserRole } from "@/types/auth.js";
 import * as backupController from "@/modules/backup/backup.controller.js";
-import { backupHistorySchema } from "@/modules/system/admin/admin.schema.js";
+import {
+  backupHistorySchema,
+  updateBackupScheduleSchema,
+} from "@/modules/system/admin/admin.schema.js";
 
 const router = Router();
 const adminAuth = restrictTo(UserRole.ADMIN);
@@ -16,6 +19,13 @@ router.get(
   adminAuth,
   validate(backupHistorySchema),
   backupController.getBackupHistory,
+);
+router.get("/backup/schedule", adminAuth, backupController.getBackupSchedule);
+router.put(
+  "/backup/schedule",
+  adminAuth,
+  validate(updateBackupScheduleSchema),
+  backupController.updateBackupSchedule,
 );
 
 export default router;

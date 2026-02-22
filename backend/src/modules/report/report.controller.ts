@@ -14,6 +14,7 @@ function handleReportError(res: Response, error: unknown): void {
   }
 
   if (
+    message.includes("SNAPSHOT_NOT_READY") ||
     message.includes("Report is available only for closed periods") ||
     message.includes("Report requires frozen snapshot") ||
     message.includes("Snapshot not found for frozen period") ||

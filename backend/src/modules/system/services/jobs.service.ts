@@ -36,7 +36,7 @@ type JobSummary = {
       period_year: number;
       period_month: number;
       status: string;
-      is_frozen: number;
+      snapshot_status: string;
       updated_at: Date;
     }>;
   };
@@ -96,7 +96,7 @@ const fetchPayrollOpenPeriods = async () => {
     "SELECT COUNT(*) as count FROM pay_periods WHERE status <> 'CLOSED'",
   )) as Array<{ count: number }>;
   const latest = (await query(
-    `SELECT period_id, period_year, period_month, status, is_frozen, updated_at
+    `SELECT period_id, period_year, period_month, status, snapshot_status, updated_at
      FROM pay_periods
      WHERE status <> 'CLOSED'
      ORDER BY period_year DESC, period_month DESC
@@ -106,7 +106,7 @@ const fetchPayrollOpenPeriods = async () => {
     period_year: number;
     period_month: number;
     status: string;
-    is_frozen: number;
+    snapshot_status: string;
     updated_at: Date;
   }>;
 

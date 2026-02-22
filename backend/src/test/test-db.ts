@@ -388,7 +388,9 @@ export async function resetPayrollSchema(): Promise<void> {
         total_amount DECIMAL(12,2) NULL,
         total_headcount INT NULL,
         closed_at DATETIME NULL,
-        is_frozen TINYINT NOT NULL DEFAULT 0,
+        is_locked TINYINT NOT NULL DEFAULT 0,
+        snapshot_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        snapshot_ready_at DATETIME NULL,
         frozen_at DATETIME NULL,
         frozen_by INT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -403,7 +405,11 @@ export async function resetPayrollSchema(): Promise<void> {
         request_id INT NOT NULL,
         user_id INT NULL,
         citizen_id VARCHAR(20) NOT NULL,
-        snapshot_id INT NULL
+        snapshot_id INT NULL,
+        UNIQUE KEY uk_pay_period_items_period_request (period_id, request_id),
+        KEY idx_pay_period_items_period (period_id),
+        KEY idx_pay_period_items_period_citizen (period_id, citizen_id),
+        KEY idx_pay_period_items_period_user (period_id, user_id)
       )
     `);
 
@@ -471,7 +477,9 @@ export async function resetFinanceSchema(): Promise<void> {
         period_month INT NOT NULL,
         period_year INT NOT NULL,
         status VARCHAR(50) NOT NULL,
-        is_frozen TINYINT NOT NULL DEFAULT 0,
+        is_locked TINYINT NOT NULL DEFAULT 0,
+        snapshot_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        snapshot_ready_at DATETIME NULL,
         frozen_at DATETIME NULL,
         frozen_by INT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -528,15 +536,20 @@ export async function resetSnapshotSchema(): Promise<void> {
   await resetAuthSchema();
   const conn = await getTestConnection();
   try {
+    await conn.execute("DROP TABLE IF EXISTS pay_periods");
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS pay_periods (
         period_id INT AUTO_INCREMENT PRIMARY KEY,
         period_month INT NOT NULL,
         period_year INT NOT NULL,
         status VARCHAR(50) NOT NULL,
-        is_frozen TINYINT NOT NULL DEFAULT 0,
+        is_locked TINYINT NOT NULL DEFAULT 0,
+        snapshot_status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        snapshot_ready_at DATETIME NULL,
         frozen_at DATETIME NULL,
-        frozen_by INT NULL
+        frozen_by INT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -565,6 +578,21 @@ export async function resetSnapshotSchema(): Promise<void> {
         record_count INT NOT NULL,
         total_amount DECIMAL(12,2) NOT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await conn.execute("DROP TABLE IF EXISTS pay_snapshot_outbox");
+    await conn.execute(`
+      CREATE TABLE pay_snapshot_outbox (
+        outbox_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        period_id INT NOT NULL,
+        requested_by INT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+        attempts INT NOT NULL DEFAULT 0,
+        last_error TEXT NULL,
+        available_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        processed_at DATETIME NULL
       )
     `);
 
@@ -603,6 +631,7 @@ export async function resetSnapshotSchema(): Promise<void> {
     `);
 
     await conn.execute("DELETE FROM pay_snapshots");
+    await conn.execute("DELETE FROM pay_snapshot_outbox");
     await conn.execute("DELETE FROM pay_results");
     await conn.execute("DELETE FROM pay_periods");
   } finally {

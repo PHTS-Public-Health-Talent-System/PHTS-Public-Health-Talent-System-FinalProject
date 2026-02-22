@@ -33,7 +33,9 @@ export class SnapshotRepository {
       period_month: row.period_month,
       period_year: row.period_year,
       status: row.status,
-      is_frozen: row.is_frozen === 1,
+      is_locked: row.is_locked === 1 || row.is_locked === true,
+      snapshot_status: row.snapshot_status ?? "PENDING",
+      snapshot_ready_at: row.snapshot_ready_at ?? null,
       frozen_at: row.frozen_at,
       frozen_by: row.frozen_by,
       snapshot_count: row.snapshot_count,
@@ -69,12 +71,14 @@ export class SnapshotRepository {
   ): Promise<boolean> {
     const executor = conn ?? db;
     const [rows] = await executor.query<RowDataPacket[]>(
-      "SELECT is_frozen FROM pay_periods WHERE period_id = ?",
+      "SELECT snapshot_status FROM pay_periods WHERE period_id = ?",
       [periodId],
     );
 
     if (rows.length === 0) return false;
-    return (rows[0] as any).is_frozen === 1;
+    const row = rows[0] as any;
+    const status = String(row.snapshot_status ?? "").toUpperCase();
+    return status === "READY";
   }
 
   static async freezePeriod(
@@ -84,7 +88,10 @@ export class SnapshotRepository {
   ): Promise<void> {
     await conn.execute(
       `UPDATE pay_periods
-       SET is_frozen = 1, frozen_at = NOW(), frozen_by = ?
+       SET frozen_at = NOW(),
+           frozen_by = ?,
+           snapshot_status = 'READY',
+           snapshot_ready_at = NOW()
        WHERE period_id = ?`,
       [frozenBy, periodId],
     );
@@ -96,7 +103,10 @@ export class SnapshotRepository {
   ): Promise<void> {
     await conn.execute(
       `UPDATE pay_periods
-       SET is_frozen = 0, frozen_at = NULL, frozen_by = NULL
+       SET frozen_at = NULL,
+           frozen_by = NULL,
+           snapshot_status = 'PENDING',
+           snapshot_ready_at = NULL
        WHERE period_id = ?`,
       [periodId],
     );

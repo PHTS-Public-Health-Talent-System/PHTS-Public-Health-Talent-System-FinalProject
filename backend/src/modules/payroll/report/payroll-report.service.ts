@@ -7,8 +7,10 @@ export async function buildPeriodReport(periodId: number): Promise<Buffer> {
   if (!period) {
     throw new Error("Period not found");
   }
-  if (period.status !== "CLOSED" || !period.is_frozen) {
-    throw new Error("Report is available only for closed and frozen periods");
+  const snapshotReady =
+    String((period as any).snapshot_status ?? "").toUpperCase() === "READY";
+  if (period.status !== "CLOSED" || !snapshotReady) {
+    throw new Error("SNAPSHOT_NOT_READY");
   }
 
   const payoutData = await getPayoutDataForReport(periodId);

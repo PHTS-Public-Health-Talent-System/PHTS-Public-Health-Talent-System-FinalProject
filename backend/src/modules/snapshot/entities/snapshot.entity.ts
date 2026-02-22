@@ -11,6 +11,13 @@ export enum SnapshotType {
   SUMMARY = "SUMMARY",
 }
 
+export enum SnapshotStatus {
+  PENDING = "PENDING",
+  PROCESSING = "PROCESSING",
+  READY = "READY",
+  FAILED = "FAILED",
+}
+
 // ─── Period with snapshot info ────────────────────────────────────────────────
 
 export interface PeriodWithSnapshot {
@@ -18,7 +25,9 @@ export interface PeriodWithSnapshot {
   period_month: number;
   period_year: number;
   status: string;
-  is_frozen: boolean;
+  is_locked?: boolean;
+  snapshot_status?: SnapshotStatus | null;
+  snapshot_ready_at?: Date | null;
   frozen_at: Date | null;
   frozen_by: number | null;
   snapshot_count: number;

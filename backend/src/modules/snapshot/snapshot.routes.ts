@@ -36,12 +36,12 @@ router.get(
   snapshotController.getPeriodWithSnapshot,
 );
 
-// Check if period is frozen
+// Check snapshot readiness
 router.get(
-  "/periods/:id/is-frozen",
+  "/periods/:id/readiness",
   restrictTo(UserRole.PTS_OFFICER),
   validate(getPeriodSchema),
-  snapshotController.checkFrozen,
+  snapshotController.getSnapshotReadiness,
 );
 
 // Get all snapshots for a period
@@ -60,7 +60,7 @@ router.get(
   snapshotController.getSnapshot,
 );
 
-// Get report data (respects freeze)
+// Get report data (snapshot-ready only)
 router.get(
   "/periods/:id/report-data",
   restrictTo(UserRole.PTS_OFFICER),
@@ -68,7 +68,7 @@ router.get(
   snapshotController.getReportData,
 );
 
-// Get summary data (respects freeze)
+// Get summary data (snapshot-ready only)
 router.get(
   "/periods/:id/summary-data",
   restrictTo(UserRole.PTS_OFFICER),
@@ -84,10 +84,10 @@ router.post(
   snapshotController.freezePeriod,
 );
 
-// Unfreeze a period (PTS_OFFICER only - requires reason)
+// Unfreeze a period (ADMIN/PTS_OFFICER - requires reason)
 router.post(
   "/periods/:id/unfreeze",
-  restrictTo(UserRole.PTS_OFFICER),
+  restrictTo(UserRole.PTS_OFFICER, UserRole.ADMIN),
   validate(unfreezePeriodSchema),
   snapshotController.unfreezePeriod,
 );

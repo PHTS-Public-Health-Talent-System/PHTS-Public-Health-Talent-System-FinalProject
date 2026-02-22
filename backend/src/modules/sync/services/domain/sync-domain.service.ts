@@ -5,6 +5,20 @@ type LeaveRecordSqlOptions = {
   hasStatusColumn: boolean;
 };
 
+const resolveMovementRemarkExpr = async (conn: PoolConnection): Promise<string> => {
+  const [cols] = await conn.query<RowDataPacket[]>(
+    `SELECT COLUMN_NAME
+     FROM information_schema.COLUMNS
+     WHERE TABLE_SCHEMA = 'hrms_databases'
+       AND TABLE_NAME = 'tb_bp_status'
+       AND COLUMN_NAME IN ('remark', 'comment')`,
+  );
+  const colSet = new Set((cols as RowDataPacket[]).map((row) => String(row.COLUMN_NAME)));
+  if (colSet.has('remark')) return 'm.remark';
+  if (colSet.has('comment')) return 'm.comment';
+  return 'NULL';
+};
+
 export const syncSignatures = async (
   conn: PoolConnection,
   stats: SyncStats,
@@ -127,7 +141,31 @@ export const syncMovements = async (
   },
 ): Promise<void> => {
   console.log('[SyncService] Processing movements...');
-  await conn.query(deps.buildMovementsViewQuery());
+  const movementRemarkExpr = await resolveMovementRemarkExpr(conn);
+  await conn.query(`
+    INSERT INTO emp_movements (citizen_id, movement_type, effective_date, remark, synced_at)
+    SELECT CAST(m.id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+           CASE
+             WHEN m.status_id IN ('1','2','3') THEN 'ENTRY'
+             WHEN m.status_id = '4' THEN 'RETIRE'
+             WHEN m.status_id = '5' THEN 'STUDY'
+             WHEN m.status_id = '6' THEN 'DEATH'
+             WHEN m.status_id IN ('7','8') THEN 'TRANSFER_OUT'
+             WHEN m.status_id = '9' THEN 'RESIGN'
+             ELSE 'OTHER'
+           END,
+           m.date,
+           ${movementRemarkExpr},
+           NOW()
+    FROM hrms_databases.tb_bp_status m
+    JOIN emp_profiles e
+      ON CAST(e.citizen_id AS BINARY) = CAST(m.id AS BINARY)
+    ON DUPLICATE KEY UPDATE
+      movement_type = VALUES(movement_type),
+      effective_date = VALUES(effective_date),
+      remark = VALUES(remark),
+      synced_at = NOW()
+  `);
   await deps.applyImmediateMovementEligibilityCutoff(new Date(), conn);
 };
 
@@ -286,6 +324,7 @@ export const syncSingleMovements = async (
     applyImmediateMovementEligibilityCutoff: (date: Date, conn: PoolConnection) => Promise<unknown>;
   },
 ): Promise<void> => {
+  const movementRemarkExpr = await resolveMovementRemarkExpr(conn);
   await conn.execute(
     `
       INSERT INTO emp_movements (citizen_id, movement_type, effective_date, remark, synced_at)
@@ -300,7 +339,7 @@ export const syncSingleMovements = async (
                ELSE 'OTHER'
              END,
              m.date,
-             m.remark,
+             ${movementRemarkExpr},
              NOW()
       FROM hrms_databases.tb_bp_status m
       WHERE CAST(m.id AS BINARY) = CAST(? AS BINARY)

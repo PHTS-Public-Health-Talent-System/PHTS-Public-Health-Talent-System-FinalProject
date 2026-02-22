@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { PaymentStatus } from '@/modules/finance/services/finance.service.js';
+import { PaymentStatus } from '@/modules/finance/entities/finance.entity.js';
 
 // GET /finance/summary?year=&month=
 export const getSummarySchema = z.object({

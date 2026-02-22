@@ -1,5 +1,5 @@
 /**
- * leave-records module - React query hooks
+ * leave-management module - React query hooks
  *
  */
 "use client";
@@ -14,13 +14,16 @@ import {
   deleteLeaveRecordExtension,
   upsertLeaveRecordExtension,
   createLeaveRecord,
+  listLeaveReturnReportEvents,
+  replaceLeaveReturnReportEvents,
   type LeaveRecordExtensionPayload,
   type LeaveRecordListResponse,
   type LeavePersonnelRow,
   getLeaveRecordStats,
   type LeaveRecordStats,
   type LeaveRecordCreatePayload,
-} from "./api";
+  type LeaveReturnReportEvent,
+} from "../api";
 
 export function useLeaveRecords(
   params?: {
@@ -38,7 +41,7 @@ export function useLeaveRecords(
   options?: { enabled?: boolean },
 ) {
   return useQuery<LeaveRecordListResponse>({
-    queryKey: ["leave-records", params ?? {}],
+    queryKey: ["leave-management", params ?? {}],
     queryFn: () => listLeaveRecords(params),
     enabled: options?.enabled ?? true,
     placeholderData: (prev) => prev,
@@ -51,7 +54,7 @@ export function useUpsertLeaveRecordExtension() {
     mutationFn: (payload: LeaveRecordExtensionPayload) =>
       upsertLeaveRecordExtension(payload),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["leave-records"] });
+      qc.invalidateQueries({ queryKey: ["leave-management"] });
     },
   });
 }
@@ -62,7 +65,7 @@ export function useCreateLeaveRecord() {
     mutationFn: (payload: LeaveRecordCreatePayload) =>
       createLeaveRecord(payload),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["leave-records"] });
+      qc.invalidateQueries({ queryKey: ["leave-management"] });
     },
   });
 }
@@ -73,7 +76,7 @@ export function useDeleteLeaveRecordExtension() {
     mutationFn: (leaveRecordId: number | string) =>
       deleteLeaveRecordExtension(leaveRecordId),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["leave-records"] });
+      qc.invalidateQueries({ queryKey: ["leave-management"] });
     },
   });
 }
@@ -123,8 +126,37 @@ export function useDeleteLeaveRecordDocument() {
 
 export function useLeaveRecordStats() {
   return useQuery<LeaveRecordStats>({
-    queryKey: ["leave-records", "stats"],
+    queryKey: ["leave-management", "stats"],
     queryFn: () => getLeaveRecordStats(),
+  });
+}
+
+export function useLeaveReturnReportEvents(
+  leaveRecordId: number | string | null,
+) {
+  return useQuery<LeaveReturnReportEvent[]>({
+    queryKey: ["leave-record-return-report-events", leaveRecordId],
+    queryFn: () => listLeaveReturnReportEvents(leaveRecordId!),
+    enabled: Boolean(leaveRecordId),
+  });
+}
+
+export function useReplaceLeaveReturnReportEvents() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      leaveRecordId,
+      events,
+    }: {
+      leaveRecordId: number | string;
+      events: LeaveReturnReportEvent[];
+    }) => replaceLeaveReturnReportEvents(leaveRecordId, events),
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["leave-management"] });
+      qc.invalidateQueries({
+        queryKey: ["leave-record-return-report-events", vars.leaveRecordId],
+      });
+    },
   });
 }
 
@@ -133,7 +165,7 @@ export function useLeavePersonnel(
   options?: { enabled?: boolean },
 ) {
   return useQuery<LeavePersonnelRow[]>({
-    queryKey: ["leave-records", "personnel", params ?? {}],
+    queryKey: ["leave-management", "personnel", params ?? {}],
     queryFn: () => listLeavePersonnel(params),
     enabled: options?.enabled ?? true,
     placeholderData: (prev) => prev,

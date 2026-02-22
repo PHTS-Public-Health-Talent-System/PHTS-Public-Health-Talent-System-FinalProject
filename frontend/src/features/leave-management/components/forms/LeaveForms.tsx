@@ -17,12 +17,13 @@ import { Textarea } from '@/components/ui/textarea';
 import { PersonPicker } from '@/components/person-picker';
 import { CalendarCheck, Eye, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import type { LeaveRecord } from '@/features/leave-records/components/leaveRecords.types';
-import { leaveTypes } from '@/features/leave-records/leave-type-definitions';
+import type { LeaveRecord } from '@/features/leave-management/types/leaveManagement.types';
+import type { LeaveReturnReportEvent } from '@/features/leave-management/api';
+import { leaveTypes } from '@/features/leave-management/constants/leaveTypes';
 import {
   isValidDateRange,
   validateOptionalDateRange,
-} from '@/features/leave-records/utils/dateRange';
+} from '@/features/leave-management/utils/dateRange';
 
 function formatDateDisplay(dateStr: string): string {
   if (!dateStr) return '';
@@ -686,14 +687,30 @@ export function EditLeaveForm({
 }
 
 export function RecordReportForm({
+  leave,
+  initialEvent,
   onClose,
   onSave,
 }: {
+  leave: LeaveRecord | null;
+  initialEvent?: LeaveReturnReportEvent | null;
   onClose: () => void;
-  onSave: (reportDate: string, note: string) => void;
+  onSave: (payload: {
+    reportDate: string;
+    resumeDate?: string;
+    note: string;
+    resumeStudyProgram?: string;
+  }) => void;
 }) {
-  const [reportDate, setReportDate] = useState('');
+  const [reportDate, setReportDate] = useState(initialEvent?.report_date ?? '');
+  const [resumeDate, setResumeDate] = useState(initialEvent?.resume_date ?? '');
   const [note, setNote] = useState('');
+  const [resumeStudyProgram, setResumeStudyProgram] = useState(
+    initialEvent?.resume_study_program ?? leave?.studyInfo?.program ?? '',
+  );
+
+  const isEducation = leave?.type === 'education';
+  const isEditMode = Boolean(initialEvent);
 
   return (
     <div className="space-y-4">
@@ -702,6 +719,13 @@ export function RecordReportForm({
         value={reportDate}
         onChange={setReportDate}
         name="report_date"
+      />
+      <DateInputField
+        label="วันที่กลับไปปฏิบัติ/อบรมต่อ (resume_date)"
+        value={resumeDate}
+        onChange={setResumeDate}
+        name="resume_date"
+        min={reportDate || undefined}
       />
       <div className="space-y-2">
         <Label>หมายเหตุ</Label>
@@ -712,13 +736,38 @@ export function RecordReportForm({
           className="bg-secondary border-border"
         />
       </div>
+      {isEducation && (
+        <div className="space-y-2">
+          <Label>หลักสูตรที่กลับไปปฏิบัติ (A/B/C)</Label>
+          <Input
+            value={resumeStudyProgram}
+            onChange={(e) => setResumeStudyProgram(e.target.value)}
+            placeholder="ระบุหลักสูตร เช่น A"
+            className="bg-secondary border-border"
+          />
+        </div>
+      )}
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>
           ยกเลิก
         </Button>
-        <Button onClick={() => onSave(reportDate, note)} disabled={!reportDate}>
+        <Button
+          onClick={() =>
+            onSave({
+              reportDate,
+              resumeDate: resumeDate || undefined,
+              note,
+              resumeStudyProgram: resumeStudyProgram.trim() || undefined,
+            })
+          }
+          disabled={
+            !reportDate
+            || (resumeDate ? resumeDate <= reportDate : false)
+            || (isEducation && !resumeStudyProgram.trim())
+          }
+        >
           <CalendarCheck className="mr-2 h-4 w-4" />
-          บันทึกการรายงานตัว
+          {isEditMode ? 'บันทึกการแก้ไข' : 'บันทึกการรายงานตัว'}
         </Button>
       </DialogFooter>
     </div>

@@ -1,9 +1,11 @@
 /**
- * leave-records module - API client
+ * leave-management module - API client
  *
  */
 import api from "@/shared/api/axios";
 import type { ApiResponse } from "@/shared/api/types";
+
+const LEAVE_BASE = "/leave-management";
 
 export type LeaveRecordApiRow = {
   id: number;
@@ -61,7 +63,8 @@ export type LeaveRecordStats = {
 };
 
 export type LeaveRecordExtensionPayload = {
-  leave_record_id: number;
+  leave_record_id?: number;
+  leave_management_id?: number;
   document_start_date?: string;
   document_end_date?: string;
   document_duration_days?: number;
@@ -78,6 +81,14 @@ export type LeaveRecordExtensionPayload = {
   study_start_date?: string;
   study_note?: string;
   note?: string;
+};
+
+export type LeaveReturnReportEvent = {
+  event_id?: number;
+  leave_record_id?: number;
+  report_date: string;
+  resume_date?: string | null;
+  resume_study_program?: string;
 };
 
 export type LeaveRecordCreatePayload = {
@@ -116,7 +127,7 @@ export async function listLeaveRecords(params?: {
     ApiResponse<LeaveRecordApiRow[]> & {
       meta?: { total?: number; limit?: number | null; offset?: number };
     }
-  >("/leave-records", { params });
+  >(`${LEAVE_BASE}`, { params });
   return {
     items: res.data.data ?? [],
     total: res.data.meta?.total ?? res.data.data?.length ?? 0,
@@ -130,7 +141,7 @@ export async function listLeavePersonnel(params?: {
   limit?: number;
 }) {
   const res = await api.get<ApiResponse<LeavePersonnelRow[]>>(
-    "/leave-records/personnel",
+    `${LEAVE_BASE}/personnel`,
     { params },
   );
   return res.data.data ?? [];
@@ -138,7 +149,7 @@ export async function listLeavePersonnel(params?: {
 
 export async function createLeaveRecord(payload: LeaveRecordCreatePayload) {
   const res = await api.post<ApiResponse<{ id: number }>>(
-    "/leave-records",
+    `${LEAVE_BASE}`,
     payload,
   );
   return res.data.data;
@@ -148,7 +159,7 @@ export async function upsertLeaveRecordExtension(
   payload: LeaveRecordExtensionPayload,
 ) {
   const res = await api.put<ApiResponse<{ ok: boolean }>>(
-    "/leave-records/extensions",
+    `${LEAVE_BASE}/extensions`,
     payload,
   );
   return res.data.data;
@@ -158,14 +169,14 @@ export async function deleteLeaveRecordExtension(
   leaveRecordId: number | string,
 ) {
   const res = await api.delete<ApiResponse<{ deleted: boolean }>>(
-    `/leave-records/extensions/${leaveRecordId}`,
+    `${LEAVE_BASE}/extensions/${leaveRecordId}`,
   );
   return res.data.data;
 }
 
 export async function listLeaveRecordDocuments(leaveRecordId: number | string) {
   const res = await api.get<ApiResponse<LeaveRecordDocumentRow[]>>(
-    `/leave-records/${leaveRecordId}/documents`,
+    `${LEAVE_BASE}/${leaveRecordId}/documents`,
   );
   return res.data.data;
 }
@@ -177,7 +188,7 @@ export async function addLeaveRecordDocuments(
   const formData = new FormData();
   files.forEach((file) => formData.append("files", file));
   const res = await api.post<ApiResponse<{ document_ids: number[] }>>(
-    `/leave-records/${leaveRecordId}/documents`,
+    `${LEAVE_BASE}/${leaveRecordId}/documents`,
     formData,
     {
       headers: { "Content-Type": "multipart/form-data" },
@@ -188,14 +199,34 @@ export async function addLeaveRecordDocuments(
 
 export async function deleteLeaveRecordDocument(documentId: number | string) {
   const res = await api.delete<ApiResponse<{ deleted: boolean }>>(
-    `/leave-records/documents/${documentId}`,
+    `${LEAVE_BASE}/documents/${documentId}`,
   );
   return res.data.data;
 }
 
 export async function getLeaveRecordStats() {
   const res = await api.get<ApiResponse<LeaveRecordStats>>(
-    "/leave-records/stats",
+    `${LEAVE_BASE}/stats`,
+  );
+  return res.data.data;
+}
+
+export async function listLeaveReturnReportEvents(
+  leaveRecordId: number | string,
+) {
+  const res = await api.get<ApiResponse<LeaveReturnReportEvent[]>>(
+    `${LEAVE_BASE}/${leaveRecordId}/return-report-events`,
+  );
+  return res.data.data ?? [];
+}
+
+export async function replaceLeaveReturnReportEvents(
+  leaveRecordId: number | string,
+  events: LeaveReturnReportEvent[],
+) {
+  const res = await api.put<ApiResponse<{ ok?: boolean }>>(
+    `${LEAVE_BASE}/${leaveRecordId}/return-report-events`,
+    { events },
   );
   return res.data.data;
 }

@@ -1,4 +1,4 @@
-import type { LeaveRecordDocumentRow } from "@/features/leave-records/api"
+import type { LeaveRecordDocumentRow } from "@/features/leave-management/api"
 
 export interface LeaveRecord {
   id: number

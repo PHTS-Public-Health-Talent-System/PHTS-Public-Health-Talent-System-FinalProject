@@ -1,4 +1,4 @@
-import { LeaveManagementScreen } from '@/features/leave-records/screens/pts-officer/LeaveManagementScreen';
+import { LeaveManagementScreen } from '@/features/leave-management/screens/pts-officer/LeaveManagementScreen';
 
 export const dynamic = 'force-dynamic';
 

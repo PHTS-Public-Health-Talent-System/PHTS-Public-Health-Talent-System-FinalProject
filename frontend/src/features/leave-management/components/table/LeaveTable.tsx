@@ -11,7 +11,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { CalendarCheck, Edit, Eye, Trash2 } from "lucide-react"
-import type { LeaveRecord } from "@/features/leave-records/components/leaveRecords.types"
+import type { LeaveRecord } from "@/features/leave-management/types/leaveManagement.types"
 
 export function LeaveTable({
   records,

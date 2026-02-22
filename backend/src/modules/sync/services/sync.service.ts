@@ -3,7 +3,7 @@ import db from '@config/database.js';
 import {
   assignRoles,
   RoleAssignmentService,
-} from '@/modules/system/identity/services/role-assignment.service.js';
+} from '@/modules/sync/services/role-assignment.service.js';
 import { clearScopeCache } from '@/modules/request/scope/scope.service.js';
 import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
 import {

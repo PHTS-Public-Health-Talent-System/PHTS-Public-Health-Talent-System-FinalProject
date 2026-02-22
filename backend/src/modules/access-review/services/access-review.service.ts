@@ -9,7 +9,7 @@
 
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
-import { RoleAssignmentService } from '@/modules/system/identity/services/role-assignment.service.js';
+import { RoleAssignmentService } from '@/modules/sync/services/role-assignment.service.js';
 import {
   inferScopeType,
   parseSpecialPositionScopes,

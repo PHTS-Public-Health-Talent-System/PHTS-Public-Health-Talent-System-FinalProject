@@ -1,4 +1,4 @@
-import { normalizeText } from '../identity/services/role-assignment.service.js';
+import { normalizeText } from '@/modules/sync/services/role-assignment.service.js';
 
 describe('roleAssignmentService helpers', () => {
   test('normalizeText trims and handles nullish', () => {

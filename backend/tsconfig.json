@@ -30,13 +30,7 @@
     "noPropertyAccessFromIndexSignature": false,
 
     /* Emit */
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "removeComments": false,
-    "noEmitOnError": true,
+    "noEmit": true,
 
     /* Interop Constraints */
     "esModuleInterop": true,
@@ -45,15 +39,14 @@
     "isolatedModules": true,
 
     /* Path Aliases */
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@config/*": ["src/config/*"],
-      "@middlewares/*": ["src/middlewares/*"],
-      "@types/*": ["src/types/*"],
-      "@shared/*": ["src/shared/*"],
-      "@scripts/*": ["src/scripts/*"],
-      "@validators/*": ["src/validators/*"]
+      "@/*": ["./src/*"],
+      "@config/*": ["./src/config/*"],
+      "@middlewares/*": ["./src/middlewares/*"],
+      "@types/*": ["./src/types/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@scripts/*": ["./src/scripts/*"],
+      "@validators/*": ["./src/validators/*"]
     },
 
     /* Completeness */
@@ -62,7 +55,8 @@
   },
   "include": [
     "src/**/*.ts",
-    "src/**/*.js"
+    "src/**/*.js",
+    "src/**/*.d.ts"
   ],
   "exclude": [
     "node_modules",

@@ -7,6 +7,9 @@
  */
 
 import mysql, { type PoolConnection } from "mysql2/promise";
+import fs from "node:fs";
+import path from "node:path";
+import dotenv from "dotenv";
 import { loadEnv } from '@config/env.js';
 
 // Load environment variables
@@ -31,7 +34,7 @@ async function ensureSessionTimezoneOnEventConnection(
   await new Promise<void>((resolve, reject) => {
     connection.query("SET time_zone = ?", [dbTimezone], (error: unknown) => {
       if (error) {
-        reject(error);
+        reject(error instanceof Error ? error : new Error(String(error)));
         return;
       }
       resolve();
@@ -39,16 +42,90 @@ async function ensureSessionTimezoneOnEventConnection(
   });
 }
 
+type DbRuntimeConfig = {
+  host: string;
+  port: number;
+  user: string;
+  password: string;
+  database: string;
+};
+
+function readLocalEnvDbConfig(): Partial<DbRuntimeConfig> {
+  const localPath = path.join(process.cwd(), ".env.local");
+  if (!fs.existsSync(localPath)) return {};
+  const parsed = dotenv.parse(fs.readFileSync(localPath));
+  const localPort = Number.parseInt(String(parsed.DB_PORT || ""), 10);
+  return {
+    host: String(parsed.DB_HOST || "").trim() || undefined,
+    port: Number.isFinite(localPort) ? localPort : undefined,
+    user: String(parsed.DB_USER || "").trim() || undefined,
+    password: String(parsed.DB_PASSWORD || ""),
+  };
+}
+
+function resolveDbRuntimeConfig(): DbRuntimeConfig {
+  const envConfig: DbRuntimeConfig = {
+    host: process.env.DB_HOST || "localhost",
+    port: Number.parseInt(process.env.DB_PORT || "3306", 10),
+    user: process.env.DB_USER || "root",
+    password: process.env.DB_PASSWORD || "",
+    database: process.env.DB_NAME || "phts_system",
+  };
+
+  // In NODE_ENV=test, allow explicit TEST_DB_* overrides first.
+  if (process.env.NODE_ENV === "test") {
+    const overriddenByTestEnv: DbRuntimeConfig = {
+      host: process.env.TEST_DB_HOST || envConfig.host,
+      port: Number.parseInt(process.env.TEST_DB_PORT || String(envConfig.port), 10),
+      user: process.env.TEST_DB_USER || envConfig.user,
+      password: process.env.TEST_DB_PASSWORD ?? envConfig.password,
+      database: process.env.TEST_DB_NAME || envConfig.database,
+    };
+
+    if (
+      process.env.TEST_DB_HOST ||
+      process.env.TEST_DB_PORT ||
+      process.env.TEST_DB_USER ||
+      process.env.TEST_DB_PASSWORD ||
+      process.env.TEST_DB_NAME
+    ) {
+      return overriddenByTestEnv;
+    }
+
+    // Test fallback for local dev machine:
+    // keep DB_NAME from test env, but allow host/port/user/password from .env.local
+    // when no TEST_DB_* override is provided.
+    const local = readLocalEnvDbConfig();
+    return {
+      host: local.host || envConfig.host,
+      port: local.port ?? envConfig.port,
+      user: local.user || envConfig.user,
+      password: local.password ?? envConfig.password,
+      database: envConfig.database,
+    };
+  }
+
+  return envConfig;
+}
+
+const dbConfig = resolveDbRuntimeConfig();
+
+if (process.env.NODE_ENV === "test" && !/test/i.test(dbConfig.database)) {
+  throw new Error(
+    `[database] Refusing NODE_ENV=test with non-test database: ${dbConfig.database}`,
+  );
+}
+
 /**
  * Database connection pool configuration
  * Uses connection pooling for better performance and resource management
  */
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || "localhost",
-  port: Number.parseInt(process.env.DB_PORT || "3306", 10),
-  user: process.env.DB_USER || "root",
-  password: process.env.DB_PASSWORD || "",
-  database: process.env.DB_NAME || "phts_system",
+  host: dbConfig.host,
+  port: dbConfig.port,
+  user: dbConfig.user,
+  password: dbConfig.password,
+  database: dbConfig.database,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,

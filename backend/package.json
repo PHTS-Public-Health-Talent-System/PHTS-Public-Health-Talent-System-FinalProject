@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "TZ=Asia/Bangkok tsx watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "start": "TZ=Asia/Bangkok node dist/index.js",
     "sync:all": "TZ=Asia/Bangkok tsx src/scripts/jobs/sync_service.ts",
     "assign:roles": "TZ=Asia/Bangkok tsx src/scripts/admin/assign_roles.ts",
@@ -17,7 +17,7 @@
     "format": "prettier --write \"src/**/*.{ts,js,json}\"",
     "test": "jest",
     "test:perf": "RUN_PERF=1 jest src/__tests__/perf",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "keywords": [
     "hospital",

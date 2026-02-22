@@ -1,0 +1,61 @@
+perspectives:
+  - label: "Backend Layers"
+    description: "Logical layers for backend code"
+    groups:
+      - label: "Entry"
+        patterns:
+          - "src/index.ts"
+          - "src/modules/**/*.routes.ts"
+          - "src/modules/**/*.controller.ts"
+      - label: "Application"
+        patterns:
+          - "src/modules/**/services/**"
+      - label: "Data Access"
+        patterns:
+          - "src/modules/**/repositories/**"
+      - label: "Policy and Contracts"
+        patterns:
+          - "src/shared/policy/**"
+          - "src/modules/request-contracts/**"
+      - label: "Infrastructure"
+        patterns:
+          - "src/config/**"
+          - "src/middlewares/**"
+          - "src/shared/**"
+
+  - label: "Backend Domains"
+    description: "Domain modules under src/modules"
+    groups:
+      - label: "Request"
+        patterns:
+          - "src/modules/request/**"
+          - "src/modules/request-data/**"
+          - "src/modules/request-read/**"
+          - "src/modules/request-contracts/**"
+      - label: "Payroll"
+        patterns:
+          - "src/modules/payroll/**"
+      - label: "Leave Records"
+        patterns:
+          - "src/modules/leave-records/**"
+      - label: "Master Data"
+        patterns:
+          - "src/modules/master-data/**"
+      - label: "System and Sync"
+        patterns:
+          - "src/modules/system/**"
+          - "src/modules/sync/**"
+          - "src/modules/backup/**"
+      - label: "Access and Scope"
+        patterns:
+          - "src/modules/access-review/**"
+          - "src/modules/scope/**"
+      - label: "Support Domains"
+        patterns:
+          - "src/modules/auth/**"
+          - "src/modules/notification/**"
+          - "src/modules/navigation/**"
+          - "src/modules/dashboard/**"
+          - "src/modules/finance/**"
+          - "src/modules/snapshot/**"
+          - "src/modules/alerts/**"

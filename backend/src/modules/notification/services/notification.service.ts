@@ -12,6 +12,10 @@ import {
   NotificationWithCount,
   NotificationSettings,
 } from '@/modules/notification/entities/notification.entity.js';
+import {
+  NotificationTemplateKey,
+  renderNotificationTemplate,
+} from '@/modules/notification/services/notification-template.service.js';
 
 export class NotificationService {
   /**
@@ -60,6 +64,40 @@ export class NotificationService {
         link,
         type,
       },
+      connection,
+    );
+  }
+
+  static async notifyUserByTemplate(
+    userId: number,
+    templateKey: NotificationTemplateKey,
+    params: Record<string, unknown>,
+    connection?: PoolConnection,
+  ): Promise<number> {
+    const payload = renderNotificationTemplate(templateKey, params);
+    return this.notifyUser(
+      userId,
+      payload.title,
+      payload.message,
+      payload.link,
+      payload.type,
+      connection,
+    );
+  }
+
+  static async notifyRoleByTemplate(
+    role: string,
+    templateKey: NotificationTemplateKey,
+    params: Record<string, unknown>,
+    connection?: PoolConnection,
+  ): Promise<number> {
+    const payload = renderNotificationTemplate(templateKey, params);
+    return this.notifyRole(
+      role,
+      payload.title,
+      payload.message,
+      payload.link,
+      payload.type,
       connection,
     );
   }

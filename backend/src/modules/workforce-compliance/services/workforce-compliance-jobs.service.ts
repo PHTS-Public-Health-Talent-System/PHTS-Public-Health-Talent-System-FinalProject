@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
-import { NotificationType } from '@/modules/notification/entities/notification.entity.js';
 import { AlertLogsRepository } from '@/modules/workforce-compliance/repositories/alert-logs.repository.js';
 import { WorkforceComplianceRepository } from '@/modules/workforce-compliance/repositories/workforce-compliance.repository.js';
 import { LicenseComplianceRepository } from '@/modules/workforce-compliance/repositories/license-compliance.repository.js';
@@ -82,12 +81,10 @@ async function handleLicenseExpired(
   });
   const userId = await WorkforceComplianceRepository.findUserIdByCitizenId(citizenId);
   if (userId) {
-    await NotificationService.notifyUser(
+    await NotificationService.notifyUserByTemplate(
       userId,
-      "ใบอนุญาตหมดอายุ",
-      `ใบอนุญาตของท่านหมดอายุแล้ว (วันหมดอายุ: ${expiryDate})`,
-      "/dashboard/user/requests",
-      "LICENSE",
+      "WORKFORCE_LICENSE_EXPIRED_USER",
+      { expiryDate },
     );
   }
   await logAlert("LICENSE_EXPIRED", "citizen", referenceId, userId ?? null);
@@ -125,12 +122,10 @@ async function handleLicenseRestored(
 
   const userId = await WorkforceComplianceRepository.findUserIdByCitizenId(citizenId);
   if (userId) {
-    await NotificationService.notifyUser(
+    await NotificationService.notifyUserByTemplate(
       userId,
-      "ใบอนุญาตต่ออายุแล้ว",
-      "ระบบเปิดสิทธิรับเงินเพิ่มให้ท่านอีกครั้งหลังต่ออายุใบอนุญาต",
-      "/dashboard/user/requests",
-      "LICENSE",
+      "WORKFORCE_LICENSE_RESTORED_USER",
+      {},
     );
   }
 
@@ -207,12 +202,13 @@ export async function runRetirementCutoff(): Promise<number> {
       },
     });
 
-    await NotificationService.notifyRole(
+    await NotificationService.notifyRoleByTemplate(
       "PTS_OFFICER",
-      "ตัดสิทธิเนื่องจากเกษียณ",
-      `ตัดสิทธิเงินเพิ่ม พ.ต.ส. (เกษียณ) ตั้งแต่ ${row.retire_date} สำหรับ ${row.citizen_id}`,
-      "/dashboard/officer",
-      NotificationType.REMINDER,
+      "WORKFORCE_RETIREMENT_CUTOFF_OFFICER",
+      {
+        retireDate: row.retire_date,
+        citizenId: row.citizen_id,
+      },
     );
 
     await logAlert("RETIREMENT_CUTOFF", "citizen", referenceId, null);
@@ -247,12 +243,13 @@ export async function runMovementOutCutoff(): Promise<number> {
       },
     });
 
-    await NotificationService.notifyRole(
+    await NotificationService.notifyRoleByTemplate(
       "PTS_OFFICER",
-      "ตัดสิทธิเนื่องจากย้ายออก",
-      `ตัดสิทธิเงินเพิ่ม พ.ต.ส. (ย้ายออก) ตั้งแต่ ${dateStr} สำหรับ ${row.citizen_id}`,
-      "/dashboard/officer",
-      NotificationType.REMINDER,
+      "WORKFORCE_MOVEMENT_OUT_CUTOFF_OFFICER",
+      {
+        effectiveDate: dateStr,
+        citizenId: row.citizen_id,
+      },
     );
 
     await logAlert("MOVEMENT_OUT", "citizen", referenceId, null);
@@ -270,12 +267,13 @@ export async function runSLADigest(): Promise<{ sent: number }> {
     if (step.count === 0) continue;
     if (!(await shouldSendAlert("SLA_DIGEST", "role", step.role, new Date()))) continue;
 
-    await NotificationService.notifyRole(
+    await NotificationService.notifyRoleByTemplate(
       step.role,
-      "สรุปคำขอค้าง (SLA)",
-      `มีคำขอค้างทั้งหมด ${step.count} รายการ (เกินกำหนด ${step.overdue})`,
-      "/dashboard",
-      NotificationType.REMINDER,
+      "WORKFORCE_SLA_DIGEST_ROLE",
+      {
+        count: step.count,
+        overdue: step.overdue,
+      },
     );
 
     await logAlert("SLA_DIGEST", "role", step.role, null);
@@ -325,20 +323,18 @@ export async function runLeaveReportAlerts(): Promise<{ sent: number }> {
       continue;
     }
 
-    const title = isOverdue
-      ? "แจ้งเตือนรายงานตัวกลับ (เกินกำหนด)"
-      : "แจ้งเตือนรายงานตัวกลับ";
-    const message = isOverdue
-      ? `ครบกำหนดรายงานตัวกลับจากการลาแล้ว (${row.days_since_end} วันหลังวันสิ้นสุดการลา)`
-      : `กรุณารายงานตัวกลับภายใน ${maxDays} วันหลังสิ้นสุดการลา`;
+    const templateKey = isOverdue
+      ? "WORKFORCE_LEAVE_REPORT_OVERDUE_USER"
+      : "WORKFORCE_LEAVE_REPORT_DUE_USER";
 
     try {
-      await NotificationService.notifyUser(
+      await NotificationService.notifyUserByTemplate(
         userId,
-        title,
-        message,
-        "/dashboard/user/requests",
-        "LEAVE",
+        templateKey,
+        {
+          maxDays,
+          daysSinceEnd: row.days_since_end,
+        },
       );
 
       await logAlert("LEAVE_REPORT", "leave_record", referenceId, userId);

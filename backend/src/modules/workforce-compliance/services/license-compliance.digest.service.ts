@@ -47,21 +47,19 @@ export async function sendLicenseAlertDigest(
   }
 
   if (hasDaily) {
-    await NotificationService.notifyRole(
+    await NotificationService.notifyRoleByTemplate(
       "PTS_OFFICER",
-      "License Alerts (รายวัน)",
-      buildMessage(summary),
-      "/dashboard/officer/license-alerts",
+      "WORKFORCE_LICENSE_DIGEST_DAILY_OFFICER",
+      { summaryText: buildMessage(summary) },
     );
     return { sent: officerCount, mode: "daily", summary };
   }
 
   if (hasWeekly && isMonday) {
-    await NotificationService.notifyRole(
+    await NotificationService.notifyRoleByTemplate(
       "PTS_OFFICER",
-      "License Alerts (รายสัปดาห์)",
-      buildMessage(summary),
-      "/dashboard/officer/license-alerts",
+      "WORKFORCE_LICENSE_DIGEST_WEEKLY_OFFICER",
+      { summaryText: buildMessage(summary) },
     );
     return { sent: officerCount, mode: "weekly", summary };
   }

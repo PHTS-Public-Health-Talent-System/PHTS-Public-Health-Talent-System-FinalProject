@@ -2,6 +2,8 @@ jest.mock('@/modules/notification/services/notification.service.js', () => ({
   NotificationService: {
     notifyUser: jest.fn(),
     notifyRole: jest.fn(),
+    notifyUserByTemplate: jest.fn(),
+    notifyRoleByTemplate: jest.fn(),
   },
 }));
 
@@ -91,7 +93,7 @@ describe('runLeaveReportAlerts', () => {
       15,
       expect.any(Date),
     );
-    expect(NotificationService.notifyUser).toHaveBeenCalledTimes(2);
+    expect(NotificationService.notifyUserByTemplate).toHaveBeenCalledTimes(2);
     expect(result.sent).toBe(2);
   });
 
@@ -111,12 +113,12 @@ describe('runLeaveReportAlerts', () => {
 
     await runLeaveReportAlerts();
 
-    expect(NotificationService.notifyUser).toHaveBeenCalledWith(
+    expect(NotificationService.notifyUserByTemplate).toHaveBeenCalledWith(
       33,
-      "แจ้งเตือนรายงานตัวกลับ (เกินกำหนด)",
-      expect.stringContaining("ครบกำหนดรายงานตัวกลับจากการลาแล้ว"),
-      "/dashboard/user/requests",
-      "LEAVE",
+      "WORKFORCE_LEAVE_REPORT_OVERDUE_USER",
+      expect.objectContaining({
+        daysSinceEnd: 7,
+      }),
     );
   });
 
@@ -136,7 +138,7 @@ describe('runLeaveReportAlerts', () => {
 
     const result = await runLeaveReportAlerts();
 
-    expect(NotificationService.notifyUser).not.toHaveBeenCalled();
+    expect(NotificationService.notifyUserByTemplate).not.toHaveBeenCalled();
     expect(result.sent).toBe(0);
   });
 });

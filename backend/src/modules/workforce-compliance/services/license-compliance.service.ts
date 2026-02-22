@@ -82,12 +82,10 @@ export async function notifyLicenseAlerts(
     const userId = await WorkforceComplianceRepository.findUserIdByCitizenId(citizenId);
     if (userId) {
       const prefix = item.bucket === "expired" ? "ใบอนุญาตหมดอายุแล้ว" : "ใบอนุญาตใกล้หมดอายุ";
-      await NotificationService.notifyUser(
+      await NotificationService.notifyUserByTemplate(
         userId,
-        "แจ้งเตือนใบอนุญาตประกอบวิชาชีพ",
-        `${prefix} กรุณาตรวจสอบและดำเนินการต่ออายุ`,
-        "/dashboard/user/settings",
-        "LICENSE",
+        "WORKFORCE_LICENSE_EXPIRING_USER",
+        { prefix },
       );
     }
 

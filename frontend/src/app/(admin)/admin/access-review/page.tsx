@@ -54,7 +54,7 @@ type ReviewItem = {
   current_role: string;
   review_result: 'KEEP' | 'DISABLE' | 'PENDING';
   last_login_at: string | null;
-  reviewer_comment?: string;
+  review_note?: string | null;
 };
 
 // --- Helpers ---
@@ -177,7 +177,7 @@ export default function AccessReviewPage() {
             <ShieldCheck className="h-6 w-6 text-primary" /> ตรวจสอบสิทธิ์
           </h1>
           <p className="text-muted-foreground mt-1">
-            บริหารจัดการรอบการตรวจสอบสิทธิ์ผู้ใช้งานประจำไตรมาส
+            ตรวจสอบความถูกต้องของสิทธิ์หลังการ Sync ข้อมูลล่าสุด
           </p>
         </div>
         <div className="flex gap-2">
@@ -188,7 +188,7 @@ export default function AccessReviewPage() {
               </Button>
             }
             title="สร้างรอบตรวจสอบสิทธิ์ใหม่?"
-            description="ระบบจะสร้างรอบตรวจสอบสำหรับไตรมาสปัจจุบัน และแจ้งเตือนหัวหน้างานให้เริ่มตรวจสอบลูกทีม"
+            description="ระบบจะสร้างรอบจากข้อมูลหลัง Sync ล่าสุด และดึงรายการที่ควรตรวจสอบให้ผู้ดูแลตรวจเช็ค"
             confirmText="สร้างรอบ"
             onConfirm={handleCreateCycle}
             disabled={createCycleMutation.isPending}
@@ -335,6 +335,7 @@ export default function AccessReviewPage() {
                 <TableHead>ผู้ใช้งาน</TableHead>
                 <TableHead>บทบาทปัจจุบัน</TableHead>
                 <TableHead>เข้าใช้ล่าสุด</TableHead>
+                <TableHead>ผลตรวจจาก Sync</TableHead>
                 <TableHead>ผลการตรวจสอบ</TableHead>
                 <TableHead className="text-right">สิทธิ์ผู้ดูแลระบบ</TableHead>
               </TableRow>
@@ -342,13 +343,13 @@ export default function AccessReviewPage() {
             <TableBody>
               {itemsQuery.isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center">
+                  <TableCell colSpan={6} className="h-24 text-center">
                     กำลังโหลดข้อมูล...
                   </TableCell>
                 </TableRow>
               ) : items.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                  <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
                     ไม่พบรายการ
                   </TableCell>
                 </TableRow>
@@ -372,6 +373,11 @@ export default function AccessReviewPage() {
                       {item.last_login_at
                         ? formatThaiDateTime(item.last_login_at)
                         : 'ไม่เคยเข้าใช้งาน'}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground max-w-[420px]">
+                      <div className="line-clamp-2" title={item.review_note ?? ''}>
+                        {item.review_note || '-'}
+                      </div>
                     </TableCell>
                     <TableCell>{getResultBadge(item.review_result)}</TableCell>
                     <TableCell className="text-right">

@@ -948,7 +948,12 @@ export class PayrollRepository {
                ext.document_start_date,
                ext.document_end_date,
                ext.document_duration_days,
+               ext.require_return_report,
+               ext.return_report_status,
                ext.pay_exception,
+               ext.study_institution,
+               ext.study_program,
+               ext.study_major,
                COALESCE(ext.is_no_pay, ext.pay_exception, 0) AS is_no_pay
         FROM leave_records lr
         LEFT JOIN leave_record_extensions ext ON ext.leave_record_id = lr.id

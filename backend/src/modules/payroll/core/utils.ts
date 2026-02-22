@@ -18,6 +18,7 @@ export function isHoliday(dateStr: string, holidays: string[]): boolean {
   if (!dateStr) return false;
   const d = new Date(dateStr);
   const day = d.getDay();
+  // ระบบถือว่า "วันหยุด" = เสาร์/อาทิตย์ หรืออยู่ใน cfg_holidays
   return day === 0 || day === 6 || holidays.includes(dateStr);
 }
 
@@ -26,6 +27,7 @@ export function countBusinessDays(
   end: Date,
   holidays: string[],
 ): number {
+  // นับเฉพาะวันทำการ (ไม่ใช่ weekend และไม่อยู่ใน holiday list)
   let count = 0;
   const cur = new Date(start);
   while (cur <= end) {

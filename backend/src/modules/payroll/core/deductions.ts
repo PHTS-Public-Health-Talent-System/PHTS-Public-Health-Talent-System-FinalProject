@@ -44,7 +44,7 @@ export type DeductionReasonCode = "NO_PAY" | "OVER_QUOTA";
 
 export type DeductionReason = {
   code: DeductionReasonCode;
-  // Contribution weight for this date (0.5 or 1, or a partial overlap contribution)
+  // ค่าน้ำหนักของการหักในวันนั้น (เช่น 0.5 หรือ 1)
   weight: number;
   leave_record_id?: number | null;
   leave_type?: string | null;
@@ -60,6 +60,9 @@ const isWeekend = (date: Date) => date.getDay() === 0 || date.getDay() === 6;
 const resolveEffectiveDate = (primary: Date | string | null | undefined, fallback: Date | string) =>
   primary ? new Date(primary) : new Date(fallback);
 
+// ใช้กับวันลาแบบไม่รับเงิน (NO_PAY)
+// ฟังก์ชันนี้ถูกเรียกจาก applyLeaveDeduction() และ applyNoSalaryPeriods()
+// เพื่อบันทึกวันหักลง deductionMap/reasonsByDate
 const applyNoPayLeave = (
   deductionMap: Map<string, number>,
   reasonsByDate: Map<string, DeductionReason[]>,
@@ -69,10 +72,12 @@ const applyNoPayLeave = (
   monthEnd: Date,
   reasonBase: Omit<DeductionReason, "weight">,
 ) => {
+  const monthStartStr = formatLocalDate(monthStart);
+  const monthEndStr = formatLocalDate(monthEnd);
   const cursor = new Date(start);
   while (cursor <= end) {
     const dateStr = formatLocalDate(cursor);
-    if (cursor >= monthStart && cursor <= monthEnd) {
+    if (dateStr >= monthStartStr && dateStr <= monthEndStr) {
       const before = deductionMap.get(dateStr) || 0;
       const after = Math.max(before, 1);
       const contribution = after - before;
@@ -87,29 +92,6 @@ const applyNoPayLeave = (
   }
 };
 
-const resolveLeaveLimit = (
-  type: string,
-  ruleLimit: number | null,
-  quota: QuotaRow,
-) => {
-  if (type === "vacation") {
-    return quota.quota_vacation !== null && quota.quota_vacation !== undefined
-      ? Number(quota.quota_vacation)
-      : ruleLimit;
-  }
-  if (type === "personal") {
-    return quota.quota_personal !== null && quota.quota_personal !== undefined
-      ? Number(quota.quota_personal)
-      : ruleLimit;
-  }
-  if (type === "sick") {
-    return quota.quota_sick !== null && quota.quota_sick !== undefined
-      ? Number(quota.quota_sick)
-      : ruleLimit;
-  }
-  return ruleLimit;
-};
-
 const calculateLeaveDuration = (
   leave: LeaveRow,
   start: Date,
@@ -117,6 +99,8 @@ const calculateLeaveDuration = (
   holidays: string[],
   ruleUnit: string,
 ): { duration: number; isHalfDay: boolean } => {
+  // คำนวณจำนวนวันลา โดยอ้างกฎจาก LEAVE_RULES (ไฟล์ payroll.constants.ts)
+  // และใช้วันหยุดจาก core/utils.ts (isHoliday/countBusinessDays/countCalendarDays)
   const durationOverride = leave.document_duration_days ?? leave.duration_days ?? null;
   const isHalfDay = durationOverride !== null && durationOverride > 0 && durationOverride < 1;
   if (isHalfDay) {
@@ -127,53 +111,13 @@ const calculateLeaveDuration = (
     return { duration: 0, isHalfDay: true };
   }
   if (ruleUnit === "business_days") {
+    // business_days = ไม่นับเสาร์/อาทิตย์ และไม่นับวันหยุดนักขัตฤกษ์
     return {
       duration: countBusinessDays(start, end, holidays),
       isHalfDay: false,
     };
   }
   return { duration: countCalendarDays(start, end), isHalfDay: false };
-};
-
-const calculateExceedDate = (
-  start: Date,
-  end: Date,
-  remainingQuota: number,
-  isHalfDay: boolean,
-  ruleUnit: string,
-  holidays: string[],
-): Date | null => {
-  if (isHalfDay) {
-    return remainingQuota < 0.5 ? new Date(start) : null;
-  }
-
-  if (ruleUnit === "calendar_days") {
-    const exceedDate = new Date(start);
-    exceedDate.setDate(exceedDate.getDate() + Math.floor(remainingQuota));
-    return exceedDate;
-  }
-
-  if (remainingQuota <= 0) {
-    return new Date(start);
-  }
-
-  let daysFound = 0;
-  const cursor = new Date(start);
-  while (cursor <= end) {
-    const dateStr = formatLocalDate(cursor);
-    if (!isHoliday(dateStr, holidays) && !isWeekend(cursor)) {
-      daysFound += 1;
-      if (daysFound >= remainingQuota) break;
-    }
-    cursor.setDate(cursor.getDate() + 1);
-  }
-
-  if (daysFound >= remainingQuota) {
-    cursor.setDate(cursor.getDate() + 1);
-    return cursor;
-  }
-
-  return null;
 };
 
 type PenaltyContext = {
@@ -189,7 +133,7 @@ type PenaltyContext = {
   reasonBase: Omit<DeductionReason, "weight">;
 };
 
-type QuotaDecision = {
+export type QuotaDecision = {
   overQuota: boolean;
   exceedDate: Date | null;
 };
@@ -206,6 +150,11 @@ const applyPenalty = ({
   monthEnd,
   reasonBase,
 }: PenaltyContext) => {
+  const monthStartStr = formatLocalDate(monthStart);
+  const monthEndStr = formatLocalDate(monthEnd);
+  // ใช้ลงโทษช่วงลาเกินสิทธิ โดยหักตั้งแต่ exceedDate ถึง end
+  // ฟังก์ชันนี้ถูกเรียกจาก applyLeaveDeduction()
+  // และ end มาจาก resolvePenaltyEnd() เพื่อรองรับกรณีลาศึกษา + วันรายงานตัวกลับ
   const penaltyCursor = new Date(exceedDate);
   while (penaltyCursor <= end) {
     const dateStr = formatLocalDate(penaltyCursor);
@@ -213,7 +162,7 @@ const applyPenalty = ({
     const weekend = isWeekend(penaltyCursor);
 
     if (ruleUnit === "calendar_days" || (!isHol && !weekend)) {
-      if (penaltyCursor >= monthStart && penaltyCursor <= monthEnd) {
+      if (dateStr >= monthStartStr && dateStr <= monthEndStr) {
         const before = deductionMap.get(dateStr) || 0;
         const after = Math.min(1, before + weight);
         const contribution = after - before;
@@ -231,48 +180,48 @@ const applyPenalty = ({
 
 export function calculateDeductions(
   leaves: LeaveRow[],
-  quota: QuotaRow,
   holidays: string[],
   monthStart: Date,
   monthEnd: Date,
-  serviceStartDate: Date | null = null,
+  quotaDecisions: Map<number, QuotaDecision>,
   noSalaryPeriods: NoSalaryPeriodRow[] = [],
   returnReports: Map<number, Date> = new Map(),
-  quotaDecisions?: Map<number, QuotaDecision>,
 ): DeductionResult {
+  // จุดเรียกหลักอยู่ที่ core/calculator.ts
+  // quotaDecisions ต้องถูกเตรียมมาจาก leave-domain.service.ts ก่อนเสมอ
   const deductionMap = new Map<string, number>();
   const reasonsByDate = new Map<string, DeductionReason[]>();
-  const usage: Record<string, number> = {
-    sick: 0,
-    personal: 0,
-    vacation: 0,
-    wife_help: 0,
-  };
 
   const sortedLeaves = [...leaves].sort(
     (a, b) =>
       new Date(a.start_date).getTime() - new Date(b.start_date).getTime(),
   );
 
+  // Runtime guard: กันกรณี call มาผิดรูปแบบจากชั้นบน
+  if (!quotaDecisions) {
+    throw new Error(
+      "[payroll][deductions] quota decisions required but not provided",
+    );
+  }
+
   for (const leave of sortedLeaves) {
+    // ถ้ามีการแก้วันลาในเอกสาร ให้ใช้วันที่จากเอกสารเป็นหลัก
     const start = resolveEffectiveDate(leave.document_start_date, leave.start_date);
     const end = resolveEffectiveDate(leave.document_end_date, leave.end_date);
     applyLeaveDeduction(leave, {
       deductionMap,
       reasonsByDate,
-      usage,
-      quota,
       holidays,
       monthStart,
       monthEnd,
       start,
       end,
-      serviceStartDate,
       returnReports,
       quotaDecisions,
     });
   }
 
+  // เติมช่วง noSalaryPeriods อีกรอบ เพื่อกันข้อมูลตกหล่นจากตารางส่วนขยาย
   applyNoSalaryPeriods(deductionMap, reasonsByDate, noSalaryPeriods, monthStart, monthEnd);
 
   return { deductionMap, reasonsByDate };
@@ -281,19 +230,17 @@ export function calculateDeductions(
 type LeaveDeductionContext = {
   deductionMap: Map<string, number>;
   reasonsByDate: Map<string, DeductionReason[]>;
-  usage: Record<string, number>;
-  quota: QuotaRow;
   holidays: string[];
   monthStart: Date;
   monthEnd: Date;
   start: Date;
   end: Date;
-  serviceStartDate: Date | null;
   returnReports: Map<number, Date>;
-  quotaDecisions?: Map<number, QuotaDecision>;
+  quotaDecisions: Map<number, QuotaDecision>;
 };
 
 function applyLeaveDeduction(leave: LeaveRow, context: LeaveDeductionContext) {
+  // ถ้าเป็น no-pay ให้หักทันที แล้วจบในสาขานี้
   if (isNoPayLeave(leave)) {
     applyNoPayLeave(
       context.deductionMap,
@@ -314,12 +261,13 @@ function applyLeaveDeduction(leave: LeaveRow, context: LeaveDeductionContext) {
   const rule = LEAVE_RULES[leave.leave_type];
   if (!rule) return;
 
-  const decision =
-    leave.id !== undefined
-      ? context.quotaDecisions?.get(Number(leave.id))
-      : undefined;
+  if (leave.id === undefined || leave.id === null) {
+    throw new Error("[payroll][deductions] paid leave requires id");
+  }
 
-  const { duration, isHalfDay } = calculateLeaveDuration(
+  const decision = context.quotaDecisions.get(Number(leave.id));
+
+  const { isHalfDay } = calculateLeaveDuration(
     leave,
     context.start,
     context.end,
@@ -327,114 +275,40 @@ function applyLeaveDeduction(leave: LeaveRow, context: LeaveDeductionContext) {
     rule.unit,
   );
 
-  if (decision) {
-    if (decision.overQuota && decision.exceedDate) {
-      const weight = isHalfDay ? 0.5 : 1;
-      const penaltyEnd = resolvePenaltyEnd(
-        leave,
-        context.end,
-        context.monthEnd,
-        context.returnReports,
-      );
-      applyPenalty({
-        deductionMap: context.deductionMap,
-        reasonsByDate: context.reasonsByDate,
-        exceedDate: decision.exceedDate,
-        end: penaltyEnd,
-        weight,
-        ruleUnit: rule.unit,
-        holidays: context.holidays,
-        monthStart: context.monthStart,
-        monthEnd: context.monthEnd,
-        reasonBase: {
-          code: "OVER_QUOTA",
-          leave_record_id: leave.id ?? null,
-          leave_type: leave.leave_type,
-          exceed_date: decision.exceedDate,
-        },
-      });
-    }
-    return;
-  }
-
-  let limit = resolveLeaveLimit(leave.leave_type, rule.limit, context.quota);
-
-  // Ordain leave (ลาอุปสมบท) requires > 1 year of service
-  if (leave.leave_type === "ordain" && context.serviceStartDate) {
-    const leaveStart = context.start.getTime();
-    const serviceStart = context.serviceStartDate.getTime();
-    const serviceDays = Math.floor(
-      (leaveStart - serviceStart) / (1000 * 60 * 60 * 24),
+  if (!decision) {
+    throw new Error(
+      `[payroll][deductions] quota decision missing for leave id=${Number(leave.id)}`,
     );
-    if (serviceDays < 365) {
-      limit = 0; // No paid ordain leave if < 1 year service
-    }
   }
 
-  // First-year personal leave (บรรจุใหม่ปีแรก): 15 days instead of 45
-  if (
-    leave.leave_type === "personal" &&
-    context.serviceStartDate &&
-    limit !== null
-  ) {
-    const leaveDate = context.start;
-    const serviceStart = context.serviceStartDate;
-    // Fiscal year: Oct-Sep (e.g., FY2569 = Oct 2025 - Sep 2026)
-    const leaveFiscalYear =
-      leaveDate.getMonth() >= 9
-        ? leaveDate.getFullYear() + 1
-        : leaveDate.getFullYear();
-    const serviceFiscalYear =
-      serviceStart.getMonth() >= 9
-        ? serviceStart.getFullYear() + 1
-        : serviceStart.getFullYear();
-    if (leaveFiscalYear === serviceFiscalYear) {
-      limit = 15; // First-year limit
-    }
+  // ใช้ผล overQuota/exceedDate ที่คำนวณไว้ล่วงหน้าจาก leave-domain
+  // (ถูกสร้างใน calculator.ts แล้วส่งเข้ามาใน quotaDecisions)
+  if (decision.overQuota && decision.exceedDate) {
+    const weight = isHalfDay ? 0.5 : 1;
+    const penaltyEnd = resolvePenaltyEnd(
+      leave,
+      context.end,
+      context.monthEnd,
+      context.returnReports,
+    );
+    applyPenalty({
+      deductionMap: context.deductionMap,
+      reasonsByDate: context.reasonsByDate,
+      exceedDate: decision.exceedDate,
+      end: penaltyEnd,
+      weight,
+      ruleUnit: rule.unit,
+      holidays: context.holidays,
+      monthStart: context.monthStart,
+      monthEnd: context.monthEnd,
+      reasonBase: {
+        code: "OVER_QUOTA",
+        leave_record_id: leave.id ?? null,
+        leave_type: leave.leave_type,
+        exceed_date: decision.exceedDate,
+      },
+    });
   }
-  const currentUsage = context.usage[leave.leave_type] || 0;
-  if (rule.rule_type === "cumulative") {
-    context.usage[leave.leave_type] = currentUsage + duration;
-  }
-
-  if (limit === null || currentUsage + duration <= limit) return;
-
-  const remainingQuota = Math.max(0, limit - currentUsage);
-  const exceedDate = calculateExceedDate(
-    context.start,
-    context.end,
-    remainingQuota,
-    isHalfDay,
-    rule.unit,
-    context.holidays,
-  );
-
-  if (!exceedDate) return;
-
-  const weight = isHalfDay ? 0.5 : 1;
-  const penaltyEnd = resolvePenaltyEnd(
-    leave,
-    context.end,
-    context.monthEnd,
-    context.returnReports,
-  );
-  applyPenalty({
-    deductionMap: context.deductionMap,
-    reasonsByDate: context.reasonsByDate,
-    exceedDate,
-    end: penaltyEnd,
-    weight,
-    ruleUnit: rule.unit,
-    holidays: context.holidays,
-    monthStart: context.monthStart,
-    monthEnd: context.monthEnd,
-    reasonBase: {
-      code: "OVER_QUOTA",
-      leave_record_id: leave.id ?? null,
-      leave_type: leave.leave_type,
-      exceed_date: exceedDate,
-    },
-  });
 }
 
 function isNoPayLeave(leave: LeaveRow): boolean {
@@ -448,6 +322,8 @@ function applyNoSalaryPeriods(
   monthStart: Date,
   monthEnd: Date,
 ) {
+  // noSalaryPeriods ถูกส่งมาจาก calculator.ts
+  // โดย query จาก leave_record_extensions (is_no_pay/pay_exception)
   for (const period of periods) {
     const start = new Date(period.start_date);
     const end = new Date(period.end_date);
@@ -465,18 +341,25 @@ function resolvePenaltyEnd(
   monthEnd: Date,
   returnReports: Map<number, Date>,
 ): Date {
-  if (leave.leave_type !== "education") return leaveEnd;
+  // return report ใช้กับกลุ่มลาที่ต้อง "กลับมารายงานตัว":
+  // - education (ลาศึกษาต่อ/อบรม)
+  // - ordain (ลาอุปสมบท)
+  // - military (ลาเข้ารับการตรวจเลือก/เตรียมพล)
+  const returnReportTypes = new Set(["education", "ordain", "military"]);
+  if (!returnReportTypes.has(String(leave.leave_type ?? ""))) return leaveEnd;
   if (!leave.id) return leaveEnd;
 
   const returnDate = returnReports.get(leave.id);
   if (!returnDate) {
-    return monthEnd;
+    // ปิด logic ขยายการหักถึงสิ้นเดือนกรณีไม่พบรายงานตัวกลับ
+    // ตอนนี้ให้ยึด leaveEnd เป็นหลัก และไปแจ้งเตือนผ่าน checks แทน
+    return leaveEnd;
   }
 
   const adjusted = new Date(returnDate);
   adjusted.setDate(adjusted.getDate() - 1);
 
-  if (adjusted > leaveEnd) {
+  if (adjusted < leaveEnd) {
     return adjusted;
   }
   return leaveEnd;

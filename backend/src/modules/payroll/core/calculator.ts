@@ -8,6 +8,7 @@ import {
   DeductionResult,
   LeaveRow,
   NoSalaryPeriodRow,
+  QuotaDecision,
   QuotaRow,
   ReturnReportRow,
 } from '@/modules/payroll/core/deductions.js';
@@ -78,6 +79,8 @@ export type PayrollCheckCode =
   | "ELIGIBILITY_GAP"
   | "NO_LICENSE"
   | "NOT_WORKING"
+  | "PENDING_RETURN_REPORT"
+  | "MISSING_START_WORK_DATE"
   | "RETRO_DEDUCT";
 
 export type PayrollCheckEvidence =
@@ -90,6 +93,7 @@ export type PayrollCheckEvidence =
       is_no_pay?: boolean;
       over_quota?: boolean;
       exceed_date?: string | null;
+      return_report_status?: string | null;
       // Extra context for OVER_QUOTA / leave deductions (from quota engine).
       quota_limit?: number | null;
       leave_duration?: number | null;
@@ -293,6 +297,8 @@ const reasonSeverity = (code: PayrollCheckCode): PayrollCheckSeverity => {
       return "BLOCKER";
     case "NO_LICENSE":
       return "BLOCKER";
+    case "MISSING_START_WORK_DATE":
+      return "BLOCKER";
     default:
       return "WARNING";
   }
@@ -310,6 +316,10 @@ const checkTitle = (code: PayrollCheckCode): string => {
       return "ใบอนุญาตไม่ ACTIVE บางช่วง";
     case "NOT_WORKING":
       return "ไม่ได้ปฏิบัติงานตลอดเดือน";
+    case "PENDING_RETURN_REPORT":
+      return "ยังไม่รายงานตัวกลับ";
+    case "MISSING_START_WORK_DATE":
+      return "ไม่พบข้อมูลวันเริ่มงาน";
     case "RETRO_DEDUCT":
       return "ตกเบิกย้อนหลัง (หัก)";
   }
@@ -374,6 +384,9 @@ export async function calculateMonthlyWithData(
   const returnReportRows = (data.returnReportRows as ReturnReportRow[]) || [];
   const returnReports = new Map<number, Date>();
 
+  // สร้าง map วันรายงานตัวกลับ (เอาวันที่เร็วที่สุดต่อ 1 ใบลา)
+  // ข้อมูลนี้ถูกส่งต่อให้ deductions.ts ผ่านตัวแปร returnReports
+  // เพื่อใช้หยุดช่วงหักใน resolvePenaltyEnd()
   for (const row of returnReportRows) {
     const existing = returnReports.get(row.leave_record_id);
     const candidate = new Date(row.return_date);
@@ -382,8 +395,10 @@ export async function calculateMonthlyWithData(
     }
   }
 
+  // สร้างใบลา education จาก movement_type = STUDY
+  // แล้วรวมกับ leave จริงจากฐานข้อมูล
   const studyLeaves = buildStudyLeaves(movements, endOfMonth);
-  const mergedLeaves = [...leaves, ...studyLeaves];
+  const mergedLeaves = assignSyntheticLeaveIds([...leaves, ...studyLeaves]);
 
   const { periods, remark } = resolveWorkPeriods(
     movements,
@@ -394,15 +409,15 @@ export async function calculateMonthlyWithData(
     return emptyResult(remark || "ไม่ได้ปฏิบัติงานในเดือนนี้");
   }
 
-  // Use start_work_date for "อายุราชการรวม" (total civil service years)
-  const serviceStartDate = employee.start_work_date
-    ? new Date(employee.start_work_date)
-    : employee.first_entry_date
-      ? new Date(employee.first_entry_date)
-      : null;
+  // ส่งวันเริ่มงานให้ leave-domain ใช้คำนวณกฎที่อิงอายุงาน
+  // (เช่น personal ปีแรก, ordain ไม่ถึง 1 ปี)
+  const startWorkDateStr = formatLocalDate(employee.start_work_date ?? null);
+  const serviceStartDate = startWorkDateStr
+    ? parseLocalDateString(startWorkDateStr)
+    : null;
 
   const quotaStatus = calculateLeaveQuotaStatus({
-    leaveRows: leaves,
+    leaveRows: mergedLeaves,
     holidays,
     quota,
     rules: LEAVE_RULES,
@@ -410,7 +425,9 @@ export async function calculateMonthlyWithData(
     rangeStart: fiscalYearStart,
     rangeEnd: endOfMonth < fiscalYearEnd ? endOfMonth : fiscalYearEnd,
   });
-  const quotaDecisions = new Map<number, { overQuota: boolean; exceedDate: Date | null }>();
+  // แปลงผลจาก leave-domain ให้อยู่ในรูป Map<leave_id, QuotaDecision>
+  // เพื่อส่งเข้าฟังก์ชัน calculateDeductions() ใน deductions.ts
+  const quotaDecisions = new Map<number, QuotaDecision>();
   const quotaInfoByLeaveId = new Map<number, { limit: number | null; duration: number; exceedDate: string | null; leaveType: string }>();
   Object.entries(quotaStatus.perLeave).forEach(([leaveId, info]) => {
     const id = Number(leaveId);
@@ -429,17 +446,16 @@ export async function calculateMonthlyWithData(
   });
   const deductionResult: DeductionResult = calculateDeductions(
     mergedLeaves,
-    quota,
     holidays,
     startOfMonth,
     endOfMonth,
-    serviceStartDate,
+    quotaDecisions,
     noSalaryPeriods,
     returnReports,
-    quotaDecisions,
   );
   const deductionMap = deductionResult.deductionMap;
   const reasonsByDate = deductionResult.reasonsByDate;
+  // สรุปจำนวนวันถูกหักทั้งเดือน เพื่อนำไปบันทึก pay_results.deducted_days
   const totalDeductionDaysInMonth = Array.from(deductionMap.values()).reduce(
     (sum, value) => sum + value,
     0,
@@ -503,6 +519,47 @@ export async function calculateMonthlyWithData(
   mergedLeaves.forEach((leave) => {
     if (leave.id !== undefined && leave.id !== null) leaveById.set(Number(leave.id), leave);
   });
+
+  if (!startWorkDateStr) {
+    const agg = ensureAgg("MISSING_START_WORK_DATE");
+    agg.impactDays = workDaySet.size > 0 ? workDaySet.size : daysInMonth;
+    agg.impactAmount = 0;
+    agg.startDate = firstWorkDay ?? formatLocalDate(startOfMonth);
+    agg.endDate = lastWorkDay ?? formatLocalDate(endOfMonth);
+  }
+
+  const returnReportRequiredTypes = new Set(["education", "ordain", "military"]);
+  const monthEndStr = formatLocalDate(endOfMonth);
+  for (const leave of mergedLeaves) {
+    const leaveType = String(leave.leave_type ?? "");
+    if (!returnReportRequiredTypes.has(leaveType)) continue;
+    if (leave.id === undefined || leave.id === null || Number(leave.id) <= 0) continue;
+
+    const status = String((leave as any).return_report_status ?? "").toUpperCase();
+    if (status === "DONE") continue;
+
+    const leaveEndStr = formatLocalDate((leave as any).document_end_date ?? leave.end_date);
+    if (!leaveEndStr || leaveEndStr > monthEndStr) continue;
+
+    const agg = ensureAgg("PENDING_RETURN_REPORT");
+    agg.impactDays += 1;
+    agg.impactAmount += 0;
+    agg.startDate = agg.startDate
+      ? (leaveEndStr < agg.startDate ? leaveEndStr : agg.startDate)
+      : leaveEndStr;
+    agg.endDate = agg.endDate
+      ? (leaveEndStr > agg.endDate ? leaveEndStr : agg.endDate)
+      : leaveEndStr;
+
+    pushEvidence(agg, `leave:${leave.id}:pending_return`, {
+      type: "leave",
+      leave_record_id: Number(leave.id),
+      leave_type: leaveType,
+      start_date: formatLocalDate((leave as any).document_start_date ?? leave.start_date),
+      end_date: leaveEndStr,
+      return_report_status: status || null,
+    });
+  }
 
   let daysWithEligibilityRate = 0;
   let firstEligibilityDay: string | null = null;
@@ -721,9 +778,13 @@ export async function calculateMonthlyWithData(
         : Number.parseFloat(agg.impactAmount.toFixed(2));
       const title = checkTitle(agg.code);
       const summaryParts: string[] = [];
-      summaryParts.push(`กระทบ ${impactDays.toLocaleString('th-TH')} วัน`);
-      if (impactAmount !== null && impactAmount > 0) {
-        summaryParts.push(`ประมาณ -${impactAmount.toLocaleString('th-TH')} บาท`);
+      if (agg.code === "PENDING_RETURN_REPORT") {
+        summaryParts.push(`พบ ${impactDays.toLocaleString('th-TH')} รายการที่ยังไม่รายงานตัวกลับ`);
+      } else {
+        summaryParts.push(`กระทบ ${impactDays.toLocaleString('th-TH')} วัน`);
+        if (impactAmount !== null && impactAmount > 0) {
+          summaryParts.push(`ประมาณ -${impactAmount.toLocaleString('th-TH')} บาท`);
+        }
       }
       if (agg.code === "ELIGIBILITY_GAP" && agg.rangeLabel) {
         summaryParts.push(`ไม่มีสิทธิ ${agg.rangeLabel}`);
@@ -820,6 +881,8 @@ export async function calculateMonthly(
              ext.document_start_date,
              ext.document_end_date,
              ext.document_duration_days,
+             ext.require_return_report,
+             ext.return_report_status,
              ext.pay_exception,
              COALESCE(ext.is_no_pay, ext.pay_exception, 0) AS is_no_pay
       FROM leave_records lr
@@ -1019,142 +1082,71 @@ export async function savePayout({
   return payoutId;
 }
 
-// ============================================================================
-// Internal: Timeline Resolution Logic (Refactored)
-// ============================================================================
+// ----------------------------------------------------------------------------
+// กลุ่มฟังก์ชันช่วยคำนวณช่วงวันที่ "มีสถานะปฏิบัติงาน"
+// ใช้กับ movement และใช้ต่อใน calculateMonthlyWithData()
+// ----------------------------------------------------------------------------
 
 function resolveWorkPeriods(
   movements: MovementRow[],
   monthStart: Date,
   monthEnd: Date,
 ): { periods: WorkPeriod[]; remark: string } {
-  // 1. Flatten movements into chronological events
-  const relevantMovements = normalizeMovementsForTimeline(
-    movements.filter((m) => new Date(m.effective_date) <= monthEnd),
-  );
-
-  if (relevantMovements.length === 0) {
-    return { periods: [{ start: monthStart, end: monthEnd }], remark: "" };
-  }
-
-  // Sort by date ASC, then by creation order (id) ASC
-  const sorted = [...relevantMovements].sort((a, b) => {
+  // นโยบายปัจจุบัน:
+  // - ใช้เฉพาะสถานะออกจากงาน (RESIGN/RETIRE/DEATH/TRANSFER_OUT) เป็นตัว "ตัดสิทธิ"
+  // - สถานะเข้าใหม่ในเดือนเดียวกันจะไม่เปิดสิทธิกลับใน payroll รอบนี้
+  //   เพราะต้องไปยื่นสิทธิใหม่ผ่าน workflow request ก่อน
+  //
+  // ดังนั้นเดือนที่คำนวณนี้:
+  // - ถ้าไม่มี exit ในเดือน => ถือว่ามีช่วงปฏิบัติงานครบเดือน
+  // - ถ้ามี exit ในเดือน => มีสิทธิถึงวันก่อน exit ครั้งแรก
+  const exitTypes = new Set(["RESIGN", "RETIRE", "DEATH", "TRANSFER_OUT"]);
+  const monthStartStr = formatLocalDate(monthStart);
+  const monthEndStr = formatLocalDate(monthEnd);
+  const exitsInMonth = movements
+    .filter((m) => {
+      const dateStr = formatLocalDate(m.effective_date);
+      return (
+        exitTypes.has(String(m.movement_type ?? "")) &&
+        dateStr >= monthStartStr &&
+        dateStr <= monthEndStr
+      );
+    })
+    .sort((a, b) => {
     const dateA = new Date(a.effective_date).getTime();
     const dateB = new Date(b.effective_date).getTime();
     if (dateA !== dateB) return dateA - dateB;
     return (a as any).movement_id - (b as any).movement_id;
   });
 
-  const timelineMonthStart = monthStart.getTime();
-  const timelineMonthEnd = monthEnd.getTime();
-  const periods: WorkPeriod[] = [];
-  let isActive = false;
-  let currentSegmentStart = -1;
-  const lastRemark = "";
-
-  const exitTypes = new Set(["RESIGN", "RETIRE", "DEATH", "TRANSFER_OUT"]);
-
-  for (let i = 0; i < sorted.length; i++) {
-    const mov = sorted[i];
-    const movDate = new Date(mov.effective_date).getTime();
-    const type = mov.movement_type;
-
-    let nextIsActive: boolean = isActive;
-
-    if (
-      type === "ENTRY" ||
-      type === "TRANSFER_IN" ||
-      type === "REINSTATE" ||
-      type === "STUDY"
-    ) {
-      nextIsActive = true;
-    } else if (exitTypes.has(type)) {
-      nextIsActive = false;
-    }
-
-    if (!isActive && nextIsActive) {
-      currentSegmentStart = movDate;
-    } else if (isActive && !nextIsActive) {
-      const segmentEnd = movDate - 24 * 60 * 60 * 1000;
-      if (currentSegmentStart !== -1) {
-        addPeriod(
-          periods,
-          currentSegmentStart,
-          segmentEnd,
-          timelineMonthStart,
-          timelineMonthEnd,
-        );
-      }
-      currentSegmentStart = -1;
-    }
-    isActive = nextIsActive;
+  if (exitsInMonth.length === 0) {
+    return { periods: [{ start: monthStart, end: monthEnd }], remark: "" };
   }
 
-  if (isActive && currentSegmentStart !== -1) {
-    addPeriod(
-      periods,
-      currentSegmentStart,
-      timelineMonthEnd,
-      timelineMonthStart,
-      timelineMonthEnd,
-    );
+  const firstExit = exitsInMonth[0];
+  if (!firstExit) {
+    return { periods: [{ start: monthStart, end: monthEnd }], remark: "" };
+  }
+  const exitDate = new Date(firstExit.effective_date);
+  const endBeforeExit = new Date(exitDate);
+  endBeforeExit.setDate(endBeforeExit.getDate() - 1);
+
+  if (endBeforeExit < monthStart) {
+    return { periods: [], remark: "สถานะออกจากงานในเดือนนี้" };
   }
 
-  return { periods, remark: isActive ? "" : lastRemark };
-}
-
-function normalizeMovementsForTimeline(
-  movements: MovementRow[],
-): MovementRow[] {
-  if (movements.length === 0) return movements;
-  const entryTypes = new Set(["ENTRY", "TRANSFER_IN", "REINSTATE", "STUDY"]);
-  const exitTypes = new Set(["RESIGN", "RETIRE", "DEATH", "TRANSFER_OUT"]);
-  const grouped = new Map<
-    string,
-    { hasEntry: boolean; hasExit: boolean; minId: number; date: Date }
-  >();
-
-  for (const mov of movements) {
-    const dateStr = formatLocalDate(mov.effective_date);
-    if (!dateStr) continue;
-    const existing = grouped.get(dateStr);
-    const minId = existing
-      ? Math.min(existing.minId, (mov as any).movement_id || 0)
-      : (mov as any).movement_id || 0;
-    const hasEntry =
-      existing?.hasEntry || false || entryTypes.has(mov.movement_type);
-    const hasExit =
-      existing?.hasExit || false || exitTypes.has(mov.movement_type);
-    grouped.set(dateStr, {
-      hasEntry,
-      hasExit,
-      minId,
-      date: new Date(mov.effective_date),
-    });
-  }
-
-  const normalized: MovementRow[] = [];
-  for (const entry of grouped.values()) {
-    if (!entry.hasEntry && !entry.hasExit) continue;
-    const movement_type = entry.hasEntry ? "ENTRY" : "RESIGN";
-    normalized.push({
-      movement_id: entry.minId,
-      citizen_id: "",
-      movement_type,
-      effective_date: entry.date,
-      remark: null,
-      synced_at: null as any,
-      created_at: null as any,
-    } as MovementRow);
-  }
-
-  return normalized;
+  return {
+    periods: [{ start: monthStart, end: endBeforeExit }],
+    remark: "",
+  };
 }
 
 function buildStudyLeaves(
   movements: MovementRow[],
   monthEnd: Date,
 ): LeaveRow[] {
+  // ฟังก์ชันนี้แปลง movement STUDY ให้กลายเป็นใบลา education
+  // เพื่อให้ไปคำนวณโควต้าและวันหักใน flow เดียวกับใบลาปกติ
   const relevantMovements = movements.filter(
     (m) => new Date(m.effective_date) <= monthEnd,
   );
@@ -1206,33 +1198,17 @@ function buildStudyLeaves(
   return studyLeaves;
 }
 
-function addPeriod(
-  periods: WorkPeriod[],
-  startTs: number,
-  endTs: number,
-  monthStartTs: number,
-  monthEndTs: number,
-) {
-  const actualStart = Math.max(startTs, monthStartTs);
-  const actualEnd = Math.min(endTs, monthEndTs);
-
-  if (actualStart <= actualEnd) {
-    // Check merge with last period (if contiguous within 1 day + buffer)
-    const lastPeriod = periods[periods.length - 1];
-    if (lastPeriod) {
-      const lastEndTs = lastPeriod.end.getTime();
-      // Allow tiny gap (e.g. milliseconds) but logic is based on days.
-      // 24h + 1h buffer.
-      if (actualStart <= lastEndTs + 50 * 60 * 60 * 1000) {
-        lastPeriod.end = new Date(actualEnd);
-        return;
-      }
-    }
-    periods.push({
-      start: new Date(actualStart),
-      end: new Date(actualEnd),
-    });
-  }
+function assignSyntheticLeaveIds(leaves: LeaveRow[]): LeaveRow[] {
+  // ใบลาที่ไม่มี id (เช่นใบลาที่สร้างจาก movement) จะถูกใส่ id ติดลบ
+  // เพื่อให้เชื่อมกับ quotaDecisions ใน deductions.ts ได้
+  let syntheticId = -1;
+  return leaves.map((leave) => {
+    if (leave.id !== undefined && leave.id !== null) return leave;
+    return {
+      ...leave,
+      id: syntheticId--,
+    } as LeaveRow;
+  });
 }
 
 function emptyResult(remark: string): CalculationResult {

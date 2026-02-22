@@ -333,7 +333,7 @@ function resolveOverQuotaPenaltyEnd(
   // - education (ลาศึกษาต่อ/อบรม)
   // - ordain (ลาอุปสมบท)
   // - military (ลาเข้ารับการตรวจเลือก/เตรียมพล)
-  const returnReportTypes = new Set(RETURN_REPORT_REQUIRED_LEAVE_TYPES);
+  const returnReportTypes = new Set<string>(RETURN_REPORT_REQUIRED_LEAVE_TYPES);
   if (!returnReportTypes.has(String(leave.leave_type ?? ""))) return leaveEnd;
   if (!leave.id) return leaveEnd;
 

@@ -531,7 +531,7 @@ export async function calculateMonthlyWithData(
     agg.endDate = lastWorkDay ?? formatLocalDate(endOfMonth);
   }
 
-  const returnReportRequiredTypes = new Set(RETURN_REPORT_REQUIRED_LEAVE_TYPES);
+  const returnReportRequiredTypes = new Set<string>(RETURN_REPORT_REQUIRED_LEAVE_TYPES);
   const monthEndStr = formatLocalDate(endOfMonth);
   for (const leave of mergedLeaves) {
     const leaveType = String(leave.leave_type ?? "");

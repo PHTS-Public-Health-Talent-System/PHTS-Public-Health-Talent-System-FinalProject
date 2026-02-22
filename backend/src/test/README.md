@@ -23,10 +23,6 @@ This folder is a shared home for reusable test assets.
 
 ## Shared Subfolders
 
-- `src/test/fixtures`
-  - Static sample payloads.
-- `src/test/factories`
-  - Data builders for entities/DTOs.
 - `src/test/helpers`
   - Cross-suite helper functions.
 

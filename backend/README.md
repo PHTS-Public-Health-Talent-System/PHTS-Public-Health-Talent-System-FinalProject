@@ -73,6 +73,10 @@ npm run dev
 
 # tests
 npm test
+npm run test:unit
+npm run test:integration
+npm run test:e2e
+npm run test:ci
 
 # lint / format
 npm run lint
@@ -82,8 +86,13 @@ npm run format
 ---
 
 ## 5) Testing Guidelines
-- Jest for unit + integration
+- Jest is separated into 3 tiers:
+  - `test:unit`
+  - `test:integration`
+  - `test:e2e`
+- Full local/CI sequence: `npm run test:ci`
 - Integration tests use test DB defined by `.env.test`
+- Integration test files should use `*.integration.test.ts`
 
 Run single test:
 ```

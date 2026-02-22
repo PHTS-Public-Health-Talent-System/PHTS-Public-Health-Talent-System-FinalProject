@@ -37,7 +37,5 @@ module.exports = {
   testMatch: ['**/?(*.)+(spec|test).[jt]s?(x)'],
   // Run sequentially to prevent DB clashes between suites
   maxWorkers: 1,
-  // Force exit to avoid lingering open handles from Express/MySQL in integration runs
-  forceExit: true,
   modulePathIgnorePatterns: ['<rootDir>/dist/'],
 };

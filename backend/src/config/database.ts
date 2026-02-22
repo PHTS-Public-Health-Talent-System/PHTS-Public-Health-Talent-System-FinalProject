@@ -193,7 +193,9 @@ export async function getConnection() {
 export async function closePool(): Promise<void> {
   try {
     await pool.end();
-    console.log("✓ Database connection pool closed");
+    if (process.env.NODE_ENV !== "test") {
+      console.log("✓ Database connection pool closed");
+    }
   } catch (error) {
     console.error("✗ Error closing database pool:", error);
     throw error;

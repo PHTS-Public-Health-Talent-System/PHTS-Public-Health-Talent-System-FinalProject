@@ -20,7 +20,6 @@
     "test:integration": "jest -c jest.integration.config.cjs",
     "test:e2e": "jest -c jest.e2e.config.cjs",
     "test:ci": "npm run test:unit && npm run test:integration && npm run test:e2e",
-    "test:perf": "RUN_PERF=1 jest src/__tests__/perf",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "keywords": [

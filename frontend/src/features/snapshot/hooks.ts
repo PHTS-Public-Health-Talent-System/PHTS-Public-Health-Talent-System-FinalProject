@@ -7,8 +7,8 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { ApiPayload } from "@/shared/api/types";
 import {
-  checkPeriodFrozen,
   freezePeriod,
+  getPeriodReadiness,
   getPeriodWithSnapshot,
   getReportData,
   getSnapshot,
@@ -25,10 +25,10 @@ export function usePeriodWithSnapshot(id: number | string | undefined) {
   });
 }
 
-export function usePeriodFrozen(id: number | string | undefined) {
+export function usePeriodReadiness(id: number | string | undefined) {
   return useQuery({
-    queryKey: ["snapshot-frozen", id],
-    queryFn: () => checkPeriodFrozen(id!),
+    queryKey: ["snapshot-readiness", id],
+    queryFn: () => getPeriodReadiness(id!),
     enabled: !!id,
   });
 }

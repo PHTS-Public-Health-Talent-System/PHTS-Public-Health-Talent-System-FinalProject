@@ -12,9 +12,9 @@ export async function getPeriodWithSnapshot(id: number | string) {
   return res.data.data;
 }
 
-export async function checkPeriodFrozen(id: number | string) {
+export async function getPeriodReadiness(id: number | string) {
   const res = await api.get<ApiResponse<ApiPayload>>(
-    `/snapshots/periods/${id}/is-frozen`,
+    `/snapshots/periods/${id}/readiness`,
   );
   return res.data.data;
 }

@@ -39,7 +39,7 @@ type MonthlySummaryRow = {
   period_month: number;
   period_year: number;
   period_status: string;
-  is_frozen: boolean | number;
+  snapshot_status: string;
   total_employees: number;
   total_amount: number;
   paid_amount: number;
@@ -66,7 +66,7 @@ export default function YearlySummaryPage() {
       period_month: Number(row.period_month ?? 0),
       period_year: toGregorianYear(Number(row.period_year ?? 0)),
       period_status: String(row.period_status ?? ''),
-      is_frozen: row.is_frozen ?? 0,
+      snapshot_status: String(row.snapshot_status ?? ''),
       total_employees: Number(row.total_employees ?? 0),
       total_amount: Number(row.total_amount ?? 0),
       paid_amount: Number(row.paid_amount ?? 0),
@@ -78,7 +78,7 @@ export default function YearlySummaryPage() {
   const reportablePeriods = useMemo(
     () =>
       allPeriods.filter(
-        (row) => row.period_status === 'CLOSED' && (row.is_frozen === true || row.is_frozen === 1),
+        (row) => row.period_status === 'CLOSED' && row.snapshot_status === 'READY',
       ),
     [allPeriods],
   );

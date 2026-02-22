@@ -43,7 +43,8 @@ const formatPeriodLabel = (month: number, year: number) => {
   return formatThaiMonthYear(month, year);
 };
 
-const isFrozenPeriod = (period: PayPeriod) => period.is_frozen === true || period.is_frozen === 1;
+const isSnapshotReady = (period: PayPeriod) =>
+  String(period.snapshot_status ?? "").toUpperCase() === "READY";
 
 const saveBlob = (blob: Blob, filename: string) => {
   const url = window.URL.createObjectURL(blob);
@@ -69,7 +70,7 @@ export function ReportDownloadPage({
   const periodOptions = useMemo<PeriodOption[]>(() => {
     const periods = (periodsQuery.data ?? []) as PayPeriod[];
     return [...periods]
-      .filter((period) => period.status === 'CLOSED' && isFrozenPeriod(period))
+      .filter((period) => period.status === 'CLOSED' && isSnapshotReady(period))
       .sort((a, b) => {
         if (b.period_year !== a.period_year) return b.period_year - a.period_year;
         return b.period_month - a.period_month;

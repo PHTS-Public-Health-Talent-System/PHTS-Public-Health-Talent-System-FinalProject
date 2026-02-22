@@ -31,7 +31,7 @@ jest.mock('node:fs/promises', () => ({
 
 describe('Backup Service Configuration', () => {
   it('validates backup service can be imported', async () => {
-    const { runBackupJob } = await import('@/modules/backup/services/backup.service.js');
+    const { runBackupJob } = await import('@/modules/system/backup/services/backup.service.js');
     expect(runBackupJob).toBeDefined();
     expect(typeof runBackupJob).toBe('function');
   });
@@ -41,7 +41,7 @@ describe('Backup Service Configuration', () => {
     delete process.env.BACKUP_ENABLED;
 
     jest.resetModules();
-    const { runBackupJob } = await import('@/modules/backup/services/backup.service.js');
+    const { runBackupJob } = await import('@/modules/system/backup/services/backup.service.js');
     const result = await runBackupJob();
 
     expect(result.enabled).toBe(false);
@@ -64,7 +64,7 @@ describe('Backup Service Configuration', () => {
     process.env.BACKUP_WORKDIR = '/tmp';
 
     jest.resetModules();
-    const { runBackupJob } = await import('@/modules/backup/services/backup.service.js');
+    const { runBackupJob } = await import('@/modules/system/backup/services/backup.service.js');
     const result = await runBackupJob();
 
     expect(result.enabled).toBe(true);

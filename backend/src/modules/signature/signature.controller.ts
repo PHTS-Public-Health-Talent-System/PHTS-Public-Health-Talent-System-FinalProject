@@ -5,7 +5,7 @@
 import { Request, Response } from "express";
 import { ApiResponse } from "@/types/auth.js";
 import * as signatureService from "@/modules/signature/services/signature.service.js";
-import { SyncService } from "@/modules/sync/services/sync.service.js";
+import { SyncService } from "@/modules/system/sync/services/sync.service.js";
 
 const refreshState = new Map<number, { lastAt: number; pending: boolean }>();
 

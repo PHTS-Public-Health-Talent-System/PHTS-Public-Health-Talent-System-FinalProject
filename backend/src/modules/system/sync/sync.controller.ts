@@ -1,6 +1,6 @@
 import { Request, Response } from "express";
 import { asyncHandler } from "@middlewares/errorHandler.js";
-import { SyncService } from "@/modules/sync/services/sync.service.js";
+import { SyncService } from "@/modules/system/sync/services/sync.service.js";
 import type { SyncUserParams } from "@/modules/system/system.schema.js";
 
 export const triggerSync = asyncHandler(async (_req: Request, res: Response) => {

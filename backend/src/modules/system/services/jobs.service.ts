@@ -1,6 +1,6 @@
 import { query } from '@config/database.js';
 import redis from '@config/redis.js';
-import { getSyncRuntimeStatus } from '@/modules/sync/services/sync-status.service.js';
+import { getSyncRuntimeStatus } from '@/modules/system/sync/services/sync-status.service.js';
 
 type JobError = {
   source: 'sync' | 'notifications' | 'payroll' | 'redis';

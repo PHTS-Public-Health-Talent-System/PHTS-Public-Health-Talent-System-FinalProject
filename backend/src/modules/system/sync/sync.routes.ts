@@ -2,7 +2,7 @@ import { Router } from "express";
 import { protect, restrictTo } from "@middlewares/authMiddleware.js";
 import { validate } from "@shared/validate.middleware.js";
 import { UserRole } from "@/types/auth.js";
-import * as syncController from "@/modules/sync/sync.controller.js";
+import * as syncController from "@/modules/system/sync/sync.controller.js";
 import { syncUserSchema } from "@/modules/system/system.schema.js";
 
 const router = Router();

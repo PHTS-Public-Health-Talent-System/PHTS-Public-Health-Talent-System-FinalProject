@@ -17,7 +17,7 @@ import {
   parseSpecialPositionScopes,
   removeOverlaps,
 } from '@/modules/request/scope/utils.js';
-import { getSyncRuntimeStatus } from '@/modules/sync/services/sync-status.service.js';
+import { getSyncRuntimeStatus } from '@/modules/system/sync/services/sync-status.service.js';
 
 /**
  * Review cycle status

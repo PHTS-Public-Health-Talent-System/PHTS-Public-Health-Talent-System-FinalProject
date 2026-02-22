@@ -3,7 +3,8 @@
  *
  */
 import { Request, Response } from "express";
-import * as masterDataService from "@/modules/master-data/services/master-data.service.js";
+import * as holidayService from "@/modules/master-data/services/holiday.service.js";
+import * as rateService from "@/modules/master-data/services/rate.service.js";
 import { requestRepository } from "@/modules/request/data/repositories/request.repository.js";
 import { UserRole } from "@/types/auth.js";
 import {
@@ -24,7 +25,7 @@ export const getHolidays = async (req: Request, res: Response) => {
   try {
     const { year } = req.query as unknown as GetHolidaysQuery;
     // Year is already transformed to number by Zod if present
-    const holidays = await masterDataService.getHolidays(year?.toString());
+    const holidays = await holidayService.getHolidays(year?.toString());
     res.json({ success: true, data: holidays });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -35,7 +36,7 @@ export const addHoliday = async (req: Request, res: Response) => {
   try {
     const { date, name, type } = req.body as CreateHolidayDTO;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
-    await masterDataService.addHoliday(date, name, type, actorId);
+    await holidayService.addHoliday(date, name, type, actorId);
     res.json({ success: true, message: "Holiday saved successfully" });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -47,7 +48,7 @@ export const updateHoliday = async (req: Request, res: Response) => {
     const { date: originalDate } = req.params;
     const { date, name, type } = req.body as UpdateHolidayDTO;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
-    await masterDataService.updateHoliday(
+    await holidayService.updateHoliday(
       originalDate,
       date,
       name,
@@ -64,7 +65,7 @@ export const deleteHoliday = async (req: Request, res: Response) => {
   try {
     const { date } = req.params;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
-    await masterDataService.deleteHoliday(date, actorId);
+    await holidayService.deleteHoliday(date, actorId);
     res.json({ success: true, message: "Holiday deleted successfully" });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -74,7 +75,7 @@ export const deleteHoliday = async (req: Request, res: Response) => {
 // Master Rates
 export const getMasterRates = async (_req: Request, res: Response) => {
   try {
-    const rates = await masterDataService.getMasterRates();
+    const rates = await rateService.getMasterRates();
     res.json({ success: true, data: rates });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -87,7 +88,7 @@ export const updateMasterRate = async (req: Request, res: Response) => {
     const body = req.body as UpdateRateBody;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
 
-    const existing = await masterDataService.getMasterRateById(Number(rateId));
+    const existing = await rateService.getMasterRateById(Number(rateId));
     if (!existing) {
       res.status(404).json({ success: false, error: "Rate not found" });
       return;
@@ -132,7 +133,7 @@ export const updateMasterRate = async (req: Request, res: Response) => {
           : Boolean(existingRate.is_active ?? true),
     };
 
-    await masterDataService.updateMasterRate(Number(rateId), merged, actorId);
+    await rateService.updateMasterRate(Number(rateId), merged, actorId);
     res.json({ success: true, message: "Rate updated successfully" });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -153,7 +154,7 @@ export const createMasterRate = async (req: Request, res: Response) => {
     } = req.body as CreateRateDTO;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
 
-    const rateId = await masterDataService.createMasterRate({
+    const rateId = await rateService.createMasterRate({
       profession_code,
       group_no,
       item_no: item_no ?? null,
@@ -179,7 +180,7 @@ export const deleteMasterRate = async (req: Request, res: Response) => {
     const { rateId } = req.params;
     const actorId = (req.user as any)?.userId ?? (req.user as any)?.id;
 
-    await masterDataService.deleteMasterRate(Number(rateId), actorId);
+    await rateService.deleteMasterRate(Number(rateId), actorId);
     res.json({ success: true, message: "Rate deleted successfully" });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -196,7 +197,7 @@ export const getRatesByProfession = async (req: Request, res: Response) => {
         throw new AuthorizationError("ไม่มีสิทธิ์เข้าถึงอัตราของวิชาชีพนี้");
       }
     }
-    const rates = await masterDataService.getRatesByProfession(professionCode);
+    const rates = await rateService.getRatesByProfession(professionCode);
     res.json({ success: true, data: rates });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -207,7 +208,7 @@ export const getRatesByProfession = async (req: Request, res: Response) => {
 export const getProfessions = async (req: Request, res: Response) => {
   try {
     if (!req.user) throw new AuthenticationError("Unauthorized access");
-    const professions = await masterDataService.getProfessions();
+    const professions = await rateService.getProfessions();
     if (req.user.role === UserRole.PTS_OFFICER) {
       res.json({ success: true, data: professions });
       return;
@@ -223,7 +224,7 @@ export const getProfessions = async (req: Request, res: Response) => {
 export const getRateHierarchy = async (req: Request, res: Response) => {
   try {
     if (!req.user) throw new AuthenticationError("Unauthorized access");
-    const data = await masterDataService.getRateHierarchy();
+    const data = await rateService.getRateHierarchy();
     if (
       req.user.role === UserRole.PTS_OFFICER ||
       req.user.role === UserRole.HEAD_HR ||

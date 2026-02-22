@@ -4,16 +4,15 @@ import {
   runMovementOutCutoff,
   runSLADigest,
   runLeaveReportAlerts,
-} from '@/modules/alerts/services/alert-jobs.service.js';
-// import { expireOldDelegations } from '@/modules/delegation/services/delegation.service.js';
+} from '@/modules/workforce-compliance/services/workforce-compliance-jobs.service.js';
 import {
   autoDisableTerminatedUsers,
   sendReviewReminders,
 } from '@/modules/access-review/services/access-review.service.js';
 import { runBackupJob } from '@/modules/system/backup/services/backup.service.js';
-import { sendLicenseAlertDigest } from '@/modules/alerts/services/license-alerts.digest.service.js';
+import { sendLicenseAlertDigest } from '@/modules/workforce-compliance/services/license-compliance.digest.service.js';
 import { NotificationOutboxService } from '@/modules/notification/services/notification-outbox.service.js';
-import { ALERT_JOB_TIMEZONE } from '@/modules/alerts/constants/alert-policy.js';
+import { ALERT_JOB_TIMEZONE } from '@/modules/workforce-compliance/constants/workforce-compliance-policy.js';
 import { processSnapshotOutboxBatch } from '@/modules/snapshot/services/snapshot.service.js';
 
 type JobName =

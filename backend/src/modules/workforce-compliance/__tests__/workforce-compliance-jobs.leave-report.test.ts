@@ -5,15 +5,15 @@ jest.mock('@/modules/notification/services/notification.service.js', () => ({
   },
 }));
 
-jest.mock('@/modules/alerts/repositories/alert-logs.repository.js', () => ({
+jest.mock('@/modules/workforce-compliance/repositories/alert-logs.repository.js', () => ({
   AlertLogsRepository: {
     hasPayloadHash: jest.fn(),
     insertLog: jest.fn(),
   },
 }));
 
-jest.mock('@/modules/alerts/repositories/alerts.repository.js', () => ({
-  AlertsRepository: {
+jest.mock('@/modules/workforce-compliance/repositories/workforce-compliance.repository.js', () => ({
+  WorkforceComplianceRepository: {
     getLeaveReportCandidates: jest.fn(),
     findUserIdByCitizenId: jest.fn(),
     getRetirementsDue: jest.fn(),
@@ -23,8 +23,8 @@ jest.mock('@/modules/alerts/repositories/alerts.repository.js', () => ({
   },
 }));
 
-jest.mock('@/modules/alerts/repositories/license-alerts.repository.js', () => ({
-  LicenseAlertsRepository: {
+jest.mock('@/modules/workforce-compliance/repositories/license-compliance.repository.js', () => ({
+  LicenseComplianceRepository: {
     getListByBucket: jest.fn(),
     getAllWithExpiry: jest.fn(),
   },
@@ -41,9 +41,9 @@ jest.mock('@/modules/sla/services/sla.service.js', () => ({
   getSLAReport: jest.fn(),
 }));
 
-import { runLeaveReportAlerts } from '@/modules/alerts/services/alert-jobs.service.js';
-import { AlertsRepository } from '@/modules/alerts/repositories/alerts.repository.js';
-import { AlertLogsRepository } from '@/modules/alerts/repositories/alert-logs.repository.js';
+import { runLeaveReportAlerts } from '@/modules/workforce-compliance/services/workforce-compliance-jobs.service.js';
+import { WorkforceComplianceRepository } from '@/modules/workforce-compliance/repositories/workforce-compliance.repository.js';
+import { AlertLogsRepository } from '@/modules/workforce-compliance/repositories/alert-logs.repository.js';
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 
 describe('runLeaveReportAlerts', () => {
@@ -54,7 +54,7 @@ describe('runLeaveReportAlerts', () => {
   });
 
   test('uses policy windows and sends notification for matched records', async () => {
-    (AlertsRepository.getLeaveReportCandidates as jest.Mock)
+    (WorkforceComplianceRepository.getLeaveReportCandidates as jest.Mock)
       .mockResolvedValueOnce([
         {
           leave_record_id: 101,
@@ -73,19 +73,19 @@ describe('runLeaveReportAlerts', () => {
           days_since_end: 2,
         },
       ]);
-    (AlertsRepository.findUserIdByCitizenId as jest.Mock)
+    (WorkforceComplianceRepository.findUserIdByCitizenId as jest.Mock)
       .mockResolvedValueOnce(11)
       .mockResolvedValueOnce(22);
 
     const result = await runLeaveReportAlerts();
 
-    expect(AlertsRepository.getLeaveReportCandidates).toHaveBeenNthCalledWith(
+    expect(WorkforceComplianceRepository.getLeaveReportCandidates).toHaveBeenNthCalledWith(
       1,
       ['ordain'],
       14,
       expect.any(Date),
     );
-    expect(AlertsRepository.getLeaveReportCandidates).toHaveBeenNthCalledWith(
+    expect(WorkforceComplianceRepository.getLeaveReportCandidates).toHaveBeenNthCalledWith(
       2,
       ['military'],
       15,
@@ -96,7 +96,7 @@ describe('runLeaveReportAlerts', () => {
   });
 
   test('marks overdue message using overdue-day policy', async () => {
-    (AlertsRepository.getLeaveReportCandidates as jest.Mock)
+    (WorkforceComplianceRepository.getLeaveReportCandidates as jest.Mock)
       .mockResolvedValueOnce([
         {
           leave_record_id: 303,
@@ -107,7 +107,7 @@ describe('runLeaveReportAlerts', () => {
         },
       ])
       .mockResolvedValueOnce([]);
-    (AlertsRepository.findUserIdByCitizenId as jest.Mock).mockResolvedValue(33);
+    (WorkforceComplianceRepository.findUserIdByCitizenId as jest.Mock).mockResolvedValue(33);
 
     await runLeaveReportAlerts();
 
@@ -121,7 +121,7 @@ describe('runLeaveReportAlerts', () => {
   });
 
   test('skips deduped records and records no sent notification', async () => {
-    (AlertsRepository.getLeaveReportCandidates as jest.Mock)
+    (WorkforceComplianceRepository.getLeaveReportCandidates as jest.Mock)
       .mockResolvedValueOnce([
         {
           leave_record_id: 404,

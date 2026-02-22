@@ -1,17 +1,17 @@
 import crypto from "node:crypto";
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import { NotificationType } from '@/modules/notification/entities/notification.entity.js';
-import { AlertLogsRepository } from '@/modules/alerts/repositories/alert-logs.repository.js';
-import { AlertsRepository } from '@/modules/alerts/repositories/alerts.repository.js';
-import { LicenseAlertsRepository } from '@/modules/alerts/repositories/license-alerts.repository.js';
+import { AlertLogsRepository } from '@/modules/workforce-compliance/repositories/alert-logs.repository.js';
+import { WorkforceComplianceRepository } from '@/modules/workforce-compliance/repositories/workforce-compliance.repository.js';
+import { LicenseComplianceRepository } from '@/modules/workforce-compliance/repositories/license-compliance.repository.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
 import { getSLAReport } from '@/modules/sla/services/sla.service.js';
-import type { AlertType } from '@/modules/alerts/entities/alerts.entity.js';
+import type { AlertType } from '@/modules/workforce-compliance/entities/workforce-compliance.entity.js';
 import {
   ALERT_JOB_TIMEZONE,
   LEAVE_REPORT_POLICY,
   resolveLeavePolicy,
-} from '@/modules/alerts/constants/alert-policy.js';
+} from '@/modules/workforce-compliance/constants/workforce-compliance-policy.js';
 
 const DATE_FMT = (d: Date) =>
   new Intl.DateTimeFormat("en-CA", {
@@ -67,7 +67,7 @@ async function handleLicenseExpired(
   if (!(await shouldSendAlert("LICENSE_EXPIRED", "citizen", referenceId, asOf))) {
     return false;
   }
-  await AlertsRepository.setEligibilityExpiry(citizenId, expiryDate);
+  await WorkforceComplianceRepository.setEligibilityExpiry(citizenId, expiryDate);
   await emitAuditEvent({
     eventType: AuditEventType.OTHER,
     entityType: "eligibility",
@@ -80,7 +80,7 @@ async function handleLicenseExpired(
       expiry_date: expiryDate,
     },
   });
-  const userId = await AlertsRepository.findUserIdByCitizenId(citizenId);
+  const userId = await WorkforceComplianceRepository.findUserIdByCitizenId(citizenId);
   if (userId) {
     await NotificationService.notifyUser(
       userId,
@@ -106,7 +106,7 @@ async function handleLicenseRestored(
   if (retirementSet.has(citizenId) || movementOutSet.has(citizenId)) {
     return false;
   }
-  const updated = await AlertsRepository.restoreLatestEligibility(citizenId);
+  const updated = await WorkforceComplianceRepository.restoreLatestEligibility(citizenId);
   if (updated <= 0) {
     return false;
   }
@@ -123,7 +123,7 @@ async function handleLicenseRestored(
     },
   });
 
-  const userId = await AlertsRepository.findUserIdByCitizenId(citizenId);
+  const userId = await WorkforceComplianceRepository.findUserIdByCitizenId(citizenId);
   if (userId) {
     await NotificationService.notifyUser(
       userId,
@@ -143,7 +143,7 @@ export async function runLicenseAutoCutRestore(): Promise<{
   restored: number;
 }> {
   const asOf = new Date();
-  const expiredList = await LicenseAlertsRepository.getListByBucket("expired", asOf);
+  const expiredList = await LicenseComplianceRepository.getListByBucket("expired", asOf);
   let cut = 0;
   let restored = 0;
 
@@ -156,16 +156,16 @@ export async function runLicenseAutoCutRestore(): Promise<{
   }
 
   // Auto-restore (only if currently valid and no retirement/movement-out signals)
-  const allExpiry = await LicenseAlertsRepository.getAllWithExpiry(asOf);
+  const allExpiry = await LicenseComplianceRepository.getAllWithExpiry(asOf);
   const validSet = new Set(
     allExpiry
       .filter((r) => r.effective_expiry && (r.days_left ?? -1) >= 0)
       .map((r) => r.citizen_id),
   );
 
-  const retirementsDue = await AlertsRepository.getRetirementsDue(asOf);
+  const retirementsDue = await WorkforceComplianceRepository.getRetirementsDue(asOf);
   const retirementSet = new Set(retirementsDue.map((r) => r.citizen_id));
-  const movementOuts = await AlertsRepository.getMovementOutCandidates(asOf);
+  const movementOuts = await WorkforceComplianceRepository.getMovementOutCandidates(asOf);
   const movementOutSet = new Set(movementOuts.map((m) => m.citizen_id));
 
   for (const citizenId of validSet) {
@@ -186,14 +186,14 @@ export async function runLicenseAutoCutRestore(): Promise<{
 
 export async function runRetirementCutoff(): Promise<number> {
   const asOf = new Date();
-  const due = await AlertsRepository.getRetirementsDue(asOf);
+  const due = await WorkforceComplianceRepository.getRetirementsDue(asOf);
   let cut = 0;
 
   for (const row of due) {
     const referenceId = `${row.citizen_id}:${row.retire_date}`;
     if (!(await shouldSendAlert("RETIREMENT_CUTOFF", "citizen", referenceId, asOf))) continue;
 
-    await AlertsRepository.setEligibilityExpiry(row.citizen_id, row.retire_date);
+    await WorkforceComplianceRepository.setEligibilityExpiry(row.citizen_id, row.retire_date);
     await emitAuditEvent({
       eventType: AuditEventType.OTHER,
       entityType: "eligibility",
@@ -224,7 +224,7 @@ export async function runRetirementCutoff(): Promise<number> {
 
 export async function runMovementOutCutoff(): Promise<number> {
   const asOf = new Date();
-  const due = await AlertsRepository.getMovementOutCandidates(asOf);
+  const due = await WorkforceComplianceRepository.getMovementOutCandidates(asOf);
   let cut = 0;
 
   for (const row of due) {
@@ -232,7 +232,7 @@ export async function runMovementOutCutoff(): Promise<number> {
     const referenceId = `${row.citizen_id}:${dateStr}`;
     if (!(await shouldSendAlert("MOVEMENT_OUT", "citizen", referenceId, asOf))) continue;
 
-    await AlertsRepository.setEligibilityExpiry(row.citizen_id, dateStr);
+    await WorkforceComplianceRepository.setEligibilityExpiry(row.citizen_id, dateStr);
     await emitAuditEvent({
       eventType: AuditEventType.OTHER,
       entityType: "eligibility",
@@ -295,12 +295,12 @@ export async function runLeaveReportAlerts(): Promise<{ sent: number }> {
     failed: 0,
   };
 
-  const ordain = await AlertsRepository.getLeaveReportCandidates(
+  const ordain = await WorkforceComplianceRepository.getLeaveReportCandidates(
     ["ordain"],
     LEAVE_REPORT_POLICY.ordain.windowDays,
     asOf,
   );
-  const military = await AlertsRepository.getLeaveReportCandidates(
+  const military = await WorkforceComplianceRepository.getLeaveReportCandidates(
     ["military"],
     LEAVE_REPORT_POLICY.military.windowDays,
     asOf,
@@ -319,7 +319,7 @@ export async function runLeaveReportAlerts(): Promise<{ sent: number }> {
       continue;
     }
 
-    const userId = await AlertsRepository.findUserIdByCitizenId(row.citizen_id);
+    const userId = await WorkforceComplianceRepository.findUserIdByCitizenId(row.citizen_id);
     if (!userId) {
       stats.skippedNoUser += 1;
       continue;

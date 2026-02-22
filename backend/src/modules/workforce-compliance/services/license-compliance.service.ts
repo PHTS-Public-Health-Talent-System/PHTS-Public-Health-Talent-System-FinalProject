@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
-import { AlertLogsRepository } from '@/modules/alerts/repositories/alert-logs.repository.js';
-import { AlertsRepository } from '@/modules/alerts/repositories/alerts.repository.js';
-import { LicenseAlertsRepository } from '@/modules/alerts/repositories/license-alerts.repository.js';
+import { AlertLogsRepository } from '@/modules/workforce-compliance/repositories/alert-logs.repository.js';
+import { WorkforceComplianceRepository } from '@/modules/workforce-compliance/repositories/workforce-compliance.repository.js';
+import { LicenseComplianceRepository } from '@/modules/workforce-compliance/repositories/license-compliance.repository.js';
 
 type AlertBucket = "expired" | "30" | "60" | "90";
 
@@ -20,14 +20,14 @@ type LicenseAlertRow = {
 };
 
 export async function getLicenseAlertSummary(asOf: Date = new Date()) {
-  return LicenseAlertsRepository.getSummary(asOf);
+  return LicenseComplianceRepository.getSummary(asOf);
 }
 
 export async function getLicenseAlertList(
   bucket: AlertBucket,
   asOf: Date = new Date(),
 ) {
-  const rows = await LicenseAlertsRepository.getListByBucket(bucket, asOf);
+  const rows = await LicenseComplianceRepository.getListByBucket(bucket, asOf);
   const normalizedRows = (rows as any[]).map((row) => ({
     citizen_id: row.citizen_id,
     full_name: row.full_name?.trim() ? row.full_name.trim() : row.citizen_id,
@@ -79,7 +79,7 @@ export async function notifyLicenseAlerts(
       continue;
     }
 
-    const userId = await AlertsRepository.findUserIdByCitizenId(citizenId);
+    const userId = await WorkforceComplianceRepository.findUserIdByCitizenId(citizenId);
     if (userId) {
       const prefix = item.bucket === "expired" ? "ใบอนุญาตหมดอายุแล้ว" : "ใบอนุญาตใกล้หมดอายุ";
       await NotificationService.notifyUser(

@@ -13,7 +13,7 @@ import {
   removeOverlaps,
   inferScopeType,
 } from '@/modules/request/scope/utils.js';
-import { applyImmediateMovementEligibilityCutoff } from '@/modules/alerts/services/immediate-rules.service.js';
+import { applyImmediateMovementEligibilityCutoff } from '@/modules/workforce-compliance/services/immediate-rules.service.js';
 
 const SALT_ROUNDS = 10;
 const SYNC_LOCK_KEY = 'system:sync:lock';

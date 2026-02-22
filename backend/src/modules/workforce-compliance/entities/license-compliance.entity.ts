@@ -1,5 +1,5 @@
 /**
- * License Alerts Module - Entity Definitions
+ * Workforce Compliance Module - License Entity Definitions
  *
  * TypeScript interfaces for license expiry alerts
  */

@@ -1,35 +1,35 @@
-import { RetirementsRepository } from '@/modules/alerts/repositories/retirements.repository.js';
-import { AlertsRepository } from '@/modules/alerts/repositories/alerts.repository.js';
+import { RetirementsRepository } from '@/modules/workforce-compliance/repositories/retirements.repository.js';
+import { WorkforceComplianceRepository } from '@/modules/workforce-compliance/repositories/workforce-compliance.repository.js';
 import type {
   PersonnelMovementRecord,
   PersonnelMovementInput,
   RetirementInput,
   RetirementRecord,
-} from '@/modules/alerts/entities/alerts.entity.js';
+} from '@/modules/workforce-compliance/entities/workforce-compliance.entity.js';
 
 export async function listRetirements(): Promise<RetirementRecord[]> {
   return RetirementsRepository.list();
 }
 
 export async function listPersonnelMovements(): Promise<PersonnelMovementRecord[]> {
-  return AlertsRepository.getPersonnelMovements();
+  return WorkforceComplianceRepository.getPersonnelMovements();
 }
 
 export async function createPersonnelMovement(
   input: PersonnelMovementInput,
 ): Promise<void> {
-  await AlertsRepository.createPersonnelMovement(input);
+  await WorkforceComplianceRepository.createPersonnelMovement(input);
 }
 
 export async function updatePersonnelMovement(
   movementId: number,
   input: PersonnelMovementInput,
 ): Promise<void> {
-  await AlertsRepository.updatePersonnelMovement(movementId, input);
+  await WorkforceComplianceRepository.updatePersonnelMovement(movementId, input);
 }
 
 export async function deletePersonnelMovement(movementId: number): Promise<void> {
-  await AlertsRepository.deletePersonnelMovement(movementId);
+  await WorkforceComplianceRepository.deletePersonnelMovement(movementId);
 }
 
 export async function createRetirement(

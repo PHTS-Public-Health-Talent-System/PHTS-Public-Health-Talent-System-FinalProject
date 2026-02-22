@@ -1,6 +1,6 @@
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
-import { getLicenseAlertSummary } from '@/modules/alerts/services/license-alerts.service.js';
-import { AlertsRepository } from '@/modules/alerts/repositories/alerts.repository.js';
+import { getLicenseAlertSummary } from '@/modules/workforce-compliance/services/license-compliance.service.js';
+import { WorkforceComplianceRepository } from '@/modules/workforce-compliance/repositories/workforce-compliance.repository.js';
 
 type DigestResult = {
   sent: number;
@@ -15,7 +15,7 @@ type DigestResult = {
 };
 
 const getOfficerCount = async (): Promise<number> =>
-  AlertsRepository.countActiveUsersByRole("PTS_OFFICER");
+  WorkforceComplianceRepository.countActiveUsersByRole("PTS_OFFICER");
 
 const buildMessage = (summary: DigestResult["summary"]) => {
   return [

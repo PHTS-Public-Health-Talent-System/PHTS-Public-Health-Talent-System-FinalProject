@@ -1,5 +1,5 @@
 /**
- * alerts module - request orchestration
+ * workforce-compliance module - request orchestration
  *
  */
 import { Request, Response } from "express";
@@ -9,7 +9,7 @@ import {
   getLicenseAlertList,
   notifyLicenseAlerts,
   getLicenseAlertSummary,
-} from "@/modules/alerts/services/license-alerts.service.js";
+} from "@/modules/workforce-compliance/services/license-compliance.service.js";
 
 const VALID_BUCKETS: AlertBucket[] = ["expired", "30", "60", "90"];
 

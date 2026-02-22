@@ -1,5 +1,5 @@
 /**
- * alerts module - route map
+ * workforce-compliance module - route map
  *
  */
 import { Router } from "express";
@@ -15,12 +15,12 @@ import {
   postRetirement,
   putRetirement,
   removeRetirement,
-} from "@/modules/alerts/alerts.controller.js";
+} from "@/modules/workforce-compliance/controllers/workforce-compliance.controller.js";
 import {
   getLicenseList,
   postLicenseNotify,
   getLicenseSummary,
-} from "@/modules/alerts/license-alerts.controller.js";
+} from "@/modules/workforce-compliance/controllers/license-compliance.controller.js";
 import {
   licenseNotifySchema,
   retirementCreateSchema,
@@ -29,7 +29,7 @@ import {
   movementCreateSchema,
   movementUpdateSchema,
   movementIdSchema,
-} from "@/modules/alerts/alerts.schema.js";
+} from "@/modules/workforce-compliance/workforce-compliance.schema.js";
 
 const router = Router();
 

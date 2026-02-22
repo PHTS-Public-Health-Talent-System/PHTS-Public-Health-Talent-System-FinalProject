@@ -1,7 +1,7 @@
 /**
- * License Alerts Module - Repository
+ * Workforce Compliance Module - License Repository
  *
- * Handles all database operations for license expiry alerts
+ * Handles all database operations for license compliance alerts
  */
 
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
@@ -11,8 +11,8 @@ import {
   LicenseAlertRow,
   LicenseAlertSummary,
   LicenseExpiryRow,
-} from '@/modules/alerts/entities/license-alerts.entity.js';
-import { positionProfessionCaseSql } from '@/modules/alerts/constants/profession.constants.js';
+} from '@/modules/workforce-compliance/entities/license-compliance.entity.js';
+import { positionProfessionCaseSql } from '@/modules/workforce-compliance/constants/profession.constants.js';
 
 // SQL fragments for license alert queries
 const bucketCaseSql = `
@@ -62,7 +62,7 @@ const baseSubquerySql = `
   )
 `;
 
-export class LicenseAlertsRepository {
+export class LicenseComplianceRepository {
   static async getSummary(
     asOf: Date = new Date(),
     conn?: PoolConnection,

@@ -1,6 +1,6 @@
-import { retirementCreateSchema } from '@/modules/alerts/alerts.schema.js';
+import { retirementCreateSchema } from '@/modules/workforce-compliance/workforce-compliance.schema.js';
 
-describe("alerts schema", () => {
+describe("workforce-compliance schema", () => {
   test("rejects invalid retire_date", async () => {
     const result = await retirementCreateSchema.safeParseAsync({
       body: {

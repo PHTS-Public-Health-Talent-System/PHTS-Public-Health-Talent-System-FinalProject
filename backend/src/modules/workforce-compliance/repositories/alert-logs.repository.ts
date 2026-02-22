@@ -1,6 +1,6 @@
 import { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import db from '@config/database.js';
-import type { AlertLogInput } from '@/modules/alerts/entities/alerts.entity.js';
+import type { AlertLogInput } from '@/modules/workforce-compliance/entities/workforce-compliance.entity.js';
 
 export class AlertLogsRepository {
   static async hasPayloadHash(

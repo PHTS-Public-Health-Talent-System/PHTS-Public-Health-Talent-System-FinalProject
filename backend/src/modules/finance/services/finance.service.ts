@@ -4,4 +4,4 @@
  */
 
 export * from '@/modules/finance/services/payment.service.js';
-export * from '@/modules/finance/services/dashboard.service.js';
+export * from '@/modules/finance/services/summary.service.js';

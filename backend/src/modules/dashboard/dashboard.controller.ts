@@ -6,7 +6,7 @@ import { Request, Response } from "express";
 import { catchAsync } from "@shared/utils/errors.js";
 import type { ApiResponse } from "@/types/auth.js";
 import { getUserDashboard } from "@/modules/dashboard/user-dashboard.service.js";
-import { getHeadHrDashboard } from "@/modules/dashboard/head-hr-dashboard.service.js";
+import { getApproverDashboard } from "@/modules/dashboard/approver-dashboard.service.js";
 import { UserRole } from "@/types/auth.js";
 
 export const getUserDashboardSummary = catchAsync(
@@ -27,7 +27,7 @@ export const getApproverDashboardSummary = catchAsync(
     }
     const role = req.user.role as UserRole;
 
-    const data = await getHeadHrDashboard(req.user.userId, role);
+    const data = await getApproverDashboard(req.user.userId, role);
     return res.json({ success: true, data });
   },
 );

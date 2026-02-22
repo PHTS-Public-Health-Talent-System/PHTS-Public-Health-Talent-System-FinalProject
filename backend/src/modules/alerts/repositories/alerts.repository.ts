@@ -241,4 +241,16 @@ export class AlertsRepository {
     );
     return rows as { citizen_id: string; retire_date: string }[];
   }
+
+  static async countActiveUsersByRole(
+    role: string,
+    conn?: PoolConnection,
+  ): Promise<number> {
+    const executor = conn ?? db;
+    const [rows] = await executor.query<RowDataPacket[]>(
+      `SELECT COUNT(*) as count FROM users WHERE role = ? AND is_active = 1`,
+      [role],
+    );
+    return Number((rows[0] as any)?.count ?? 0);
+  }
 }

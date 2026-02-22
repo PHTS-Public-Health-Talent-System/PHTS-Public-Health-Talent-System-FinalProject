@@ -1,7 +1,6 @@
-import { RowDataPacket } from "mysql2/promise";
-import { query } from '@config/database.js';
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import { getLicenseAlertSummary } from '@/modules/alerts/services/license-alerts.service.js';
+import { AlertsRepository } from '@/modules/alerts/repositories/alerts.repository.js';
 
 type DigestResult = {
   sent: number;
@@ -15,12 +14,8 @@ type DigestResult = {
   };
 };
 
-const getOfficerCount = async (): Promise<number> => {
-  const rows = await query<RowDataPacket[]>(
-    `SELECT COUNT(*) as count FROM users WHERE role = 'PTS_OFFICER' AND is_active = 1`,
-  );
-  return Number(rows[0]?.count ?? 0);
-};
+const getOfficerCount = async (): Promise<number> =>
+  AlertsRepository.countActiveUsersByRole("PTS_OFFICER");
 
 const buildMessage = (summary: DigestResult["summary"]) => {
   return [

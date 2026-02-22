@@ -38,4 +38,26 @@ export class AlertLogsRepository {
     );
     return result.insertId;
   }
+
+  static async findLatestLicenseLogsByReferenceIds(
+    referenceIds: string[],
+    conn?: PoolConnection,
+  ): Promise<Array<{ reference_id: string; sent_at: string | null }>> {
+    if (!referenceIds.length) return [];
+    const executor = conn ?? db;
+    const placeholders = referenceIds.map(() => "?").join(",");
+    const [rows] = await executor.query<RowDataPacket[]>(
+      `SELECT reference_id, MAX(sent_at) AS sent_at
+       FROM alert_logs
+       WHERE alert_type = 'LICENSE_EXPIRING'
+         AND reference_type = 'citizen'
+         AND reference_id IN (${placeholders})
+       GROUP BY reference_id`,
+      referenceIds,
+    );
+    return (rows as any[]).map((row) => ({
+      reference_id: String(row.reference_id),
+      sent_at: row.sent_at ? String(row.sent_at) : null,
+    }));
+  }
 }

@@ -1,6 +1,6 @@
-import { query } from '@config/database.js';
 import redis from '@config/redis.js';
 import { getSyncRuntimeStatus } from '@/modules/system/sync/services/sync-status.service.js';
+import { SystemRepository } from '@/modules/system/repositories/system.repository.js';
 
 type JobError = {
   source: 'sync' | 'notifications' | 'payroll' | 'redis';
@@ -55,11 +55,7 @@ type JobStatusPayload = {
 };
 
 const countOutboxByStatus = async () => {
-  const rows = (await query(
-    `SELECT status, COUNT(*) as count
-     FROM ntf_outbox
-     GROUP BY status`,
-  )) as Array<{ status: string; count: number }>;
+  const rows = await SystemRepository.countNotificationOutboxByStatus();
   const summary = {
     PENDING: 0,
     PROCESSING: 0,
@@ -76,12 +72,7 @@ const countOutboxByStatus = async () => {
 };
 
 const fetchLatestOutbox = async () =>
-  (await query(
-    `SELECT outbox_id, status, attempts, last_error, available_at, created_at, processed_at
-     FROM ntf_outbox
-     ORDER BY created_at DESC
-     LIMIT 20`,
-  )) as Array<{
+  (await SystemRepository.findLatestNotificationOutbox(20)) as Array<{
     outbox_id: number;
     status: string;
     attempts: number;
@@ -92,25 +83,21 @@ const fetchLatestOutbox = async () =>
   }>;
 
 const fetchPayrollOpenPeriods = async () => {
-  const [countRow] = (await query(
-    "SELECT COUNT(*) as count FROM pay_periods WHERE status <> 'CLOSED'",
-  )) as Array<{ count: number }>;
-  const latest = (await query(
-    `SELECT period_id, period_year, period_month, status, snapshot_status, updated_at
-     FROM pay_periods
-     WHERE status <> 'CLOSED'
-     ORDER BY period_year DESC, period_month DESC
-     LIMIT 5`,
-  )) as Array<{
-    period_id: number;
-    period_year: number;
-    period_month: number;
-    status: string;
-    snapshot_status: string;
-    updated_at: Date;
-  }>;
-
-  return { count: Number(countRow?.count ?? 0), latest };
+  const [count, latest] = await Promise.all([
+    SystemRepository.countOpenPayrollPeriods(),
+    SystemRepository.findLatestOpenPayrollPeriods(5),
+  ]);
+  return { count, latest } as {
+    count: number;
+    latest: Array<{
+      period_id: number;
+      period_year: number;
+      period_month: number;
+      status: string;
+      snapshot_status: string;
+      updated_at: Date;
+    }>;
+  };
 };
 
 const buildSyncStatus = (syncStatus: {

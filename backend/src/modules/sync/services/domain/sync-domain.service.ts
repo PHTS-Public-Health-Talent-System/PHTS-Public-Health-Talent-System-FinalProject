@@ -66,6 +66,12 @@ export const syncLeaves = async (
     buildLeaveRecordValues: (vLeave: RowDataPacket, options: LeaveRecordSqlOptions) => unknown[];
     buildLeaveViewQuery: () => string;
     isChanged: (oldVal: unknown, newVal: unknown) => boolean;
+    normalizeLeaveRow?: (row: RowDataPacket) => RowDataPacket;
+    applyTransformRow?: (input: {
+      targetView: string;
+      sourceKey: string;
+      row: RowDataPacket;
+    }) => Promise<RowDataPacket>;
   },
 ): Promise<void> => {
   console.log('[SyncService] Processing leave requests...');
@@ -83,7 +89,16 @@ export const syncLeaves = async (
 
   const [viewLeaves] = await conn.query<RowDataPacket[]>(deps.buildLeaveViewQuery());
 
-  for (const vLeave of viewLeaves) {
+  for (const sourceLeave of viewLeaves) {
+    const preparedLeave = deps.applyTransformRow
+      ? await deps.applyTransformRow({
+          targetView: 'vw_hrms_leave_requests',
+          sourceKey: String(sourceLeave.ref_id ?? ''),
+          row: sourceLeave,
+        })
+      : sourceLeave;
+    const rawLeave = deps.normalizeLeaveRow ? deps.normalizeLeaveRow(preparedLeave) : preparedLeave;
+    const vLeave = rawLeave;
     if (!vLeave.ref_id) continue;
     const dbLeave = leaveMap.get(vLeave.ref_id);
 
@@ -126,9 +141,13 @@ export const syncSingleSignature = async (
 ): Promise<void> => {
   const [viewSigs] = await conn.query<RowDataPacket[]>(
     `
-      SELECT s.citizen_id, s.signature_blob
-      FROM vw_hrms_signatures s
-      WHERE ${deps.citizenIdWhereBinary('s', '?')}
+      SELECT DISTINCT
+        CAST(s.emp_id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+        s.images AS signature_blob
+      FROM hrms_databases.signature s
+      WHERE s.images IS NOT NULL
+        AND s.images <> ''
+        AND CAST(s.emp_id AS BINARY) = CAST(? AS BINARY)
     `,
     [citizenId],
   );
@@ -152,22 +171,28 @@ export const syncSingleSignature = async (
 export const syncSingleLicenses = async (
   conn: PoolConnection,
   citizenId: string,
-  deps: {
-    citizenIdWhereBinary: (alias: string, placeholder: string) => string;
-  },
 ): Promise<void> => {
   await conn.execute(
     `
       INSERT INTO emp_licenses (citizen_id, license_name, license_no, valid_from, valid_until, status, synced_at)
-      SELECT l.citizen_id,
-             l.license_name,
-             l.license_no,
-             l.valid_from,
-             CAST(l.valid_until AS DATE),
-             l.status,
+      SELECT CAST(l.id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+             l.certificate AS license_name,
+             l.certificate_number AS license_no,
+             l.date_start AS valid_from,
+             CAST(
+               CASE
+                 WHEN CAST(l.date_end AS CHAR CHARACTER SET utf8mb4) = '0000-00-00' THEN '9999-12-31'
+                 ELSE l.date_end
+               END AS DATE
+             ) AS valid_until,
+             CASE
+               WHEN CAST(l.date_end AS CHAR CHARACTER SET utf8mb4) = '0000-00-00'
+                    OR l.date_end >= CURDATE() THEN 'ACTIVE'
+               ELSE 'EXPIRED'
+             END AS status,
              NOW()
-      FROM vw_hrms_licenses l
-      WHERE ${deps.citizenIdWhereBinary('l', '?')}
+      FROM hrms_databases.tb_bp_license l
+      WHERE CAST(l.id AS BINARY) = CAST(? AS BINARY)
       ON DUPLICATE KEY UPDATE
         license_name=VALUES(license_name),
         valid_from=VALUES(valid_from),
@@ -184,7 +209,6 @@ export const syncSingleQuotas = async (
   citizenId: string,
   stats: SyncStats,
   deps: {
-    citizenIdWhereBinary: (alias: string, placeholder: string) => string;
     upsertLeaveQuota: (
       conn: PoolConnection,
       citizenId: string,
@@ -195,9 +219,11 @@ export const syncSingleQuotas = async (
 ): Promise<void> => {
   const [viewQuotas] = await conn.query<RowDataPacket[]>(
     `
-      SELECT q.citizen_id, q.fiscal_year, q.total_quota
-      FROM vw_hrms_leave_quotas q
-      WHERE ${deps.citizenIdWhereBinary('q', '?')}
+      SELECT CAST(sd.emp_id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+             CAST(sd.year AS UNSIGNED) AS fiscal_year,
+             CAST(sd.setday AS DECIMAL(10,2)) AS total_quota
+      FROM hrms_databases.setdays sd
+      WHERE CAST(sd.emp_id AS BINARY) = CAST(? AS BINARY)
     `,
     [citizenId],
   );
@@ -215,9 +241,14 @@ export const syncSingleLeaves = async (
     hasLeaveStatusColumn: (conn: PoolConnection) => Promise<boolean>;
     buildLeaveRecordSql: (options: LeaveRecordSqlOptions) => { sql: string; fields: string[] };
     buildLeaveRecordValues: (vLeave: RowDataPacket, options: LeaveRecordSqlOptions) => unknown[];
-    selectColumns: (alias: string, columns: readonly string[]) => string;
-    viewLeaveColumns: readonly string[];
+    buildLeaveViewQuery: () => string;
     citizenIdWhereBinary: (alias: string, placeholder: string) => string;
+    normalizeLeaveRow?: (row: RowDataPacket) => RowDataPacket;
+    applyTransformRow?: (input: {
+      targetView: string;
+      sourceKey: string;
+      row: RowDataPacket;
+    }) => Promise<RowDataPacket>;
   },
 ): Promise<void> => {
   const hasStatusColumn = await deps.hasLeaveStatusColumn(conn);
@@ -225,13 +256,22 @@ export const syncSingleLeaves = async (
   const { sql: leaveSql } = deps.buildLeaveRecordSql(leaveSqlOptions);
 
   const [viewLeaves] = await conn.query<RowDataPacket[]>(
-    `SELECT ${deps.selectColumns('lr', deps.viewLeaveColumns)}
-     FROM vw_hrms_leave_requests lr
+    `SELECT lr.*
+     FROM (${deps.buildLeaveViewQuery()}) lr
      WHERE ${deps.citizenIdWhereBinary('lr', '?')}`,
     [citizenId],
   );
 
-  for (const vLeave of viewLeaves) {
+  for (const sourceLeave of viewLeaves) {
+    const preparedLeave = deps.applyTransformRow
+      ? await deps.applyTransformRow({
+          targetView: 'vw_hrms_leave_requests',
+          sourceKey: String(sourceLeave.ref_id ?? ''),
+          row: sourceLeave,
+        })
+      : sourceLeave;
+    const rawLeave = deps.normalizeLeaveRow ? deps.normalizeLeaveRow(preparedLeave) : preparedLeave;
+    const vLeave = rawLeave;
     if (!vLeave.ref_id) continue;
     const leaveValues = deps.buildLeaveRecordValues(vLeave, leaveSqlOptions);
     await conn.execute(leaveSql, leaveValues);
@@ -243,25 +283,27 @@ export const syncSingleMovements = async (
   conn: PoolConnection,
   citizenId: string,
   deps: {
-    citizenIdSelectUtf8: (alias: string) => string;
-    citizenIdWhereBinary: (alias: string, placeholder: string) => string;
     applyImmediateMovementEligibilityCutoff: (date: Date, conn: PoolConnection) => Promise<unknown>;
   },
 ): Promise<void> => {
   await conn.execute(
     `
       INSERT INTO emp_movements (citizen_id, movement_type, effective_date, remark, synced_at)
-      SELECT ${deps.citizenIdSelectUtf8('m')} AS citizen_id,
+      SELECT CAST(m.id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
              CASE
-               WHEN CAST(m.movement_type AS BINARY) = CAST('UNKNOWN' AS BINARY)
-                 THEN 'OTHER'
-               ELSE m.movement_type
+               WHEN m.status_id IN ('1','2','3') THEN 'ENTRY'
+               WHEN m.status_id = '4' THEN 'RETIRE'
+               WHEN m.status_id = '5' THEN 'STUDY'
+               WHEN m.status_id = '6' THEN 'DEATH'
+               WHEN m.status_id IN ('7','8') THEN 'TRANSFER_OUT'
+               WHEN m.status_id = '9' THEN 'RESIGN'
+               ELSE 'OTHER'
              END,
-             m.effective_date,
+             m.date,
              m.remark,
              NOW()
-      FROM vw_hrms_movements m
-      WHERE ${deps.citizenIdWhereBinary('m', '?')}
+      FROM hrms_databases.tb_bp_status m
+      WHERE CAST(m.id AS BINARY) = CAST(? AS BINARY)
       ON DUPLICATE KEY UPDATE
         movement_type = VALUES(movement_type),
         effective_date = VALUES(effective_date),

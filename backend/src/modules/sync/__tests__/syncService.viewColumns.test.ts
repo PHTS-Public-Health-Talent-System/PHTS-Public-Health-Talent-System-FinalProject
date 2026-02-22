@@ -58,13 +58,16 @@ describe("SyncService view column lists", () => {
     expect(cols).toEqual([
       "ref_id",
       "citizen_id",
-      "leave_type",
+      "hrms_leave_type",
       "start_date",
       "end_date",
-      "duration_days",
-      "fiscal_year",
+      "end_date_detail",
+      "half_day",
       "remark",
       "status",
+      "sex",
+      "source_type",
+      "duration_days",
     ]);
   });
 });

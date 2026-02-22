@@ -6,7 +6,8 @@ describe("SyncService view usage", () => {
     const build = (mod as any).buildLicensesViewQuery ?? null;
     const sql = build?.() ?? "";
 
-    expect(sql).toContain("FROM vw_hrms_licenses");
+    expect(sql).toContain("FROM hrms_databases.tb_bp_license");
+    expect(sql).toContain("JOIN emp_profiles");
     expect(sql).not.toContain("JOIN users");
   });
 
@@ -15,7 +16,8 @@ describe("SyncService view usage", () => {
     const build = (mod as any).buildQuotasViewQuery ?? null;
     const sql = build?.() ?? "";
 
-    expect(sql).toContain("FROM vw_hrms_leave_quotas");
+    expect(sql).toContain("FROM hrms_databases.setdays");
+    expect(sql).toContain("JOIN emp_profiles");
     expect(sql).not.toContain("JOIN users");
   });
 
@@ -24,16 +26,18 @@ describe("SyncService view usage", () => {
     const build = (mod as any).buildLeaveViewQuery ?? null;
     const sql = build?.() ?? "";
 
-    expect(sql).toContain("FROM vw_hrms_leave_requests");
+    expect(sql).toContain("FROM hrms_databases.data_leave");
+    expect(sql).toContain("FROM hrms_databases.tb_meeting");
     expect(sql).not.toContain("JOIN users");
   });
 
-  test("movements query uses view and does not join users", async () => {
+  test("movements query uses hrms table and does not join users", async () => {
     const mod = await loadModule();
     const build = (mod as any).buildMovementsViewQuery ?? null;
     const sql = build?.() ?? "";
 
-    expect(sql).toContain("FROM vw_hrms_movements");
+    expect(sql).toContain("FROM hrms_databases.tb_bp_status");
+    expect(sql).toContain("JOIN emp_profiles");
     expect(sql).not.toContain("JOIN users");
   });
 });

@@ -11,6 +11,7 @@ export const syncEmployees = async (
   userIdMap: Map<string, number>,
   deps: {
     viewEmployeeColumns: readonly string[];
+    buildEmployeeViewQuery: () => string;
     isChanged: (oldVal: unknown, newVal: unknown) => boolean;
     upsertEmployeeProfile: (conn: PoolConnection, vEmp: RowDataPacket) => Promise<void>;
     clearScopeCache: (userId: number) => void;
@@ -23,7 +24,8 @@ export const syncEmployees = async (
   const empMap = new Map(existingEmps.map((e) => [e.citizen_id, e]));
 
   const [viewEmps] = await conn.query<RowDataPacket[]>(
-    `SELECT ${deps.viewEmployeeColumns.join(', ')} FROM vw_hrms_employees`,
+    `SELECT ${deps.viewEmployeeColumns.map((column) => `e.${column}`).join(', ')}
+     FROM (${deps.buildEmployeeViewQuery()}) e`,
   );
 
   for (const vEmp of viewEmps) {
@@ -56,6 +58,7 @@ export const syncSupportEmployees = async (
   userIdMap: Map<string, number>,
   deps: {
     viewSupportColumns: readonly string[];
+    buildSupportViewQuery: () => string;
     isChanged: (oldVal: unknown, newVal: unknown) => boolean;
     hasSupportLevelColumn: (conn: PoolConnection) => Promise<boolean>;
     buildSupportEmployeeSql: (
@@ -84,7 +87,8 @@ export const syncSupportEmployees = async (
   const supEmpMap = new Map(existingSupEmps.map((e) => [e.citizen_id, e]));
 
   const [viewSupEmps] = await conn.query<RowDataPacket[]>(
-    `SELECT ${deps.viewSupportColumns.join(', ')} FROM vw_hrms_support_staff`,
+    `SELECT ${deps.viewSupportColumns.map((column) => `s.${column}`).join(', ')}
+     FROM (${deps.buildSupportViewQuery()}) s`,
   );
 
   for (const vSup of viewSupEmps) {
@@ -125,15 +129,16 @@ export const upsertSingleEmployeeProfile = async (
   stats: SyncStats,
   deps: {
     viewEmployeeColumns: readonly string[];
+    buildEmployeeViewQuery: () => string;
     citizenIdWhereBinary: (alias: string, placeholder: string) => string;
     upsertEmployeeProfile: (conn: PoolConnection, vEmp: RowDataPacket) => Promise<void>;
     clearScopeCache: (userId: number) => void;
   },
 ): Promise<void> => {
   const [viewEmps] = await conn.query<RowDataPacket[]>(
-    `SELECT ${deps.viewEmployeeColumns.join(', ')}
-     FROM vw_hrms_employees
-     WHERE ${deps.citizenIdWhereBinary('vw_hrms_employees', '?')}
+    `SELECT ${deps.viewEmployeeColumns.map((column) => `e.${column}`).join(', ')}
+     FROM (${deps.buildEmployeeViewQuery()}) e
+     WHERE ${deps.citizenIdWhereBinary('e', '?')}
      LIMIT 1`,
     [citizenId],
   );
@@ -152,6 +157,7 @@ export const upsertSingleSupportEmployee = async (
   stats: SyncStats,
   deps: {
     viewSupportColumns: readonly string[];
+    buildSupportViewQuery: () => string;
     citizenIdWhereBinary: (alias: string, placeholder: string) => string;
     hasSupportLevelColumn: (conn: PoolConnection) => Promise<boolean>;
     buildSupportEmployeeSql: (
@@ -168,9 +174,9 @@ export const upsertSingleSupportEmployee = async (
   const { sql: supportSql } = deps.buildSupportEmployeeSql(supportSqlOptions);
 
   const [viewSupEmps] = await conn.query<RowDataPacket[]>(
-    `SELECT ${deps.viewSupportColumns.join(', ')}
-     FROM vw_hrms_support_staff
-     WHERE ${deps.citizenIdWhereBinary('vw_hrms_support_staff', '?')}
+    `SELECT ${deps.viewSupportColumns.map((column) => `s.${column}`).join(', ')}
+     FROM (${deps.buildSupportViewQuery()}) s
+     WHERE ${deps.citizenIdWhereBinary('s', '?')}
      LIMIT 1`,
     [citizenId],
   );

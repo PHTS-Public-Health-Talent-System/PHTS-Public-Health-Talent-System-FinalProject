@@ -65,6 +65,33 @@ const resolvePasswordHash = async (rawPassword: unknown): Promise<string | null>
   return finalPass;
 };
 
+const loadPasswordMapFromHrms = async (
+  conn: PoolConnection,
+  options?: { citizenId?: string },
+): Promise<Map<string, unknown>> => {
+  const whereClause = options?.citizenId
+    ? 'WHERE CAST(h.id AS BINARY) = CAST(? AS BINARY)'
+    : '';
+  const params = options?.citizenId ? [options.citizenId] : [];
+  const [rows] = await conn.query<RowDataPacket[]>(
+    `
+      SELECT CAST(h.id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+             COALESCE(h.password, h.hash_password) AS password_value
+      FROM hrms_databases.tb_ap_index_view h
+      ${whereClause}
+      `,
+    params,
+  );
+
+  const map = new Map<string, unknown>();
+  for (const row of rows) {
+    if (!row.citizen_id) continue;
+    if (row.password_value == null || String(row.password_value).trim() === '') continue;
+    map.set(String(row.citizen_id), row.password_value);
+  }
+  return map;
+};
+
 const createUserFromSource = async (
   conn: PoolConnection,
   citizenId: string,
@@ -160,12 +187,7 @@ export const syncUsersFromProfilesAndSupport = async (
   );
   const userMap = new Map(existingUsers.map((u) => [u.citizen_id, u]));
 
-  const [viewUsers] = await conn.query<RowDataPacket[]>(
-    'SELECT citizen_id, plain_password FROM vw_hrms_users_sync',
-  );
-  const passwordMap = new Map<string, unknown>(
-    viewUsers.map((u) => [String(u.citizen_id), u.plain_password]),
-  );
+  const passwordMap = await loadPasswordMapFromHrms(conn, options);
   const sourceMap = await loadUserSources(conn, options);
 
   for (const [citizenId, source] of sourceMap) {

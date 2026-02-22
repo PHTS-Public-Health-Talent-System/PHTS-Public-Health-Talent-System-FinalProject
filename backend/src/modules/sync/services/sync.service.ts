@@ -4,6 +4,9 @@ import {
   assignRoles,
   RoleAssignmentService,
 } from '@/modules/sync/services/role-assignment.service.js';
+import { TransformMonitorRepository } from '@/modules/sync/repositories/transform-monitor.repository.js';
+import { refreshReviewCycleFromSync } from '@/modules/access-review/services/access-review.service.js';
+import { getSyncRuntimeStatus } from '@/modules/sync/services/sync-status.service.js';
 import { clearScopeCache } from '@/modules/request/scope/scope.service.js';
 import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
 import {
@@ -28,6 +31,7 @@ import {
   upsertEmployeeProfile,
   upsertLeaveQuota,
 } from '@/modules/sync/services/shared/sync-db-helpers.service.js';
+import { TransformRuleEngine } from '@/modules/sync/services/shared/transform-rule-engine.service.js';
 import { syncUsersFromProfilesAndSupport } from '@/modules/sync/services/domain/sync-users.service.js';
 import {
   syncEmployees,
@@ -46,6 +50,7 @@ import {
   syncSingleLeaves as runSingleLeavesSync,
   syncSingleMovements as runSingleMovementsSync,
 } from '@/modules/sync/services/domain/sync-domain.service.js';
+import { normalizeLeaveRow } from '@/modules/sync/services/domain/leave-normalizer.service.js';
 import {
   buildScopesFromSpecialPosition as buildScopesFromSpecialPositionBase,
   syncSpecialPositionScopes as runScopeSync,
@@ -97,13 +102,16 @@ export const VIEW_SUPPORT_COLUMNS = [
 export const VIEW_LEAVE_COLUMNS = [
   'ref_id',
   'citizen_id',
-  'leave_type',
+  'hrms_leave_type',
   'start_date',
   'end_date',
-  'duration_days',
-  'fiscal_year',
+  'end_date_detail',
+  'half_day',
   'remark',
   'status',
+  'sex',
+  'source_type',
+  'duration_days',
 ] as const;
 
 export const citizenIdJoinBinary = (leftAlias: string, rightAlias: string) =>
@@ -123,14 +131,26 @@ export const binaryEquals = (leftExpr: string, rightExpr: string) =>
 
 export const buildLicensesViewQuery = () => `
   INSERT INTO emp_licenses (citizen_id, license_name, license_no, valid_from, valid_until, status, synced_at)
-  SELECT l.citizen_id,
-         l.license_name,
-         l.license_no,
-         l.valid_from,
-         CAST(l.valid_until AS DATE),
-         l.status,
+  SELECT CAST(l.id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+         l.certificate AS license_name,
+         l.certificate_number AS license_no,
+         l.date_start AS valid_from,
+         CAST(
+           CASE
+             WHEN CAST(l.date_end AS CHAR CHARACTER SET utf8mb4) = '0000-00-00' THEN '9999-12-31'
+             ELSE l.date_end
+           END AS DATE
+         ) AS valid_until,
+         CASE
+           WHEN CAST(l.date_end AS CHAR CHARACTER SET utf8mb4) = '0000-00-00'
+                OR l.date_end >= CURDATE() THEN 'ACTIVE'
+           ELSE 'EXPIRED'
+         END AS status,
          NOW()
-  FROM vw_hrms_licenses l
+  FROM hrms_databases.tb_bp_license l
+  JOIN emp_profiles e
+    ON CAST(e.citizen_id AS BINARY) = CAST(l.id AS BINARY)
+  WHERE l.date_end IS NOT NULL
   ON DUPLICATE KEY UPDATE
     license_name=VALUES(license_name),
     valid_from=VALUES(valid_from),
@@ -139,27 +159,225 @@ export const buildLicensesViewQuery = () => `
     synced_at=NOW()
 `;
 
+export const buildEmployeeViewQuery = () => `
+  SELECT
+    CAST(h.id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+    h.title,
+    h.name AS first_name,
+    h.lastname AS last_name,
+    h.sex,
+    h.birthday AS birth_date,
+    h.position AS position_name,
+    h.positionnumber AS position_number,
+    h.level,
+    h.specialposition AS special_position,
+    h.type AS employee_type,
+    h.employment_date AS start_current_position,
+    h.entry_date AS first_entry_date,
+    h.missiongroup AS mission_group,
+    h.workgroup_m AS department,
+    h.subworkgroup AS sub_department,
+    h.specialist,
+    h.expert,
+    h.status AS original_status,
+    CASE
+      WHEN h.status IN ('ปฏิบัติงาน (ตรง จ.)','ปฏิบัติงาน (ไม่ตรง จ.)') THEN 1
+      WHEN h.status LIKE '%ลาศึกษา%' THEN 1
+      ELSE 0
+    END AS is_currently_active
+  FROM hrms_databases.tb_ap_index_view h
+  WHERE (
+    h.position LIKE 'นายแพทย์%' OR
+    h.position = 'ผู้อำนวยการเฉพาะด้าน (แพทย์)' OR
+    h.position LIKE 'ทันตแพทย์%' OR
+    h.position LIKE 'เภสัชกร%' OR
+    h.position IN ('พยาบาลวิชาชีพ', 'พยาบาล', 'วิสัญญี') OR
+    h.position IN (
+      'นักเทคนิคการแพทย์', 'นักรังสีการแพทย์', 'นักกายภาพบำบัด',
+      'นักแก้ไขความผิดปกติของการสื่อความหมาย', 'นักกิจกรรมบำบัด', 'นักอาชีวบำบัด',
+      'นักจิตวิทยาคลินิก', 'นักเทคโนโลยีหัวใจและทรวงอก', 'นักวิชาการศึกษาพิเศษ'
+    )
+  )
+  AND h.type NOT LIKE '%พนักงานกระทรวงสาธารณสุข%'
+  AND h.type NOT LIKE '%พนักงานมหาลัย%'
+  AND h.type NOT LIKE '%พนักงานราชการ%'
+  AND h.type NOT LIKE '%ลูกจ้างรายวัน%'
+  AND (
+    h.status IN ('ปฏิบัติงาน (ตรง จ.)','ปฏิบัติงาน (ไม่ตรง จ.)')
+    OR h.status LIKE 'ไม่ปฏิบัติงาน%'
+    OR h.status LIKE '%ลาศึกษา%'
+  )
+`;
+
+export const buildSupportViewQuery = () => `
+  SELECT
+    CAST(h.id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+    h.title,
+    h.name AS first_name,
+    h.lastname AS last_name,
+    h.sex,
+    h.position AS position_name,
+    h.positionnumber AS position_number,
+    TRIM(BOTH ',' FROM REPLACE(REPLACE(h.specialposition, 'ผู้ดูแลระบบ--', ''), 'ผู้ดูแลระบบ', '')) AS special_position,
+    h.type AS employee_type,
+    h.employment_date AS start_current_position,
+    h.entry_date AS first_entry_date,
+    h.missiongroup AS mission_group,
+    h.workgroup_m AS department,
+    1 AS is_currently_active
+  FROM hrms_databases.tb_ap_index_view h
+  LEFT JOIN (${buildEmployeeViewQuery()}) e
+    ON CAST(e.citizen_id AS BINARY) = CAST(h.id AS BINARY)
+  WHERE e.citizen_id IS NULL
+    AND h.type IN ('ข้าราชการ', 'พนักงานราชการ', 'พนักงานกระทรวงสาธารณสุข', 'ลูกจ้างรายวัน')
+    AND (h.workgroup_m = 'กลุ่มงานการเงิน' OR h.workgroup_m LIKE '%ทรัพยากรบุคคล')
+    AND h.status IN ('ปฏิบัติงาน (ตรง จ.)', 'ปฏิบัติงาน (ไม่ตรง จ.)')
+`;
+
 export const buildQuotasViewQuery = () => `
-  SELECT q.citizen_id, q.fiscal_year, q.total_quota
-  FROM vw_hrms_leave_quotas q
+  SELECT CAST(sd.emp_id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+         CAST(sd.year AS UNSIGNED) AS fiscal_year,
+         CAST(sd.setday AS DECIMAL(10,2)) AS total_quota
+  FROM hrms_databases.setdays sd
+  JOIN emp_profiles e
+    ON CAST(e.citizen_id AS BINARY) = CAST(sd.emp_id AS BINARY)
 `;
 
 export const buildLeaveViewQuery = () => `
-  SELECT ${selectColumns('lr', VIEW_LEAVE_COLUMNS)}
-  FROM vw_hrms_leave_requests lr
+  WITH normalized_leave AS (
+    SELECT
+      dl.ID,
+      CAST(dl.EMPLOYEE_ID AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+      dl.TYPE_LEAVE AS hrms_leave_type,
+      dl.DETAIL AS remark,
+      dl.END_DATE_DETAIL AS end_date_detail,
+      dl.HALF_DAY AS half_day,
+      LEAST(
+        CASE
+          WHEN YEAR(CAST(dl.START_DATE AS DATE)) > 2400 THEN CAST(dl.START_DATE AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(dl.START_DATE AS DATE)
+        END,
+        CASE
+          WHEN YEAR(CAST(dl.END_DATE AS DATE)) > 2400 THEN CAST(dl.END_DATE AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(dl.END_DATE AS DATE)
+        END
+      ) AS start_date,
+      GREATEST(
+        CASE
+          WHEN YEAR(CAST(dl.START_DATE AS DATE)) > 2400 THEN CAST(dl.START_DATE AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(dl.START_DATE AS DATE)
+        END,
+        CASE
+          WHEN YEAR(CAST(dl.END_DATE AS DATE)) > 2400 THEN CAST(dl.END_DATE AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(dl.END_DATE AS DATE)
+        END
+      ) AS end_date
+    FROM hrms_databases.data_leave dl
+    WHERE dl.STATUS = 'Approve' AND dl.USED = 1
+  ),
+  calculated_leave AS (
+    SELECT
+      nl.*,
+      CASE
+        WHEN nl.half_day = 1 THEN 0.5
+        WHEN nl.start_date = nl.end_date
+             AND nl.end_date_detail IN ('ครึ่งวัน','ครึ่งวัน - เช้า','ครึ่งวัน - บ่าย') THEN 0.5
+        ELSE (TO_DAYS(nl.end_date) - TO_DAYS(nl.start_date)) + 1
+      END AS duration_days
+    FROM normalized_leave nl
+  ),
+  dedup_leave AS (
+    SELECT *
+    FROM (
+      SELECT
+        cl.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY cl.citizen_id, cl.end_date
+          ORDER BY cl.duration_days DESC, cl.ID DESC
+        ) AS rn
+      FROM calculated_leave cl
+    ) ranked
+    WHERE ranked.rn = 1
+  ),
+  normalized_meeting AS (
+    SELECT
+      tm.meeting_id,
+      CAST(tm.id_card AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+      tm.meeting_title AS remark,
+      LEAST(
+        CASE
+          WHEN YEAR(CAST(tm.date_start AS DATE)) > 2400 THEN CAST(tm.date_start AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(tm.date_start AS DATE)
+        END,
+        CASE
+          WHEN YEAR(CAST(tm.date_end AS DATE)) > 2400 THEN CAST(tm.date_end AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(tm.date_end AS DATE)
+        END
+      ) AS start_date,
+      GREATEST(
+        CASE
+          WHEN YEAR(CAST(tm.date_start AS DATE)) > 2400 THEN CAST(tm.date_start AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(tm.date_start AS DATE)
+        END,
+        CASE
+          WHEN YEAR(CAST(tm.date_end AS DATE)) > 2400 THEN CAST(tm.date_end AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(tm.date_end AS DATE)
+        END
+      ) AS end_date
+    FROM hrms_databases.tb_meeting tm
+    WHERE tm.header_approve_status = 1
+  )
+  SELECT
+    CAST(dl.ID AS CHAR) AS ref_id,
+    dl.citizen_id,
+    dl.hrms_leave_type,
+    dl.start_date,
+    dl.end_date,
+    dl.end_date_detail,
+    dl.half_day,
+    dl.remark,
+    'approved' AS status,
+    h.sex,
+    'LEAVE' AS source_type,
+    dl.duration_days
+  FROM dedup_leave dl
+  LEFT JOIN hrms_databases.tb_ap_index_view h ON CAST(h.id AS BINARY) = CAST(dl.citizen_id AS BINARY)
+  UNION ALL
+  SELECT
+    CONCAT('MT-', nm.meeting_id) AS ref_id,
+    nm.citizen_id,
+    'education' AS hrms_leave_type,
+    nm.start_date,
+    nm.end_date,
+    NULL AS end_date_detail,
+    0 AS half_day,
+    nm.remark,
+    'approved' AS status,
+    h.sex,
+    'MEETING' AS source_type,
+    (TO_DAYS(nm.end_date) - TO_DAYS(nm.start_date)) + 1 AS duration_days
+  FROM normalized_meeting nm
+  LEFT JOIN hrms_databases.tb_ap_index_view h ON CAST(h.id AS BINARY) = CAST(nm.citizen_id AS BINARY)
 `;
 
 export const buildMovementsViewQuery = () => `
   INSERT INTO emp_movements (citizen_id, movement_type, effective_date, remark, synced_at)
-  SELECT ${citizenIdSelectUtf8('m')} AS citizen_id,
+  SELECT CAST(m.id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
          CASE
-           WHEN ${binaryEquals('m.movement_type', "'UNKNOWN'")} THEN 'OTHER'
-           ELSE m.movement_type
+           WHEN m.status_id IN ('1','2','3') THEN 'ENTRY'
+           WHEN m.status_id = '4' THEN 'RETIRE'
+           WHEN m.status_id = '5' THEN 'STUDY'
+           WHEN m.status_id = '6' THEN 'DEATH'
+           WHEN m.status_id IN ('7','8') THEN 'TRANSFER_OUT'
+           WHEN m.status_id = '9' THEN 'RESIGN'
+           ELSE 'OTHER'
          END,
-         m.effective_date,
+         m.date,
          m.remark,
          NOW()
-  FROM vw_hrms_movements m
+  FROM hrms_databases.tb_bp_status m
+  JOIN emp_profiles e
+    ON CAST(e.citizen_id AS BINARY) = CAST(m.id AS BINARY)
   ON DUPLICATE KEY UPDATE
     movement_type = VALUES(movement_type),
     effective_date = VALUES(effective_date),
@@ -168,8 +386,22 @@ export const buildMovementsViewQuery = () => `
 `;
 
 export const buildSignaturesViewQuery = () => `
-  SELECT s.citizen_id, s.signature_blob
-  FROM vw_hrms_signatures s
+  SELECT DISTINCT
+    CAST(s.emp_id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+    s.images AS signature_blob
+  FROM hrms_databases.signature s
+  WHERE s.images IS NOT NULL
+    AND s.images <> ''
+    AND (
+      EXISTS (
+        SELECT 1 FROM emp_profiles e
+        WHERE CAST(e.citizen_id AS BINARY) = CAST(s.emp_id AS BINARY)
+      )
+      OR EXISTS (
+        SELECT 1 FROM emp_support_staff sp
+        WHERE CAST(sp.citizen_id AS BINARY) = CAST(s.emp_id AS BINARY)
+      )
+    )
 `;
 
 // Convert undefined to null for safe DB inserts.
@@ -378,13 +610,21 @@ const syncLicensesAndQuotas = async (conn: PoolConnection, stats: SyncStats) => 
   });
 };
 
-const syncLeaves = async (conn: PoolConnection, stats: SyncStats) => {
+const syncLeaves = async (
+  conn: PoolConnection,
+  stats: SyncStats,
+  transformEngine?: TransformRuleEngine,
+) => {
   return runDomainLeavesSync(conn, stats, {
     hasLeaveStatusColumn,
     buildLeaveRecordSql,
     buildLeaveRecordValues,
     buildLeaveViewQuery,
     isChanged,
+    normalizeLeaveRow,
+    applyTransformRow: transformEngine
+      ? (input) => transformEngine.applyRow(input)
+      : undefined,
   });
 };
 
@@ -442,9 +682,7 @@ const syncSingleSignature = async (
 };
 
 const syncSingleLicenses = async (conn: PoolConnection, citizenId: string): Promise<void> => {
-  return runSingleLicensesSync(conn, citizenId, {
-    citizenIdWhereBinary,
-  });
+  return runSingleLicensesSync(conn, citizenId);
 };
 
 const syncSingleQuotas = async (
@@ -453,7 +691,6 @@ const syncSingleQuotas = async (
   stats: SyncStats,
 ): Promise<void> => {
   return runSingleQuotasSync(conn, citizenId, stats, {
-    citizenIdWhereBinary,
     upsertLeaveQuota,
   });
 };
@@ -462,21 +699,23 @@ const syncSingleLeaves = async (
   conn: PoolConnection,
   citizenId: string,
   stats: SyncStats,
+  transformEngine?: TransformRuleEngine,
 ): Promise<void> => {
   return runSingleLeavesSync(conn, citizenId, stats, {
     hasLeaveStatusColumn,
     buildLeaveRecordSql,
     buildLeaveRecordValues,
-    selectColumns,
-    viewLeaveColumns: VIEW_LEAVE_COLUMNS,
+    buildLeaveViewQuery,
     citizenIdWhereBinary,
+    normalizeLeaveRow,
+    applyTransformRow: transformEngine
+      ? (input) => transformEngine.applyRow(input)
+      : undefined,
   });
 };
 
 const syncSingleMovements = async (conn: PoolConnection, citizenId: string): Promise<void> => {
   return runSingleMovementsSync(conn, citizenId, {
-    citizenIdSelectUtf8,
-    citizenIdWhereBinary,
     applyImmediateMovementEligibilityCutoff,
   });
 };
@@ -508,7 +747,7 @@ export class SyncService {
   /**
    * Run the full smart sync workflow with distributed lock + status caching.
    */
-  static async performFullSync() {
+  static async performFullSync(options?: { triggeredBy?: number | null }) {
     console.log('[SyncService] Requesting synchronization...');
 
     const lockValue = createSyncLockValue();
@@ -521,21 +760,32 @@ export class SyncService {
 
     const startTotal = Date.now();
     const stats = createSyncStats();
-
-    const conn = await db.getConnection();
+    let batchId: number | null = null;
+    let conn: PoolConnection | null = null;
+    let transformEngine: TransformRuleEngine | null = null;
 
     try {
+      batchId = await TransformMonitorRepository.createSyncBatch({
+        syncType: 'FULL',
+        triggeredBy: options?.triggeredBy ?? null,
+        targetCitizenId: null,
+      });
+      transformEngine = await TransformRuleEngine.create(batchId);
+
+      conn = await db.getConnection();
       await conn.beginTransaction();
 
       const userIdMap = await getUserIdMap(conn);
       await syncEmployees(conn, stats, userIdMap, {
         viewEmployeeColumns: VIEW_EMPLOYEE_COLUMNS,
+        buildEmployeeViewQuery,
         isChanged,
         upsertEmployeeProfile,
         clearScopeCache,
       });
       await syncSupportEmployees(conn, stats, userIdMap, {
         viewSupportColumns: VIEW_SUPPORT_COLUMNS,
+        buildSupportViewQuery,
         isChanged,
         hasSupportLevelColumn,
         buildSupportEmployeeSql,
@@ -552,7 +802,7 @@ export class SyncService {
       );
       await syncSignatures(conn, stats);
       await syncLicensesAndQuotas(conn, stats);
-      await syncLeaves(conn, stats);
+      await syncLeaves(conn, stats, transformEngine);
       await syncMovements(conn, stats);
       await syncSpecialPositionScopes(conn);
 
@@ -587,23 +837,59 @@ export class SyncService {
 
       await setLastSyncResult(resultData);
 
-      return resultData;
+      await TransformMonitorRepository.finishSyncBatchSuccess(
+        batchId,
+        stats,
+        Date.now() - startTotal,
+      );
+
+      let accessReview: { cycleId: number; createdCycle: boolean; insertedItems: number } | null = null;
+      try {
+        accessReview = await refreshReviewCycleFromSync({
+          actorId: options?.triggeredBy ?? null,
+          syncTimestamp: new Date(resultData.timestamp),
+        });
+      } catch (reviewError) {
+        console.warn(
+          '[SyncService] Post-sync access review refresh failed (non-fatal):',
+          reviewError instanceof Error ? reviewError.message : reviewError,
+        );
+      }
+
+      return {
+        ...resultData,
+        access_review: accessReview,
+      };
     } catch (error) {
-      await conn.rollback();
+      if (conn) {
+        await conn.rollback();
+      }
       console.error('[SyncService] Synchronization failed:', error);
+      if (batchId) {
+        await TransformMonitorRepository.finishSyncBatchFailed(
+          batchId,
+          error instanceof Error ? error.message : String(error),
+          Date.now() - startTotal,
+        );
+      }
       throw error;
     } finally {
       clearInterval(lockHeartbeat);
       await releaseSyncLock(lockValue);
-      conn.release();
+      if (conn) {
+        conn.release();
+      }
     }
   }
 
   /**
    * Sync a single user by userId (granular sync).
    */
-  static async performUserSync(userId: number) {
+  static async performUserSync(userId: number, options?: { triggeredBy?: number | null }) {
     const conn = await db.getConnection();
+    const startTotal = Date.now();
+    let batchId: number | null = null;
+    let transformEngine: TransformRuleEngine | null = null;
     try {
       const [userRows] = await conn.query<RowDataPacket[]>(
         'SELECT id, citizen_id, role FROM users WHERE id = ? LIMIT 1',
@@ -616,18 +902,26 @@ export class SyncService {
 
       const citizenId = dbUser.citizen_id as string;
       const stats = createSyncStats();
+      batchId = await TransformMonitorRepository.createSyncBatch({
+        syncType: 'USER',
+        triggeredBy: options?.triggeredBy ?? null,
+        targetCitizenId: citizenId,
+      });
+      transformEngine = await TransformRuleEngine.create(batchId);
 
       await conn.beginTransaction();
 
       const userIdMap = new Map<string, number>([[citizenId, dbUser.id as number]]);
       await upsertSingleEmployeeProfile(conn, citizenId, userIdMap, stats, {
         viewEmployeeColumns: VIEW_EMPLOYEE_COLUMNS,
+        buildEmployeeViewQuery,
         citizenIdWhereBinary,
         upsertEmployeeProfile,
         clearScopeCache,
       });
       await upsertSingleSupportEmployee(conn, citizenId, stats, {
         viewSupportColumns: VIEW_SUPPORT_COLUMNS,
+        buildSupportViewQuery,
         citizenIdWhereBinary,
         hasSupportLevelColumn,
         buildSupportEmployeeSql,
@@ -645,24 +939,81 @@ export class SyncService {
       await syncSingleSignature(conn, citizenId, stats);
       await syncSingleLicenses(conn, citizenId);
       await syncSingleQuotas(conn, citizenId, stats);
-      await syncSingleLeaves(conn, citizenId, stats);
+      await syncSingleLeaves(conn, citizenId, stats, transformEngine);
       await syncSingleMovements(conn, citizenId);
       await syncSpecialPositionScopesForCitizen(conn, citizenId);
 
       await conn.commit();
       await assignRoleForSingleUser(conn, dbUser, citizenId, stats);
 
+      await TransformMonitorRepository.finishSyncBatchSuccess(
+        batchId,
+        stats,
+        Date.now() - startTotal,
+      );
+
+      const syncFinishedAt = new Date().toISOString();
+      let accessReview: { cycleId: number; createdCycle: boolean; insertedItems: number } | null = null;
+      try {
+        accessReview = await refreshReviewCycleFromSync({
+          actorId: options?.triggeredBy ?? null,
+          syncTimestamp: new Date(syncFinishedAt),
+          citizenId,
+        });
+      } catch (reviewError) {
+        console.warn(
+          '[SyncService] Post-user-sync access review refresh failed (non-fatal):',
+          reviewError instanceof Error ? reviewError.message : reviewError,
+        );
+      }
+
       return {
         success: true,
         stats,
         citizenId,
-        timestamp: new Date().toISOString(),
+        timestamp: syncFinishedAt,
+        access_review: accessReview,
       };
     } catch (error) {
       await conn.rollback();
+      if (batchId) {
+        await TransformMonitorRepository.finishSyncBatchFailed(
+          batchId,
+          error instanceof Error ? error.message : String(error),
+          Date.now() - startTotal,
+        );
+      }
       throw error;
     } finally {
       conn.release();
     }
+  }
+
+  static async refreshAccessReviewOnly(options?: {
+    triggeredBy?: number | null;
+    citizenId?: string | null;
+  }): Promise<{
+    refreshed_at: string;
+    sync_timestamp: string | null;
+    access_review: { cycleId: number; createdCycle: boolean; insertedItems: number };
+  }> {
+    const runtimeStatus = await getSyncRuntimeStatus();
+    const lastResult = runtimeStatus.lastResult as { timestamp?: string } | null;
+    const syncTimestamp =
+      lastResult?.timestamp && !Number.isNaN(Date.parse(lastResult.timestamp))
+        ? new Date(lastResult.timestamp)
+        : new Date();
+
+    const accessReview = await refreshReviewCycleFromSync({
+      actorId: options?.triggeredBy ?? null,
+      syncTimestamp,
+      citizenId: options?.citizenId ?? null,
+    });
+
+    return {
+      refreshed_at: new Date().toISOString(),
+      sync_timestamp: syncTimestamp.toISOString(),
+      access_review: accessReview,
+    };
   }
 }

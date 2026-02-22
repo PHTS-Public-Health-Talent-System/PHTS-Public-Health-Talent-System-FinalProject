@@ -57,7 +57,7 @@ import {
 import type { LeaveRecordApiRow } from '@/features/leave-records/api';
 import { AttachmentPreviewDialog } from '@/components/common/attachment-preview-dialog';
 import { buildSearchParam } from '@/features/leave-records/search';
-import { leaveTypes } from '@/features/leave-records/components/leaveTypes';
+import { leaveTypes } from '@/features/leave-records/leave-type-definitions';
 import type { LeaveRecord, LeaveRecordDocument } from '@/features/leave-records/components/leaveRecords.types';
 import { LeaveTable } from '@/features/leave-records/components/LeaveTable';
 import { LeaveDetailContent } from '@/features/leave-records/components/LeaveDetailContent';

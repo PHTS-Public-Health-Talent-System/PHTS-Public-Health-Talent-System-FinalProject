@@ -1,6 +1,7 @@
 "use client"
 
 import { formatThaiDate } from "@/shared/utils/thai-locale"
+import { getLeaveTypeLabel } from "@/features/leave-records/leave-type-definitions"
 
 export const formatThaiShortDate = (value: unknown) => {
   const raw = typeof value === "string" ? value : ""
@@ -10,28 +11,7 @@ export const formatThaiShortDate = (value: unknown) => {
 }
 
 export const leaveTypeLabel = (leaveType: string) => {
-  switch (leaveType) {
-    case "sick":
-      return "ลาป่วย"
-    case "personal":
-      return "ลากิจส่วนตัว"
-    case "vacation":
-      return "ลาพักผ่อนประจำปี"
-    case "wife_help":
-      return "ลาไปช่วยเหลือภริยาที่คลอดบุตร"
-    case "maternity":
-      return "ลาคลอดบุตร"
-    case "ordain":
-      return "ลาอุปสมบทในพระพุทธศาสนา หรือลาไปประกอบพิธีฮัจย์"
-    case "military":
-      return "ลาไปเข้ารับการตรวจเลือก หรือเข้ารับการเตรียมพล"
-    case "education":
-      return "ลาไปศึกษา ฝึกอบรม ดูงาน หรือปฏิบัติการวิจัย"
-    case "rehab":
-      return "ลาไปฟื้นฟูสมรรถภาพด้านอาชีพ"
-    default:
-      return leaveType ? `ลา (${leaveType})` : "ลา"
-  }
+  return getLeaveTypeLabel(leaveType)
 }
 
 export const quotaUnitLabel = (unit: string) => {

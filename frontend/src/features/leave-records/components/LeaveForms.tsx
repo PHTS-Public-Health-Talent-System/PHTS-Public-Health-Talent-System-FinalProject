@@ -18,7 +18,7 @@ import { PersonPicker } from '@/components/person-picker';
 import { CalendarCheck, Eye, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { LeaveRecord } from '@/features/leave-records/components/leaveRecords.types';
-import { leaveTypes } from '@/features/leave-records/components/leaveTypes';
+import { leaveTypes } from '@/features/leave-records/leave-type-definitions';
 import {
   isValidDateRange,
   validateOptionalDateRange,

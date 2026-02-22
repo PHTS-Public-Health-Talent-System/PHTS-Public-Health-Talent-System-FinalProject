@@ -1,8 +1,12 @@
+/**
+ * leave-records module - route map
+ *
+ */
 import { Router } from "express";
-import { protect, restrictTo } from '@middlewares/authMiddleware.js';
-import { validate } from '@shared/validate.middleware.js';
-import { upload } from '@config/upload.js';
-import { UserRole } from '@/types/auth.js';
+import { protect, restrictTo } from "@middlewares/authMiddleware.js";
+import { validate } from "@shared/validate.middleware.js";
+import { upload } from "@config/upload.js";
+import { UserRole } from "@/types/auth.js";
 import {
   listLeaveRecordsSchema,
   listLeavePersonnelSchema,
@@ -10,7 +14,7 @@ import {
   upsertLeaveRecordExtensionSchema,
   leaveRecordIdParamSchema,
   leaveDocumentIdParamSchema,
-} from './leave-records.schema.js';
+} from "./leave-records.schema.js";
 import {
   listLeaveRecords,
   listLeavePersonnel,
@@ -21,63 +25,52 @@ import {
   addLeaveRecordDocuments,
   deleteLeaveRecordDocument,
   deleteLeaveRecordExtension,
-} from './controllers/leave-records.controller.js';
+} from "./controllers/leave-records.controller.js";
 
 const router = Router();
 
 router.use(protect);
 router.use(restrictTo(UserRole.PTS_OFFICER));
 
-router.get(
-  '/',
-  validate(listLeaveRecordsSchema),
-  listLeaveRecords,
-);
+router.get("/", validate(listLeaveRecordsSchema), listLeaveRecords);
 
 router.get(
-  '/personnel',
+  "/personnel",
   validate(listLeavePersonnelSchema),
   listLeavePersonnel,
 );
 
-router.post(
-  '/',
-  validate(createLeaveRecordSchema),
-  createLeaveRecord,
-);
+router.post("/", validate(createLeaveRecordSchema), createLeaveRecord);
 
-router.get(
-  '/stats',
-  getLeaveRecordStats,
-);
+router.get("/stats", getLeaveRecordStats);
 
 router.put(
-  '/extensions',
+  "/extensions",
   validate(upsertLeaveRecordExtensionSchema),
   upsertLeaveRecordExtension,
 );
 
 router.delete(
-  '/extensions/:leaveRecordId',
+  "/extensions/:leaveRecordId",
   validate(leaveRecordIdParamSchema),
   deleteLeaveRecordExtension,
 );
 
 router.get(
-  '/:leaveRecordId/documents',
+  "/:leaveRecordId/documents",
   validate(leaveRecordIdParamSchema),
   listLeaveRecordDocuments,
 );
 
 router.post(
-  '/:leaveRecordId/documents',
+  "/:leaveRecordId/documents",
   validate(leaveRecordIdParamSchema),
-  upload.array('files', 10),
+  upload.array("files", 10),
   addLeaveRecordDocuments,
 );
 
 router.delete(
-  '/documents/:documentId',
+  "/documents/:documentId",
   validate(leaveDocumentIdParamSchema),
   deleteLeaveRecordDocument,
 );

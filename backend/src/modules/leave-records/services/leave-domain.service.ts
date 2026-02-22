@@ -23,12 +23,16 @@ export type LeaveQuotaLeaveRow = {
   leave_type: string;
   start_date: string | Date;
   end_date: string | Date;
+  remark?: string | null;
   document_start_date?: string | Date | null;
   document_end_date?: string | Date | null;
   document_duration_days?: number | null;
   duration_days?: number | null;
   is_no_pay?: number | null;
   pay_exception?: number | null;
+  study_institution?: string | null;
+  study_program?: string | null;
+  study_major?: string | null;
 };
 
 export type LeaveQuotaStatusByType = {
@@ -152,6 +156,32 @@ const resolveEffectiveDate = (
   fallback: string | Date,
 ) => (primary ? new Date(primary) : new Date(fallback));
 
+const normalizeLeaveTypeForPolicy = (leaveType: string): string =>
+  String(leaveType ?? "").trim().toLowerCase();
+
+const normalizeCourseText = (value: unknown): string =>
+  String(value ?? "").trim().toLowerCase();
+
+const resolveSeriesKey = (row: LeaveQuotaLeaveRow): string | null => {
+  const leaveType = normalizeLeaveTypeForPolicy(String(row.leave_type ?? ""));
+  if (leaveType === "education") {
+    const institution = normalizeCourseText(row.study_institution);
+    const program = normalizeCourseText(row.study_program);
+    const major = normalizeCourseText(row.study_major);
+    if (!institution && !program && !major) return null;
+    return `education:${institution}|${program}|${major}`;
+  }
+
+  // ordain / military: ใช้ remark เป็นตัวผูกเหตุการณ์เดียวกัน
+  // ถ้าไม่ระบุ remark จะคงพฤติกรรมเดิมแบบ per_event
+  if (leaveType === "ordain" || leaveType === "military") {
+    const remark = normalizeCourseText(row.remark);
+    if (!remark) return null;
+    return `${leaveType}:${remark}`;
+  }
+  return null;
+};
+
 export function calculateLeaveQuotaStatus({
   leaveRows,
   holidays,
@@ -196,12 +226,14 @@ export function calculateLeaveQuotaStatus({
     .sort((a, b) => a!.start.getTime() - b!.start.getTime());
 
   const usage: Record<string, number> = {};
+  const seriesUsage: Record<string, number> = {};
   const perType: Record<string, LeaveQuotaStatusByType> = {};
   const perLeave: LeaveQuotaStatus["perLeave"] = {};
 
   for (const entry of normalizedLeaves) {
     const row = entry!.row;
-    const leaveType = row.leave_type;
+    const leaveType = normalizeLeaveTypeForPolicy(row.leave_type);
+    const sourceLeaveType = row.leave_type;
     const rule = rules[leaveType];
     if (!rule) continue;
     const start = entry!.start;
@@ -225,17 +257,26 @@ export function calculateLeaveQuotaStatus({
     }
 
     const { duration, isHalfDay } = calculateDuration(row, start, end, rule.unit, holidays);
-    const currentUsage = usage[leaveType] ?? 0;
-    const nextUsage = rule.rule_type === "cumulative" ? currentUsage + duration : currentUsage;
+    const seriesKey = resolveSeriesKey(row);
+    const useSeriesCumulative = Boolean(seriesKey);
+    const useCumulativeQuota = rule.rule_type === "cumulative" || useSeriesCumulative;
+    const currentUsage = useSeriesCumulative
+      ? seriesUsage[seriesKey as string] ?? 0
+      : rule.rule_type === "cumulative"
+        ? usage[leaveType] ?? 0
+        : 0;
+    const nextUsage = useCumulativeQuota ? currentUsage + duration : currentUsage;
 
-    if (rule.rule_type === "cumulative") {
+    if (useSeriesCumulative) {
+      seriesUsage[seriesKey as string] = nextUsage;
+    } else if (rule.rule_type === "cumulative") {
       usage[leaveType] = nextUsage;
     }
 
     let overQuota = false;
     let exceedDate: Date | null = null;
     if (limit !== null) {
-      if (rule.rule_type === "cumulative") {
+      if (useCumulativeQuota) {
         overQuota = currentUsage + duration > limit;
         if (overQuota) {
           const remainingQuota = Math.max(0, limit - currentUsage);
@@ -251,7 +292,7 @@ export function calculateLeaveQuotaStatus({
 
     if (row.id !== undefined) {
       perLeave[row.id] = {
-        leaveType,
+        leaveType: sourceLeaveType,
         duration,
         limit,
         overQuota,
@@ -263,16 +304,19 @@ export function calculateLeaveQuotaStatus({
       perType[leaveType] = {
         limit,
         used: 0,
-        remaining: rule.rule_type === "per_event" ? null : limit !== null ? limit : null,
+        remaining: useCumulativeQuota ? (limit !== null ? limit : null) : null,
         overQuota: false,
         exceedDate: null,
       };
     }
 
     perType[leaveType].used += duration;
-    if (rule.rule_type === "cumulative") {
+    if (useCumulativeQuota) {
       if (limit !== null) {
-        perType[leaveType].remaining = Math.max(0, limit - (usage[leaveType] ?? 0));
+        const usedForRemaining = useSeriesCumulative
+          ? seriesUsage[seriesKey as string] ?? 0
+          : usage[leaveType] ?? 0;
+        perType[leaveType].remaining = Math.max(0, limit - usedForRemaining);
       }
     }
 

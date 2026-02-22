@@ -5,7 +5,7 @@ const baseRules = {
   sick: { limit: 60, unit: "business_days", rule_type: "cumulative" },
   personal: { limit: 45, unit: "business_days", rule_type: "cumulative" },
   vacation: { limit: null, unit: "business_days", rule_type: "cumulative" },
-  wife_help: { limit: 15, unit: "business_days", rule_type: "cumulative" },
+  wife_help: { limit: 15, unit: "business_days", rule_type: "per_event" },
   maternity: { limit: 90, unit: "calendar_days", rule_type: "per_event" },
   ordain: { limit: 60, unit: "calendar_days", rule_type: "per_event" },
   military: { limit: 60, unit: "calendar_days", rule_type: "per_event" },
@@ -160,6 +160,31 @@ test("ordain leave has no paid quota if service < 1 year", () => {
   expect(result.perType.ordain.overQuota).toBe(true);
 });
 
+test("hajj leave is ignored by current policy map", () => {
+  const result = calculateLeaveQuotaStatus({
+    leaveRows: [
+      {
+        id: 7,
+        citizen_id: "123",
+        leave_type: "hajj",
+        start_date: "2026-06-01",
+        end_date: "2026-06-05",
+        document_start_date: null,
+        document_end_date: null,
+        is_no_pay: 0,
+        pay_exception: 0,
+      },
+    ],
+    holidays: [],
+    quota: { quota_vacation: 10, quota_personal: 45, quota_sick: 60 },
+    rules: baseRules,
+    serviceStartDate: new Date("2026-01-01"),
+  });
+
+  expect(result.perType.ordain).toBeUndefined();
+  expect(result.perLeave[7]).toBeUndefined();
+});
+
 test("ignores leaves after range end when calculating usage", () => {
   const result = calculateLeaveQuotaStatus({
     leaveRows: [
@@ -222,4 +247,179 @@ test("clamps leave across fiscal year boundary to range start", () => {
   });
 
   expect(result.perLeave[10].duration).toBe(1);
+});
+
+test("wife_help is per_event: two separate events under 15 days should not become over quota", () => {
+  const result = calculateLeaveQuotaStatus({
+    leaveRows: [
+      {
+        id: 20,
+        citizen_id: "123",
+        leave_type: "wife_help",
+        start_date: "2026-01-05",
+        end_date: "2026-01-16",
+        document_start_date: null,
+        document_end_date: null,
+        is_no_pay: 0,
+        pay_exception: 0,
+      },
+      {
+        id: 21,
+        citizen_id: "123",
+        leave_type: "wife_help",
+        start_date: "2026-03-02",
+        end_date: "2026-03-13",
+        document_start_date: null,
+        document_end_date: null,
+        is_no_pay: 0,
+        pay_exception: 0,
+      },
+    ],
+    holidays: [],
+    quota: { quota_vacation: 10, quota_personal: 45, quota_sick: 60 },
+    rules: baseRules,
+    serviceStartDate: null,
+  });
+
+  expect(result.perLeave[20].duration).toBe(10);
+  expect(result.perLeave[21].duration).toBe(10);
+  expect(result.perLeave[20].overQuota).toBe(false);
+  expect(result.perLeave[21].overQuota).toBe(false);
+  expect(result.perType.wife_help.overQuota).toBe(false);
+});
+
+test("education with same course key accumulates across interruptions while different course stays separate", () => {
+  const result = calculateLeaveQuotaStatus({
+    leaveRows: [
+      {
+        id: 30,
+        citizen_id: "123",
+        leave_type: "education",
+        start_date: "2026-01-01",
+        end_date: "2026-01-30",
+        document_start_date: null,
+        document_end_date: null,
+        is_no_pay: 0,
+        pay_exception: 0,
+        study_program: "A",
+      },
+      {
+        id: 31,
+        citizen_id: "123",
+        leave_type: "education",
+        start_date: "2026-02-01",
+        end_date: "2026-02-15",
+        document_start_date: null,
+        document_end_date: null,
+        is_no_pay: 0,
+        pay_exception: 0,
+        study_program: "B",
+      },
+      {
+        id: 32,
+        citizen_id: "123",
+        leave_type: "education",
+        start_date: "2026-02-16",
+        end_date: "2026-03-31",
+        document_start_date: null,
+        document_end_date: null,
+        is_no_pay: 0,
+        pay_exception: 0,
+        study_program: "A",
+      },
+    ],
+    holidays: [],
+    quota: { quota_vacation: 10, quota_personal: 45, quota_sick: 60 },
+    rules: baseRules,
+    serviceStartDate: null,
+  });
+
+  expect(result.perLeave[30].duration).toBe(30);
+  expect(result.perLeave[31].duration).toBe(15);
+  expect(result.perLeave[32].duration).toBe(44);
+
+  expect(result.perLeave[30].overQuota).toBe(false);
+  expect(result.perLeave[31].overQuota).toBe(false);
+  expect(result.perLeave[32].overQuota).toBe(true);
+  expect(result.perLeave[32].exceedDate).toBe("2026-03-18");
+});
+
+test("ordain with same remark accumulates across interruptions and can exceed quota", () => {
+  const result = calculateLeaveQuotaStatus({
+    leaveRows: [
+      {
+        id: 40,
+        citizen_id: "123",
+        leave_type: "ordain",
+        start_date: "2026-01-01",
+        end_date: "2026-01-30",
+        remark: "ORDAIN-2026",
+        document_start_date: null,
+        document_end_date: null,
+        is_no_pay: 0,
+        pay_exception: 0,
+      },
+      {
+        id: 41,
+        citizen_id: "123",
+        leave_type: "ordain",
+        start_date: "2026-03-01",
+        end_date: "2026-04-09",
+        remark: "ORDAIN-2026",
+        document_start_date: null,
+        document_end_date: null,
+        is_no_pay: 0,
+        pay_exception: 0,
+      },
+    ],
+    holidays: [],
+    quota: { quota_vacation: 10, quota_personal: 45, quota_sick: 60 },
+    rules: baseRules,
+    serviceStartDate: new Date("2020-01-01"),
+  });
+
+  expect(result.perLeave[40].duration).toBe(30);
+  expect(result.perLeave[41].duration).toBe(40);
+  expect(result.perLeave[41].overQuota).toBe(true);
+  expect(result.perLeave[41].exceedDate).toBe("2026-03-31");
+});
+
+test("military with same remark accumulates across interruptions and can exceed quota", () => {
+  const result = calculateLeaveQuotaStatus({
+    leaveRows: [
+      {
+        id: 50,
+        citizen_id: "123",
+        leave_type: "military",
+        start_date: "2026-05-01",
+        end_date: "2026-05-30",
+        remark: "MILITARY-CALL-1",
+        document_start_date: null,
+        document_end_date: null,
+        is_no_pay: 0,
+        pay_exception: 0,
+      },
+      {
+        id: 51,
+        citizen_id: "123",
+        leave_type: "military",
+        start_date: "2026-07-01",
+        end_date: "2026-08-09",
+        remark: "MILITARY-CALL-1",
+        document_start_date: null,
+        document_end_date: null,
+        is_no_pay: 0,
+        pay_exception: 0,
+      },
+    ],
+    holidays: [],
+    quota: { quota_vacation: 10, quota_personal: 45, quota_sick: 60 },
+    rules: baseRules,
+    serviceStartDate: null,
+  });
+
+  expect(result.perLeave[50].duration).toBe(30);
+  expect(result.perLeave[51].duration).toBe(40);
+  expect(result.perLeave[51].overQuota).toBe(true);
+  expect(result.perLeave[51].exceedDate).toBe("2026-07-31");
 });

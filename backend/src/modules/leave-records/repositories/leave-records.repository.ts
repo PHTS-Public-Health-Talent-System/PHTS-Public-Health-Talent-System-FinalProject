@@ -90,12 +90,16 @@ export type LeaveQuotaLeaveRow = RowDataPacket & {
   leave_type: string;
   start_date: string;
   end_date: string;
+  remark?: string | null;
   document_start_date?: string | null;
   document_end_date?: string | null;
   document_duration_days?: number | null;
   duration_days?: number | null;
   is_no_pay?: number | null;
   pay_exception?: number | null;
+  study_institution?: string | null;
+  study_program?: string | null;
+  study_major?: string | null;
 };
 
 export type LeaveQuotaRow = RowDataPacket & {
@@ -485,11 +489,15 @@ export class LeaveRecordsRepository {
                lr.start_date,
                lr.end_date,
                lr.duration_days,
+               lr.remark,
                ext.document_start_date,
                ext.document_end_date,
                ext.document_duration_days,
                ext.is_no_pay,
-               ext.pay_exception
+               ext.pay_exception,
+               ext.study_institution,
+               ext.study_program,
+               ext.study_major
         FROM leave_records lr
         LEFT JOIN leave_record_extensions ext ON ext.leave_record_id = lr.id
         WHERE lr.citizen_id = ? AND lr.fiscal_year = ?

@@ -1,4 +1,5 @@
-import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
+import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
+import { createHash } from 'node:crypto';
 import db from '@config/database.js';
 import {
   assignRoles,
@@ -27,7 +28,10 @@ import {
 } from '@/modules/sync/services/shared/sync-lock.service.js';
 import {
   hasLeaveStatusColumn,
-  hasSupportLevelColumn,
+  hasSupportProfileFingerprintColumn,
+  persistEmployeeProfileSyncArtifacts,
+  persistSupportProfileSyncArtifacts,
+  resolveSupportStaffColumnFlags,
   upsertEmployeeProfile,
   upsertLeaveQuota,
 } from '@/modules/sync/services/shared/sync-db-helpers.service.js';
@@ -90,12 +94,14 @@ export const VIEW_SUPPORT_COLUMNS = [
   'sex',
   'position_name',
   'position_number',
+  'level',
   'special_position',
   'employee_type',
   'start_current_position',
   'first_entry_date',
   'mission_group',
   'department',
+  'original_status',
   'is_currently_active',
 ] as const;
 
@@ -218,20 +224,25 @@ export const buildSupportViewQuery = () => `
     h.sex,
     h.position AS position_name,
     h.positionnumber AS position_number,
+    h.level,
     TRIM(BOTH ',' FROM REPLACE(REPLACE(h.specialposition, 'ผู้ดูแลระบบ--', ''), 'ผู้ดูแลระบบ', '')) AS special_position,
     h.type AS employee_type,
     h.employment_date AS start_current_position,
     h.entry_date AS first_entry_date,
     h.missiongroup AS mission_group,
     h.workgroup_m AS department,
-    1 AS is_currently_active
+    h.status AS original_status,
+    CASE
+      WHEN h.status IN ('ปฏิบัติงาน (ตรง จ.)','ปฏิบัติงาน (ไม่ตรง จ.)') THEN 1
+      WHEN h.status LIKE '%ลาศึกษา%' THEN 1
+      ELSE 0
+    END AS is_currently_active
   FROM hrms_databases.tb_ap_index_view h
   LEFT JOIN (${buildEmployeeViewQuery()}) e
     ON CAST(e.citizen_id AS BINARY) = CAST(h.id AS BINARY)
   WHERE e.citizen_id IS NULL
     AND h.type IN ('ข้าราชการ', 'พนักงานราชการ', 'พนักงานกระทรวงสาธารณสุข', 'ลูกจ้างรายวัน')
-    AND (h.workgroup_m = 'กลุ่มงานการเงิน' OR h.workgroup_m LIKE '%ทรัพยากรบุคคล')
-    AND h.status IN ('ปฏิบัติงาน (ตรง จ.)', 'ปฏิบัติงาน (ไม่ตรง จ.)')
+    AND h.workgroup_m IN ('กลุ่มงานทรัพยากรบุคคล', 'กลุ่มงานการเงิน')
 `;
 
 export const buildQuotasViewQuery = () => `
@@ -473,12 +484,27 @@ export const buildLeaveRecordValues = (vLeave: any, options: LeaveRecordSqlOptio
 
 interface SupportEmployeeSqlOptions {
   hasLevelColumn: boolean;
+  hasOriginalStatusColumn?: boolean;
+  hasStatusCodeColumn?: boolean;
+  hasStatusTextColumn?: boolean;
+  hasSourceSystemColumn?: boolean;
+  hasSourceUpdatedAtColumn?: boolean;
+  hasRawSnapshotColumn?: boolean;
+  hasProfileFingerprintColumn?: boolean;
 }
 
 export const buildSupportEmployeeSql = (
   options: SupportEmployeeSqlOptions,
 ): { sql: string; fields: string[] } => {
-  const { hasLevelColumn } = options;
+  const {
+    hasLevelColumn,
+    hasStatusCodeColumn,
+    hasStatusTextColumn,
+    hasSourceSystemColumn,
+    hasSourceUpdatedAtColumn,
+    hasRawSnapshotColumn,
+    hasProfileFingerprintColumn,
+  } = options;
 
   const baseFields = ['citizen_id', 'title', 'first_name', 'last_name', 'position_name'];
   const fields = [...baseFields];
@@ -499,15 +525,53 @@ export const buildSupportEmployeeSql = (
     'emp_type',
     'department',
     'is_currently_active',
-    'last_synced_at',
   );
   updateFields.push(
     'special_position = VALUES(special_position)',
     'emp_type = VALUES(emp_type)',
     'department = VALUES(department)',
     'is_currently_active = VALUES(is_currently_active)',
-    'last_synced_at = NOW()',
   );
+
+  if (options.hasOriginalStatusColumn) {
+    fields.push('original_status');
+    updateFields.push('original_status = VALUES(original_status)');
+  }
+
+  if (hasStatusCodeColumn) {
+    fields.push('status_code');
+    updateFields.push('status_code = VALUES(status_code)');
+  }
+
+  if (hasStatusTextColumn) {
+    fields.push('status_text');
+    updateFields.push('status_text = VALUES(status_text)');
+  }
+
+  if (hasSourceSystemColumn) {
+    fields.push('source_system');
+    updateFields.push('source_system = VALUES(source_system)');
+  }
+
+  if (hasSourceUpdatedAtColumn) {
+    fields.push('source_updated_at');
+    updateFields.push('source_updated_at = VALUES(source_updated_at)');
+  }
+
+  if (hasRawSnapshotColumn) {
+    fields.push('raw_snapshot');
+    updateFields.push('raw_snapshot = VALUES(raw_snapshot)');
+  }
+
+  if (hasProfileFingerprintColumn) {
+    fields.push('profile_fingerprint');
+    updateFields.push('profile_fingerprint = VALUES(profile_fingerprint)');
+  }
+
+  fields.push(
+    'last_synced_at',
+  );
+  updateFields.push('last_synced_at = NOW()');
 
   const placeholders = fields.map(() => '?').join(', ');
   const sql = `
@@ -520,7 +584,31 @@ export const buildSupportEmployeeSql = (
 };
 
 export const buildSupportEmployeeValues = (vSup: any, options: SupportEmployeeSqlOptions): any[] => {
-  const { hasLevelColumn } = options;
+  const {
+    hasLevelColumn,
+    hasStatusCodeColumn,
+    hasStatusTextColumn,
+    hasSourceSystemColumn,
+    hasSourceUpdatedAtColumn,
+    hasRawSnapshotColumn,
+    hasProfileFingerprintColumn,
+  } = options;
+  const isActive = Number(vSup.is_currently_active ?? 0) === 1;
+  const statusCode = isActive ? 'ACTIVE' : 'INACTIVE';
+  const statusText = vSup.original_status ?? (isActive ? 'ปฏิบัติงาน' : 'ไม่ปฏิบัติงาน');
+  const normalized = {
+    citizen_id: toNull(vSup.citizen_id),
+    position_name: toNull(vSup.position_name),
+    level: toNull(vSup.level),
+    department: toNull(vSup.department),
+    special_position: toNull(vSup.special_position),
+    status_code: statusCode,
+    status_text: statusText,
+    is_currently_active: isActive ? 1 : 0,
+  };
+  const fingerprint = createHash('sha256')
+    .update(JSON.stringify(normalized))
+    .digest('hex');
   const values = [
     toNull(vSup.citizen_id),
     toNull(vSup.title),
@@ -538,8 +626,32 @@ export const buildSupportEmployeeValues = (vSup: any, options: SupportEmployeeSq
     toNull(vSup.employee_type),
     toNull(vSup.department),
     toNull(vSup.is_currently_active),
-    null, // last_synced_at handled by NOW()
   );
+
+  if (options.hasOriginalStatusColumn) {
+    values.push(toNull(vSup.original_status));
+  }
+
+  if (hasStatusCodeColumn) {
+    values.push(statusCode);
+  }
+  if (hasStatusTextColumn) {
+    values.push(statusText);
+  }
+  if (hasSourceSystemColumn) {
+    values.push('HRMS');
+  }
+  if (hasSourceUpdatedAtColumn) {
+    values.push(new Date());
+  }
+  if (hasRawSnapshotColumn) {
+    values.push(JSON.stringify(vSup));
+  }
+  if (hasProfileFingerprintColumn) {
+    values.push(fingerprint);
+  }
+
+  values.push(null); // last_synced_at handled by NOW()
 
   return values;
 };
@@ -566,16 +678,29 @@ const toDateOnly = (value: any): string | null => {
   return `${year}-${month}-${day}`;
 };
 
+const isActiveStatusCode = (statusCode: string | null): boolean => {
+  const normalized = String(statusCode ?? '').trim().toUpperCase();
+  return normalized === 'ACTIVE' || normalized === 'STUDY_LEAVE';
+};
+
+// Used by scope sync flow where source still provides status text.
 const isActiveOriginalStatus = (status: string | null): boolean => {
   if (!status) return false;
-  return status.trim().startsWith('ปฏิบัติงาน');
+  const normalized = status.trim();
+  return normalized.startsWith('ปฏิบัติงาน') || normalized.includes('ลาศึกษา');
 };
 
 export const deriveUserIsActive = (
-  profileStatus: string | null,
-  _supportIsEnableLogin: number | null,
+  profileStatusCode: string | null,
+  supportStatusCode: string | null,
 ): boolean => {
-  return isActiveOriginalStatus(profileStatus);
+  if (profileStatusCode && profileStatusCode.trim().length > 0) {
+    return isActiveStatusCode(profileStatusCode);
+  }
+  if (supportStatusCode && supportStatusCode.trim().length > 0) {
+    return isActiveStatusCode(supportStatusCode);
+  }
+  return false;
 };
 
 // Detect value change with support for dates and nullish values.
@@ -594,6 +719,126 @@ const isChanged = (oldVal: any, newVal: any) => {
 const getUserIdMap = async (conn: PoolConnection) => {
   const [existingUsers] = await conn.query<RowDataPacket[]>('SELECT id, citizen_id FROM users');
   return new Map(existingUsers.map((u) => [u.citizen_id, u.id]));
+};
+
+const parseBooleanEnv = (value: string | undefined, fallback = false): boolean => {
+  if (value == null) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
+};
+
+const getSupportCleanupDryRun = (): boolean =>
+  parseBooleanEnv(process.env.SYNC_SUPPORT_CLEANUP_DRY_RUN, false);
+
+const getStatusCodeNullThresholdPct = (): number => {
+  const raw = Number.parseFloat(process.env.SYNC_USER_STATUS_CODE_NULL_THRESHOLD_PCT ?? '0');
+  if (!Number.isFinite(raw)) return 0;
+  if (raw < 0) return 0;
+  return raw;
+};
+
+const cleanupSupportByCurrentView = async (
+  conn: PoolConnection,
+  options: { dryRun: boolean },
+): Promise<{ candidates: number; deleted: number; dryRun: boolean }> => {
+  const [candidateRows] = await conn.query<RowDataPacket[]>(
+    `
+      SELECT COUNT(*) AS total
+      FROM emp_support_staff s
+      LEFT JOIN (${buildSupportViewQuery()}) v
+        ON CAST(v.citizen_id AS BINARY) = CAST(s.citizen_id AS BINARY)
+      WHERE v.citizen_id IS NULL
+    `,
+  );
+  const candidates = Number(candidateRows[0]?.total ?? 0);
+  if (options.dryRun || candidates === 0) {
+    if (options.dryRun && candidates > 0) {
+      console.warn(`[SyncService] support cleanup dry-run: ${candidates} rows would be deleted`);
+    }
+    return { candidates, deleted: 0, dryRun: options.dryRun };
+  }
+
+  const [result] = await conn.query<ResultSetHeader>(
+    `
+      DELETE s
+      FROM emp_support_staff s
+      LEFT JOIN (${buildSupportViewQuery()}) v
+        ON CAST(v.citizen_id AS BINARY) = CAST(s.citizen_id AS BINARY)
+      WHERE v.citizen_id IS NULL
+    `,
+  );
+  return { candidates, deleted: Number(result.affectedRows ?? 0), dryRun: options.dryRun };
+};
+
+const enforceStatusCodeQualityGate = async (
+  conn: PoolConnection,
+  stats: SyncStats,
+  options?: { citizenId?: string },
+): Promise<void> => {
+  const thresholdPct = getStatusCodeNullThresholdPct();
+  const params: string[] = [];
+  const profileWhere = options?.citizenId ? 'WHERE citizen_id = ?' : '';
+  if (options?.citizenId) params.push(options.citizenId);
+  const supportWhere = options?.citizenId ? 'WHERE citizen_id = ?' : '';
+  if (options?.citizenId) params.push(options.citizenId);
+  const [rows] = await conn.query<RowDataPacket[]>(
+    `
+      SELECT
+        COUNT(*) AS total_count,
+        SUM(CASE WHEN status_code IS NULL OR TRIM(status_code) = '' THEN 1 ELSE 0 END) AS null_count
+      FROM (
+        SELECT status_code FROM emp_profiles ${profileWhere}
+        UNION ALL
+        SELECT status_code FROM emp_support_staff ${supportWhere}
+      ) s
+    `,
+    params,
+  );
+  const total = Number(rows[0]?.total_count ?? 0);
+  const nullCount = Number(rows[0]?.null_count ?? 0);
+  const nullPct = total > 0 ? (nullCount / total) * 100 : 0;
+
+  stats.quality_gates = {
+    status_code_total: total,
+    status_code_null: nullCount,
+    threshold_pct: thresholdPct,
+  };
+
+  if (nullPct > thresholdPct) {
+    throw new Error(
+      `status_code quality gate failed: null=${nullCount}/${total} (${nullPct.toFixed(2)}%) > threshold ${thresholdPct}%`,
+    );
+  }
+};
+
+const buildSyncReconciliation = async (conn: PoolConnection) => {
+  const [supportRows] = await conn.query<RowDataPacket[]>(
+    `
+      SELECT
+        (SELECT COUNT(*) FROM (${buildSupportViewQuery()}) v) AS support_view_count,
+        (SELECT COUNT(*) FROM emp_support_staff) AS support_table_count
+    `,
+  );
+  const [userRows] = await conn.query<RowDataPacket[]>(
+    `
+      SELECT
+        COUNT(*) AS users_total,
+        SUM(CASE WHEN is_active = 1 THEN 1 ELSE 0 END) AS users_active,
+        SUM(CASE WHEN is_active = 0 THEN 1 ELSE 0 END) AS users_inactive
+      FROM users
+    `,
+  );
+  const [statusRows] = await conn.query<RowDataPacket[]>(
+    `
+      SELECT
+        (SELECT SUM(CASE WHEN status_code IS NULL OR TRIM(status_code) = '' THEN 1 ELSE 0 END) FROM emp_profiles) AS profile_status_code_null,
+        (SELECT SUM(CASE WHEN status_code IS NULL OR TRIM(status_code) = '' THEN 1 ELSE 0 END) FROM emp_support_staff) AS support_status_code_null
+    `,
+  );
+  return {
+    support: supportRows[0] ?? {},
+    users: userRows[0] ?? {},
+    quality: statusRows[0] ?? {},
+  };
 };
 
 const syncSignatures = async (conn: PoolConnection, stats: SyncStats) => {
@@ -781,23 +1026,39 @@ export class SyncService {
         buildEmployeeViewQuery,
         isChanged,
         upsertEmployeeProfile,
+        persistEmployeeProfileSyncArtifacts: (cx, vEmp) =>
+          persistEmployeeProfileSyncArtifacts(cx, vEmp, batchId),
         clearScopeCache,
       });
       await syncSupportEmployees(conn, stats, userIdMap, {
         viewSupportColumns: VIEW_SUPPORT_COLUMNS,
         buildSupportViewQuery,
         isChanged,
-        hasSupportLevelColumn,
+        hasSupportLevelColumn: async (cx) => (await resolveSupportStaffColumnFlags(cx)).hasLevelColumn,
+        hasSupportProfileFingerprintColumn,
+        resolveSupportStaffColumnFlags,
         buildSupportEmployeeSql,
         buildSupportEmployeeValues,
+        persistSupportProfileSyncArtifacts: (cx, vSup) =>
+          persistSupportProfileSyncArtifacts(cx, vSup, batchId),
         clearScopeCache,
       });
+      const cleanupResult = await cleanupSupportByCurrentView(conn, {
+        dryRun: getSupportCleanupDryRun(),
+      });
+      stats.support_cleanup = {
+        candidates: cleanupResult.candidates,
+        deleted: cleanupResult.deleted,
+        dry_run: cleanupResult.dryRun,
+      };
+      await enforceStatusCodeQualityGate(conn, stats);
       await syncUsersFromProfilesAndSupport(
         conn,
         stats,
         {
           deriveUserIsActive,
           protectedRoles: RoleAssignmentService.PROTECTED_ROLES,
+          syncBatchId: batchId,
         },
       );
       await syncSignatures(conn, stats);
@@ -826,10 +1087,12 @@ export class SyncService {
       }
 
       const duration = ((Date.now() - startTotal) / 1000).toFixed(2);
+      const reconciliation = await buildSyncReconciliation(conn);
       const resultData = {
         success: true,
         duration,
         stats,
+        reconciliation,
         timestamp: new Date().toISOString(),
       };
 
@@ -916,23 +1179,33 @@ export class SyncService {
         viewEmployeeColumns: VIEW_EMPLOYEE_COLUMNS,
         buildEmployeeViewQuery,
         citizenIdWhereBinary,
+        isChanged,
         upsertEmployeeProfile,
+        persistEmployeeProfileSyncArtifacts: (cx, vEmp) =>
+          persistEmployeeProfileSyncArtifacts(cx, vEmp, batchId),
         clearScopeCache,
       });
       await upsertSingleSupportEmployee(conn, citizenId, stats, {
         viewSupportColumns: VIEW_SUPPORT_COLUMNS,
         buildSupportViewQuery,
         citizenIdWhereBinary,
-        hasSupportLevelColumn,
+        hasSupportLevelColumn: async (cx) => (await resolveSupportStaffColumnFlags(cx)).hasLevelColumn,
+        hasSupportProfileFingerprintColumn,
+        resolveSupportStaffColumnFlags,
         buildSupportEmployeeSql,
         buildSupportEmployeeValues,
+        isChanged,
+        persistSupportProfileSyncArtifacts: (cx, vSup) =>
+          persistSupportProfileSyncArtifacts(cx, vSup, batchId),
       });
+      await enforceStatusCodeQualityGate(conn, stats, { citizenId });
       await syncUsersFromProfilesAndSupport(
         conn,
         stats,
         {
           deriveUserIsActive,
           protectedRoles: RoleAssignmentService.PROTECTED_ROLES,
+          syncBatchId: batchId,
         },
         { citizenId },
       );
@@ -953,6 +1226,7 @@ export class SyncService {
       );
 
       const syncFinishedAt = new Date().toISOString();
+      const reconciliation = await buildSyncReconciliation(conn);
       let accessReview: { cycleId: number; createdCycle: boolean; insertedItems: number } | null = null;
       try {
         accessReview = await refreshReviewCycleFromSync({
@@ -970,6 +1244,7 @@ export class SyncService {
       return {
         success: true,
         stats,
+        reconciliation,
         citizenId,
         timestamp: syncFinishedAt,
         access_review: accessReview,

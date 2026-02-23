@@ -41,12 +41,14 @@ describe("SyncService view column lists", () => {
       "sex",
       "position_name",
       "position_number",
+      "level",
       "special_position",
       "employee_type",
       "start_current_position",
       "first_entry_date",
       "mission_group",
       "department",
+      "original_status",
       "is_currently_active",
     ]);
   });

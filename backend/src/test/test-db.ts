@@ -260,6 +260,9 @@ export async function resetAuthSchema(): Promise<void> {
     await ensureColumn(conn, "emp_support_staff", "position_name", "VARCHAR(255) NULL");
     await ensureColumn(conn, "emp_support_staff", "department", "VARCHAR(255) NULL");
     await ensureColumn(conn, "emp_support_staff", "emp_type", "VARCHAR(50) NULL");
+    await ensureColumn(conn, "emp_support_staff", "original_status", "VARCHAR(255) NULL");
+    await ensureColumn(conn, "emp_support_staff", "is_currently_active", "TINYINT(1) NOT NULL DEFAULT 1");
+    await ensureColumn(conn, "emp_support_staff", "last_synced_at", "DATETIME NULL");
 
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS emp_licenses (
@@ -509,8 +512,7 @@ export async function resetFinanceSchema(): Promise<void> {
         citizen_id VARCHAR(20) PRIMARY KEY,
         first_name VARCHAR(100) NULL,
         last_name VARCHAR(100) NULL,
-        department VARCHAR(255) NULL,
-        department_code VARCHAR(50) NULL
+        department VARCHAR(255) NULL
       )
     `);
 
@@ -519,7 +521,10 @@ export async function resetFinanceSchema(): Promise<void> {
         citizen_id VARCHAR(20) PRIMARY KEY,
         first_name VARCHAR(100) NULL,
         last_name VARCHAR(100) NULL,
-        department VARCHAR(255) NULL
+        department VARCHAR(255) NULL,
+        original_status VARCHAR(255) NULL,
+        is_currently_active TINYINT(1) NOT NULL DEFAULT 1,
+        last_synced_at DATETIME NULL
       )
     `);
 
@@ -614,11 +619,17 @@ export async function resetSnapshotSchema(): Promise<void> {
         first_name VARCHAR(100) NULL,
         last_name VARCHAR(100) NULL,
         department VARCHAR(255) NULL,
-        position_name VARCHAR(255) NULL
+        position_name VARCHAR(255) NULL,
+        original_status VARCHAR(255) NULL,
+        is_currently_active TINYINT(1) NOT NULL DEFAULT 1,
+        last_synced_at DATETIME NULL
       )
     `);
     await ensureColumn(conn, "emp_support_staff", "department", "VARCHAR(255) NULL");
     await ensureColumn(conn, "emp_support_staff", "position_name", "VARCHAR(255) NULL");
+    await ensureColumn(conn, "emp_support_staff", "original_status", "VARCHAR(255) NULL");
+    await ensureColumn(conn, "emp_support_staff", "is_currently_active", "TINYINT(1) NOT NULL DEFAULT 1");
+    await ensureColumn(conn, "emp_support_staff", "last_synced_at", "DATETIME NULL");
 
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS cfg_payment_rates (

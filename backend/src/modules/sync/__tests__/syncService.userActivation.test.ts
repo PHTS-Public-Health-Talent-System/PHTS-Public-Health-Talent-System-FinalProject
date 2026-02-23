@@ -7,16 +7,16 @@ describe("deriveUserIsActive", () => {
       (mod as any).deriveUserIsActive ??
       ((..._args: any[]) => "MISSING");
 
-    expect(derive("ปฏิบัติงาน (ตรง จ.)", null)).toBe(true);
+    expect(derive("ACTIVE", null)).toBe(true);
   });
 
-  test("returns false when profile status is inactive even if support exists", async () => {
+  test("returns false when profile status_code is inactive even if support is active", async () => {
     const mod = await loadModule();
     const derive =
       (mod as any).deriveUserIsActive ??
       ((..._args: any[]) => "MISSING");
 
-    expect(derive("ไม่ปฏิบัติงาน (ลาออก)", 1)).toBe(false);
+    expect(derive("INACTIVE", "ACTIVE")).toBe(false);
   });
 
   test("returns false when both sources inactive", async () => {
@@ -25,6 +25,24 @@ describe("deriveUserIsActive", () => {
       (mod as any).deriveUserIsActive ??
       ((..._args: any[]) => "MISSING");
 
-    expect(derive("ไม่ปฏิบัติงาน (เกษียณ)", 0)).toBe(false);
+    expect(derive("INACTIVE", "INACTIVE")).toBe(false);
+  });
+
+  test("returns true when profile code missing but support status_code is active", async () => {
+    const mod = await loadModule();
+    const derive =
+      (mod as any).deriveUserIsActive ??
+      ((..._args: any[]) => "MISSING");
+
+    expect(derive(null, "ACTIVE")).toBe(true);
+  });
+
+  test("returns false when both status_code values are missing", async () => {
+    const mod = await loadModule();
+    const derive =
+      (mod as any).deriveUserIsActive ??
+      ((..._args: any[]) => "MISSING");
+
+    expect(derive(null, null)).toBe(false);
   });
 });

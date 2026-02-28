@@ -15,6 +15,9 @@ import {
   getCyclesSchema,
   getCycleSchema,
   getItemsSchema,
+  getQueueEventsSchema,
+  getQueueSchema,
+  resolveQueueItemSchema,
   updateItemSchema,
   completeCycleSchema,
 } from '@/modules/access-review/access-review.schema.js';
@@ -49,6 +52,27 @@ router.get(
   "/cycles/:id/items",
   validate(getItemsSchema),
   accessReviewController.getItems,
+);
+
+// Get global review queue
+router.get(
+  "/queue",
+  validate(getQueueSchema),
+  accessReviewController.getQueue,
+);
+
+// Get queue events by queue id
+router.get(
+  "/queue/:id/events",
+  validate(getQueueEventsSchema),
+  accessReviewController.getQueueEvents,
+);
+
+// Resolve/dismiss queue item
+router.post(
+  "/queue/:id/resolve",
+  validate(resolveQueueItemSchema),
+  accessReviewController.resolveQueueItem,
 );
 
 // Complete a review cycle

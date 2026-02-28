@@ -98,6 +98,89 @@ export async function getItems(
 }
 
 /**
+ * Get review queue (global pending view)
+ * GET /api/access-review/queue
+ */
+export async function getQueue(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const page = req.query.page ? Number.parseInt(req.query.page as string, 10) : 1;
+    const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 20;
+    const batchId = req.query.batch_id ? Number.parseInt(req.query.batch_id as string, 10) : undefined;
+    const status = req.query.status as accessReviewService.AccessReviewQueueListInput["status"];
+    const reasonCode = req.query.reason_code as string | undefined;
+    const currentRole = req.query.current_role as string | undefined;
+    const isActive = req.query.is_active !== undefined ? Number(req.query.is_active) : undefined;
+    const detectedFrom = req.query.detected_from as string | undefined;
+    const detectedTo = req.query.detected_to as string | undefined;
+    const search = req.query.search as string | undefined;
+
+    const queue = await accessReviewService.getAccessReviewQueue({
+      page,
+      limit,
+      status,
+      reasonCode,
+      currentRole,
+      isActive,
+      detectedFrom,
+      detectedTo,
+      batchId,
+      search,
+    });
+    res.json({ success: true, data: queue });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+/**
+ * Get queue events timeline
+ * GET /api/access-review/queue/:id/events
+ */
+export async function getQueueEvents(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const queueId = Number.parseInt(req.params.id, 10);
+    const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 100;
+    const events = await accessReviewService.getAccessReviewQueueEvents(queueId, limit);
+    res.json({ success: true, data: events });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+}
+
+/**
+ * Resolve or dismiss queue item
+ * POST /api/access-review/queue/:id/resolve
+ */
+export async function resolveQueueItem(
+  req: Request,
+  res: Response<ApiResponse>,
+): Promise<void> {
+  try {
+    const queueId = Number.parseInt(req.params.id, 10);
+    const reviewerId = req.user!.userId;
+    const { action, note } = req.body as {
+      action: "RESOLVE" | "DISMISS";
+      note?: string;
+    };
+    await accessReviewService.resolveAccessReviewQueueItem({
+      queueId,
+      actorId: reviewerId,
+      action,
+      note: note ?? null,
+    });
+    res.json({ success: true, message: "Queue item updated" });
+  } catch (error: any) {
+    res.status(400).json({ success: false, error: error.message });
+  }
+}
+
+/**
  * Update review result for a user
  * PUT /api/access-review/items/:id
  */

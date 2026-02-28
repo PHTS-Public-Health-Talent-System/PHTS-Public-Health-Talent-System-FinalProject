@@ -8,14 +8,18 @@
 
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import { emitAuditEvent, AuditEventType } from '@/modules/audit/services/audit.service.js';
-import { RoleAssignmentService } from '@/modules/sync/services/role-assignment.service.js';
+import { IdentityRolePolicyService } from '@/modules/identity/services/identity-role-policy.service.js';
 import {
   inferScopeType,
   parseSpecialPositionScopes,
   removeOverlaps,
-} from '@/modules/request/scope/utils.js';
+} from '@/modules/request/scope/domain/scope.utils.js';
 import { getSyncRuntimeStatus } from '@/modules/sync/services/sync-status.service.js';
 import { AccessReviewRepository } from '@/modules/access-review/repositories/access-review.repository.js';
+import {
+  AccessReviewQueueStatus,
+  AccessReviewReasonCode,
+} from '@/modules/access-review/entities/access-review.entity.js';
 
 /**
  * Review cycle status
@@ -128,80 +132,145 @@ function buildScopeExplanation(
   ].join(' | ');
 }
 
-type ReviewCandidate = {
+type RiskDetectionCandidate = {
   id: number;
+  citizen_id: string;
   role: string;
+  expected_role: string;
   employee_status: string | null;
   last_login_at: Date | null;
+  user_created_at: Date | null;
+  profile_synced_at: Date | null;
+  special_position: string | null;
+  reasons: AccessReviewReasonCode[];
   reviewNote: string;
 };
 
-async function buildReviewCandidates(
+function toDateOrNull(value: unknown): Date | null {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(String(value));
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+async function buildRiskDetectionCandidates(
   connection: Awaited<ReturnType<typeof AccessReviewRepository.getConnection>>,
   options?: { syncTimestamp?: Date | null; citizenId?: string | null },
-): Promise<ReviewCandidate[]> {
-  const users = await AccessReviewRepository.findActiveNonAdminUsers(connection);
+): Promise<RiskDetectionCandidate[]> {
+  const users = await AccessReviewRepository.findNonAdminUsers(connection);
   const syncTimestamp = options?.syncTimestamp ?? null;
 
   return (users as any[])
     .filter((user) =>
       options?.citizenId
-        ? String(user.citizen_id ?? '') === String(options.citizenId)
+        ? String(user.citizen_id ?? "") === String(options.citizenId)
         : true,
     )
     .map((user) => {
       const hrRow = {
-        citizen_id: String(user.citizen_id ?? ''),
+        citizen_id: String(user.citizen_id ?? ""),
         position_name: user.position_name ?? null,
         special_position: user.special_position ?? null,
         department: user.department ?? null,
         sub_department: user.sub_department ?? null,
       };
 
-      const currentRole = String(user.role ?? '');
-      const isProtectedRole = RoleAssignmentService.PROTECTED_ROLES.has(currentRole);
+      const currentRole = String(user.role ?? "");
+      const isUserActive = Number(user.is_active ?? 0) === 1;
+      const isProtectedRole = IdentityRolePolicyService.PROTECTED_ROLES.has(currentRole);
       const expectedRole = isProtectedRole
         ? currentRole
-        : RoleAssignmentService.deriveRole(hrRow as any);
-      const roleMismatch = expectedRole !== currentRole;
-      const inactiveStatus = isInactiveEmployeeStatus(user.employee_status);
-      const scopeExplanation = buildScopeExplanation(
-        currentRole,
-        user.special_position,
-      );
+        : IdentityRolePolicyService.deriveRole(hrRow as any);
+      const roleMismatch = isUserActive && expectedRole !== currentRole;
+      const inactiveStatus = isUserActive && isInactiveEmployeeStatus(user.employee_status);
+      const scopeExplanation = buildScopeExplanation(currentRole, user.special_position);
 
-      const profileSyncedAt = user.profile_synced_at
-        ? new Date(user.profile_synced_at)
-        : null;
+      const profileSyncedAt = toDateOrNull(user.profile_synced_at);
       const changedByLatestSync =
-        syncTimestamp && profileSyncedAt
-          ? profileSyncedAt.getTime() >= syncTimestamp.getTime()
-          : true;
+        isUserActive &&
+        Boolean(syncTimestamp) &&
+        Boolean(profileSyncedAt) &&
+        profileSyncedAt!.getTime() >= syncTimestamp!.getTime();
+      const userCreatedAt = toDateOrNull(user.created_at);
+      const isNewUser =
+        Boolean(syncTimestamp) &&
+        Boolean(userCreatedAt) &&
+        userCreatedAt!.getTime() >= syncTimestamp!.getTime();
 
-      const shouldReview = roleMismatch || inactiveStatus || changedByLatestSync;
+      const reasons: AccessReviewReasonCode[] = [];
+      if (isNewUser) reasons.push(AccessReviewReasonCode.NEW_USER);
+      if (roleMismatch) reasons.push(AccessReviewReasonCode.ROLE_MISMATCH);
+      if (changedByLatestSync) reasons.push(AccessReviewReasonCode.PROFILE_CHANGED);
+      if (inactiveStatus) reasons.push(AccessReviewReasonCode.INACTIVE_BUT_ACTIVE);
+
       const reviewNoteParts = [
-        `sync_at=${syncTimestamp ? syncTimestamp.toISOString() : 'unknown'}`,
-        `current_role=${currentRole || '-'}`,
-        `expected_role=${expectedRole || '-'}`,
-        `role_mismatch=${roleMismatch ? 'yes' : 'no'}`,
-        `employee_status=${String(user.employee_status ?? '-')}`,
+        `sync_at=${syncTimestamp ? syncTimestamp.toISOString() : "unknown"}`,
+        `current_role=${currentRole || "-"}`,
+        `expected_role=${expectedRole || "-"}`,
+        `is_active=${isUserActive ? "yes" : "no"}`,
+        `role_mismatch=${roleMismatch ? "yes" : "no"}`,
+        `employee_status=${String(user.employee_status ?? "-")}`,
+        `new_user=${isNewUser ? "yes" : "no"}`,
+        `profile_changed=${changedByLatestSync ? "yes" : "no"}`,
         scopeExplanation ? `scope=${scopeExplanation}` : null,
       ].filter(Boolean);
 
       return {
-        ...user,
-        shouldReview,
-        reviewNote: reviewNoteParts.join(' | '),
+        id: Number(user.id),
+        citizen_id: String(user.citizen_id ?? ""),
+        role: currentRole,
+        expected_role: expectedRole,
+        employee_status: user.employee_status ?? null,
+        last_login_at: user.last_login_at ?? null,
+        user_created_at: userCreatedAt,
+        profile_synced_at: profileSyncedAt,
+        special_position: user.special_position ?? null,
+        reasons,
+        reviewNote: reviewNoteParts.join(" | "),
       };
     })
-    .filter((user) => user.shouldReview)
-    .map((user) => ({
-      id: Number(user.id),
-      role: String(user.role ?? ''),
-      employee_status: user.employee_status ?? null,
-      last_login_at: user.last_login_at ?? null,
-      reviewNote: String(user.reviewNote ?? ''),
-    }));
+    .filter((user) => user.reasons.length > 0);
+}
+
+async function syncGlobalReviewQueue(
+  connection: Awaited<ReturnType<typeof AccessReviewRepository.getConnection>>,
+  detections: RiskDetectionCandidate[],
+  options?: { batchId?: number | null; citizenId?: string | null },
+): Promise<void> {
+  const batchId = options?.batchId ?? null;
+  if (!batchId) return;
+
+  for (const candidate of detections) {
+    for (const reason of candidate.reasons) {
+      await AccessReviewRepository.upsertQueueDetection({
+        userId: candidate.id,
+        reasonCode: reason,
+        batchId,
+        detectedAt: new Date(),
+        payload: {
+          citizen_id: candidate.citizen_id,
+          current_role: candidate.role,
+          expected_role: candidate.expected_role,
+          employee_status: candidate.employee_status,
+          profile_synced_at: candidate.profile_synced_at
+            ? candidate.profile_synced_at.toISOString()
+            : null,
+          review_note: candidate.reviewNote,
+        },
+        conn: connection,
+      });
+    }
+  }
+
+  let targetUserId: number | null = null;
+  if (options?.citizenId) {
+    targetUserId = await AccessReviewRepository.findUserIdByCitizenId(options.citizenId, connection);
+  }
+
+  await AccessReviewRepository.autoResolveUnseenQueueByBatch({
+    batchId,
+    userId: targetUserId ?? undefined,
+    conn: connection,
+  });
 }
 
 export async function getReviewCycles(year?: number): Promise<ReviewCycle[]> {
@@ -232,6 +301,7 @@ export async function refreshReviewCycleFromSync(options?: {
   actorId?: number | null;
   syncTimestamp?: Date | null;
   citizenId?: string | null;
+  batchId?: number | null;
 }): Promise<{ cycleId: number; createdCycle: boolean; insertedItems: number }> {
   const { quarter, year } = getCurrentQuarter();
   const { startDate, dueDate } = getQuarterDates(quarter, year);
@@ -239,6 +309,17 @@ export async function refreshReviewCycleFromSync(options?: {
 
   try {
     await connection.beginTransaction();
+
+    let effectiveSyncTimestamp = options?.syncTimestamp ?? null;
+    if (options?.batchId) {
+      const batchStartedAt = await AccessReviewRepository.findSyncBatchStartedAt(
+        options.batchId,
+        connection,
+      );
+      if (batchStartedAt) {
+        effectiveSyncTimestamp = batchStartedAt;
+      }
+    }
 
     let cycle = await AccessReviewRepository.findActiveCycleByQuarterYear({
       quarter,
@@ -248,25 +329,58 @@ export async function refreshReviewCycleFromSync(options?: {
     let createdCycle = false;
 
     if (!cycle) {
-      const cycleId = await AccessReviewRepository.createCycle(
+      // If a cycle already exists for this quarter/year (including COMPLETED),
+      // reuse it instead of creating a duplicate against unique key.
+      const existingCycle = await AccessReviewRepository.findCycleByQuarterYear(
         quarter,
         year,
-        startDate,
-        dueDate,
-        0,
         connection,
       );
-      createdCycle = true;
-      cycle = await AccessReviewRepository.findCycleById(cycleId, connection);
-      if (!cycle) {
-        throw new Error('Failed to load access review cycle after creation');
+      if (existingCycle) {
+        cycle = existingCycle;
+      } else {
+        const cycleId = await AccessReviewRepository.createCycle(
+          quarter,
+          year,
+          startDate,
+          dueDate,
+          0,
+          connection,
+        );
+        createdCycle = true;
+        cycle = await AccessReviewRepository.findCycleById(cycleId, connection);
+        if (!cycle) {
+          throw new Error('Failed to load access review cycle after creation');
+        }
       }
     }
 
-    const reviewCandidates = await buildReviewCandidates(connection, {
-      syncTimestamp: options?.syncTimestamp ?? null,
+    const riskDetections = await buildRiskDetectionCandidates(connection, {
+      syncTimestamp: effectiveSyncTimestamp,
       citizenId: options?.citizenId ?? null,
     });
+    await syncGlobalReviewQueue(connection, riskDetections, {
+      batchId: options?.batchId ?? null,
+      citizenId: options?.citizenId ?? null,
+    });
+
+    // Completed cycle for current quarter should remain immutable in post-sync refresh.
+    if (cycle.status === ReviewCycleStatus.COMPLETED) {
+      await connection.commit();
+      return {
+        cycleId: cycle.cycle_id,
+        createdCycle: false,
+        insertedItems: 0,
+      };
+    }
+
+    const reviewCandidates = riskDetections.map((user) => ({
+      id: Number(user.id),
+      role: String(user.role ?? ''),
+      employee_status: user.employee_status ?? null,
+      last_login_at: user.last_login_at ?? null,
+      reviewNote: String(user.reviewNote ?? ''),
+    }));
 
     let insertedItems = 0;
     for (const user of reviewCandidates) {
@@ -323,10 +437,11 @@ export async function refreshReviewCycleFromSync(options?: {
         total_users: totalUsers,
         quarter,
         year,
-        sync_timestamp: options?.syncTimestamp
-          ? options.syncTimestamp.toISOString()
+        sync_timestamp: effectiveSyncTimestamp
+          ? effectiveSyncTimestamp.toISOString()
           : null,
         target_citizen_id: options?.citizenId ?? null,
+        sync_batch_id: options?.batchId ?? null,
       },
     });
 
@@ -372,6 +487,57 @@ function hasRoleMismatchFromReviewNote(
   if (value === 'yes') return true;
   if (value === 'no') return false;
   return null;
+}
+
+export type AccessReviewQueueListInput = {
+  page?: number;
+  limit?: number;
+  status?: AccessReviewQueueStatus;
+  reasonCode?: string;
+  currentRole?: string;
+  isActive?: number;
+  detectedFrom?: string;
+  detectedTo?: string;
+  batchId?: number;
+  search?: string;
+};
+
+export type AccessReviewQueueResolveAction = "RESOLVE" | "DISMISS";
+
+export async function getAccessReviewQueue(input?: AccessReviewQueueListInput) {
+  return AccessReviewRepository.getReviewQueue(input);
+}
+
+export async function getAccessReviewQueueEvents(queueId: number, limit?: number) {
+  return AccessReviewRepository.getReviewQueueEvents(queueId, limit);
+}
+
+export async function resolveAccessReviewQueueItem(params: {
+  queueId: number;
+  action: AccessReviewQueueResolveAction;
+  actorId: number;
+  note?: string | null;
+}): Promise<void> {
+  const connection = await AccessReviewRepository.getConnection();
+  try {
+    await connection.beginTransaction();
+    await AccessReviewRepository.resolveQueueItem({
+      queueId: params.queueId,
+      status:
+        params.action === "DISMISS"
+          ? AccessReviewQueueStatus.DISMISSED
+          : AccessReviewQueueStatus.RESOLVED,
+      actorId: params.actorId,
+      note: params.note ?? null,
+      conn: connection,
+    });
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 export async function getReviewItems(

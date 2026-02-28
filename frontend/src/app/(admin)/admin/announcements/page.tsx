@@ -1,20 +1,21 @@
-"use client";
+'use client';
 
-import { useMemo, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { useMemo, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from '@/components/ui/select';
 import {
   Table,
   TableBody,
@@ -22,7 +23,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from "@/components/ui/table";
+} from '@/components/ui/table';
 import {
   Dialog,
   DialogContent,
@@ -30,7 +31,7 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from '@/components/ui/dialog';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,7 +39,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from '@/components/ui/dropdown-menu';
 import {
   Plus,
   MoreHorizontal,
@@ -48,19 +49,22 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  EyeOff
-} from "lucide-react";
-import { toast } from "sonner";
+  EyeOff,
+  Inbox,
+} from 'lucide-react';
+import { toast } from 'sonner';
 import {
   useActivateAnnouncement,
   useAllAnnouncements,
   useCreateAnnouncement,
   useDeactivateAnnouncement,
   useUpdateAnnouncement,
-} from "@/features/announcement/hooks";
-import type { AnnouncementPriority } from "@/features/announcement/api";
-import { Switch } from "@/components/ui/switch";
-import { formatThaiDate as formatThaiDateValue } from "@/shared/utils/thai-locale";
+} from '@/features/announcement/hooks';
+import type { AnnouncementPriority } from '@/features/announcement/api';
+import { Switch } from '@/components/ui/switch';
+import { formatThaiDate as formatThaiDateValue } from '@/shared/utils/thai-locale';
+import { ROLE_OPTIONS } from '@/shared/utils/role-label';
+import { cn } from '@/lib/utils';
 
 // --- Types ---
 type FormState = {
@@ -72,40 +76,46 @@ type FormState = {
 };
 
 // --- Constants ---
-const ROLE_SCOPE = [
-  "USER", "HEAD_WARD", "HEAD_DEPT", "PTS_OFFICER",
-  "HEAD_HR", "HEAD_FINANCE", "FINANCE_OFFICER", "DIRECTOR", "ADMIN",
-];
+const ROLE_SCOPE = ROLE_OPTIONS;
 
 // --- Helpers ---
 const toDateInput = (value?: string | null) => {
-  if (!value) return "";
+  if (!value) return '';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
+  if (Number.isNaN(date.getTime())) return '';
   return date.toISOString().slice(0, 10);
 };
 
 const toThaiDate = (value?: string | null) => {
+  if (!value) return '-';
   return formatThaiDateValue(value);
 };
 
 const getPriorityBadgeColor = (priority: string) => {
-    switch (priority) {
-        case "HIGH": return "bg-red-100 text-red-700 border-red-200";
-        case "NORMAL": return "bg-blue-50 text-blue-700 border-blue-200";
-        case "LOW": return "bg-slate-100 text-slate-600 border-slate-200";
-        default: return "bg-slate-50 text-slate-700";
-    }
-}
+  switch (priority) {
+    case 'HIGH':
+      return 'bg-red-100 text-red-700 border-red-200';
+    case 'NORMAL':
+      return 'bg-blue-50 text-blue-700 border-blue-200';
+    case 'LOW':
+      return 'bg-slate-100 text-slate-600 border-slate-200';
+    default:
+      return 'bg-slate-50 text-slate-700';
+  }
+};
 
 const getPriorityLabel = (priority: string) => {
-    switch (priority) {
-        case "HIGH": return "สำคัญมาก";
-        case "NORMAL": return "ทั่วไป";
-        case "LOW": return "แจ้งทราบ";
-        default: return priority;
-	}
-}
+  switch (priority) {
+    case 'HIGH':
+      return 'สำคัญมาก';
+    case 'NORMAL':
+      return 'ทั่วไป';
+    case 'LOW':
+      return 'แจ้งทราบ';
+    default:
+      return priority;
+  }
+};
 
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
@@ -124,11 +134,11 @@ export default function AnnouncementsPage() {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>({
-    title: "",
-    body: "",
-    priority: "NORMAL",
-    startAt: "",
-    endAt: "",
+    title: '',
+    body: '',
+    priority: 'NORMAL',
+    startAt: '',
+    endAt: '',
   });
 
   // --- Data Processing ---
@@ -143,15 +153,15 @@ export default function AnnouncementsPage() {
   const stats = useMemo(() => {
     const active = announcements.filter((a) => a.is_active).length;
     const inactive = announcements.length - active;
-    // Check if end_at is within next 7 days and is active
+
     const now = new Date();
     const nextWeek = new Date();
     nextWeek.setDate(now.getDate() + 7);
 
     const expiringSoon = announcements.filter((a) => {
-        if (!a.is_active || !a.end_at) return false;
-        const endDate = new Date(a.end_at);
-        return endDate > now && endDate <= nextWeek;
+      if (!a.is_active || !a.end_at) return false;
+      const endDate = new Date(a.end_at);
+      return endDate > now && endDate <= nextWeek;
     }).length;
 
     return { active, inactive, expiringSoon };
@@ -160,11 +170,11 @@ export default function AnnouncementsPage() {
   // --- Handlers ---
   const resetForm = () =>
     setForm({
-      title: "",
-      body: "",
-      priority: "NORMAL",
-      startAt: "",
-      endAt: "",
+      title: '',
+      body: '',
+      priority: 'NORMAL',
+      startAt: '',
+      endAt: '',
     });
 
   const openEdit = (item: (typeof announcements)[number]) => {
@@ -185,53 +195,53 @@ export default function AnnouncementsPage() {
     body: form.body.trim(),
     priority: form.priority,
     is_active: isActive,
-    roles: ROLE_SCOPE, // Default to all roles for now
+    roles: ROLE_SCOPE,
     start_at: form.startAt ? new Date(`${form.startAt}T00:00:00.000Z`).toISOString() : undefined,
     end_at: form.endAt ? new Date(`${form.endAt}T23:59:59.000Z`).toISOString() : undefined,
   });
 
-  const handleCreate = async () => {
-    setFormError(null);
+  const validateForm = () => {
     if (!form.title.trim() || !form.body.trim()) {
-      setFormError("กรุณากรอกหัวข้อและเนื้อหาประกาศ");
-      return;
+      setFormError('กรุณากรอกหัวข้อและเนื้อหาประกาศให้ครบถ้วน');
+      return false;
     }
     if (form.startAt && form.endAt && form.startAt > form.endAt) {
-      setFormError("วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด");
-      return;
+      setFormError('วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด');
+      return false;
     }
+    return true;
+  };
+
+  const handleCreate = async () => {
+    setFormError(null);
+    if (!validateForm()) return;
+
     try {
       await createMutation.mutateAsync(buildPayload(true));
-      toast.success("สร้างประกาศสำเร็จ");
+      toast.success('สร้างประกาศสำเร็จ');
       setIsCreateOpen(false);
       resetForm();
     } catch (error: unknown) {
-      setFormError(getErrorMessage(error, "ไม่สามารถสร้างประกาศได้"));
+      setFormError(getErrorMessage(error, 'ไม่สามารถสร้างประกาศได้'));
     }
   };
 
   const handleSaveEdit = async () => {
     if (!editingId) return;
     setFormError(null);
-    if (!form.title.trim() || !form.body.trim()) {
-      setFormError("กรุณากรอกหัวข้อและเนื้อหาประกาศ");
-      return;
-    }
-    if (form.startAt && form.endAt && form.startAt > form.endAt) {
-      setFormError("วันที่เริ่มต้นต้องไม่มากกว่าวันที่สิ้นสุด");
-      return;
-    }
+    if (!validateForm()) return;
+
     try {
       await updateMutation.mutateAsync({
         id: editingId,
         payload: buildPayload(true),
       });
-      toast.success("บันทึกการแก้ไขสำเร็จ");
+      toast.success('บันทึกการแก้ไขสำเร็จ');
       setIsEditOpen(false);
       setEditingId(null);
       resetForm();
     } catch (error: unknown) {
-      setFormError(getErrorMessage(error, "ไม่สามารถบันทึกข้อมูลได้"));
+      setFormError(getErrorMessage(error, 'ไม่สามารถบันทึกข้อมูลได้'));
     }
   };
 
@@ -239,99 +249,120 @@ export default function AnnouncementsPage() {
     try {
       if (currentActive) {
         await deactivateMutation.mutateAsync(id);
-        toast.success("ปิดการแสดงประกาศแล้ว");
+        toast.success('ปิดการแสดงประกาศแล้ว');
       } else {
         await activateMutation.mutateAsync(id);
-        toast.success("เปิดการแสดงประกาศแล้ว");
+        toast.success('เปิดการแสดงประกาศแล้ว');
       }
     } catch {
-      toast.error("ไม่สามารถเปลี่ยนสถานะได้");
+      toast.error('ไม่สามารถเปลี่ยนสถานะได้');
     }
   };
 
-  const announcementForm = (
-    <div className="space-y-4 py-2">
-        {formError && (
-            <Alert variant="destructive">
-            <AlertCircle className="h-4 w-4" />
-            <AlertDescription>{formError}</AlertDescription>
-            </Alert>
-        )}
+  // Shared Form Component Render
+  const renderFormContent = () => (
+    <div className="space-y-5 py-4">
+      {formError && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{formError}</AlertDescription>
+        </Alert>
+      )}
+
+      <div className="space-y-4">
         <div className="space-y-2">
-            <Label htmlFor="title">หัวข้อประกาศ <span className="text-red-500">*</span></Label>
-            <Input
+          <Label htmlFor="title" className="text-foreground">
+            หัวข้อประกาศ <span className="text-destructive">*</span>
+          </Label>
+          <Input
             id="title"
             value={form.title}
             onChange={(e) => {
-                setForm((prev) => ({ ...prev, title: e.target.value }));
-                setFormError(null);
+              setForm((prev) => ({ ...prev, title: e.target.value }));
+              if (formError) setFormError(null);
             }}
-            placeholder="เช่น ปิดปรับปรุงระบบ, แจ้งกำหนดการส่งเอกสาร"
-            />
+            placeholder="เช่น แจ้งปิดปรับปรุงระบบชั่วคราว"
+          />
         </div>
+
         <div className="space-y-2">
-            <Label htmlFor="body">เนื้อหา <span className="text-red-500">*</span></Label>
-            <Textarea
+          <Label htmlFor="body" className="text-foreground">
+            เนื้อหา <span className="text-destructive">*</span>
+          </Label>
+          <Textarea
             id="body"
-            rows={4}
+            rows={5}
             value={form.body}
             onChange={(e) => {
-                setForm((prev) => ({ ...prev, body: e.target.value }));
-                setFormError(null);
+              setForm((prev) => ({ ...prev, body: e.target.value }));
+              if (formError) setFormError(null);
             }}
-            placeholder="รายละเอียดของประกาศ..."
+            placeholder="รายละเอียดและวัตถุประสงค์ของประกาศ..."
+            className="resize-none"
+          />
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="priority" className="text-foreground">
+              ระดับความสำคัญ
+            </Label>
+            <Select
+              value={form.priority}
+              onValueChange={(value) =>
+                setForm((prev) => ({ ...prev, priority: value as AnnouncementPriority }))
+              }
+            >
+              <SelectTrigger id="priority">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="LOW">ต่ำ (แจ้งทราบ)</SelectItem>
+                <SelectItem value="NORMAL">ปกติ (ทั่วไป)</SelectItem>
+                <SelectItem value="HIGH">สูง (สำคัญมาก)</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 p-4 bg-muted/30 border rounded-lg">
+          <div className="space-y-2">
+            <Label htmlFor="startAt" className="text-xs text-muted-foreground">
+              วันที่เริ่มแสดง (เว้นว่างเพื่อแสดงทันที)
+            </Label>
+            <Input
+              id="startAt"
+              type="date"
+              value={form.startAt}
+              onChange={(e) => setForm((prev) => ({ ...prev, startAt: e.target.value }))}
             />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="endAt" className="text-xs text-muted-foreground">
+              วันที่สิ้นสุด (เว้นว่างเพื่อแสดงตลอด)
+            </Label>
+            <Input
+              id="endAt"
+              type="date"
+              value={form.endAt}
+              onChange={(e) => setForm((prev) => ({ ...prev, endAt: e.target.value }))}
+            />
+          </div>
         </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-                <Label htmlFor="priority">ระดับความสำคัญ</Label>
-                <Select
-                    value={form.priority}
-                    onValueChange={(value) => setForm((prev) => ({ ...prev, priority: value as AnnouncementPriority }))}
-                >
-                    <SelectTrigger id="priority">
-                    <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                    <SelectItem value="LOW">ต่ำ (แจ้งทราบ)</SelectItem>
-                    <SelectItem value="NORMAL">ปกติ (ทั่วไป)</SelectItem>
-                    <SelectItem value="HIGH">สูง (สำคัญมาก)</SelectItem>
-                    </SelectContent>
-                </Select>
-            </div>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-2">
-                <Label htmlFor="startAt">วันที่เริ่มแสดง (Optional)</Label>
-                <Input
-                    id="startAt"
-                    type="date"
-                    value={form.startAt}
-                    onChange={(e) => setForm((prev) => ({ ...prev, startAt: e.target.value }))}
-                />
-            </div>
-            <div className="space-y-2">
-                <Label htmlFor="endAt">วันที่สิ้นสุด (Optional)</Label>
-                <Input
-                    id="endAt"
-                    type="date"
-                    value={form.endAt}
-                    onChange={(e) => setForm((prev) => ({ ...prev, endAt: e.target.value }))}
-                />
-            </div>
-        </div>
+      </div>
     </div>
   );
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
-
+    <div className="p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">จัดการประกาศ (Announcements)</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Megaphone className="h-6 w-6 text-primary" /> จัดการประกาศ
+          </h1>
           <p className="text-muted-foreground mt-1">
-            สร้างข่าวสารและแจ้งเตือนไปยังผู้ใช้งานในระบบ
+            สร้างและจัดการข้อมูลแจ้งเตือน เพื่อสื่อสารไปยังบุคลากรในระบบ
           </p>
         </div>
         <Button
@@ -340,7 +371,7 @@ export default function AnnouncementsPage() {
             setFormError(null);
             setIsCreateOpen(true);
           }}
-          className="gap-2"
+          className="gap-2 shadow-sm"
         >
           <Plus className="h-4 w-4" />
           สร้างประกาศใหม่
@@ -354,9 +385,9 @@ export default function AnnouncementsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">กำลังแสดงผล (Active)</p>
-                <p className="text-2xl font-bold text-emerald-600">{stats.active}</p>
+                <p className="text-2xl font-bold text-emerald-600 mt-1">{stats.active}</p>
               </div>
-              <div className="h-10 w-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+              <div className="h-10 w-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600 border border-emerald-100">
                 <CheckCircle2 className="h-5 w-5" />
               </div>
             </div>
@@ -367,22 +398,41 @@ export default function AnnouncementsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">ปิดการแสดงผล (Inactive)</p>
-                <p className="text-2xl font-bold text-muted-foreground">{stats.inactive}</p>
+                <p className="text-2xl font-bold text-muted-foreground mt-1">{stats.inactive}</p>
               </div>
-              <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center text-muted-foreground">
+              <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center text-muted-foreground border border-border">
                 <EyeOff className="h-5 w-5" />
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card className="border-border shadow-sm">
+        <Card
+          className={cn(
+            'border-border shadow-sm transition-colors',
+            stats.expiringSoon > 0 && 'border-amber-200 bg-amber-50/30',
+          )}
+        >
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">ใกล้หมดอายุ (ใน 7 วัน)</p>
-                <p className={`text-2xl font-bold ${stats.expiringSoon > 0 ? "text-amber-600" : "text-muted-foreground"}`}>{stats.expiringSoon}</p>
+                <p
+                  className={cn(
+                    'text-2xl font-bold mt-1',
+                    stats.expiringSoon > 0 ? 'text-amber-600' : 'text-foreground',
+                  )}
+                >
+                  {stats.expiringSoon}
+                </p>
               </div>
-              <div className={`h-10 w-10 rounded-full flex items-center justify-center ${stats.expiringSoon > 0 ? "bg-amber-100 text-amber-600" : "bg-secondary text-muted-foreground"}`}>
+              <div
+                className={cn(
+                  'h-10 w-10 rounded-full flex items-center justify-center border',
+                  stats.expiringSoon > 0
+                    ? 'bg-amber-100 text-amber-600 border-amber-200'
+                    : 'bg-secondary text-muted-foreground border-border',
+                )}
+              >
                 <Clock className="h-5 w-5" />
               </div>
             </div>
@@ -393,39 +443,58 @@ export default function AnnouncementsPage() {
       {/* Announcements Table */}
       <Card className="border-border shadow-sm">
         <CardHeader className="border-b bg-muted/10 py-4 px-6">
-            <div className="flex items-center justify-between">
-                <CardTitle className="text-base font-semibold">รายการประกาศทั้งหมด</CardTitle>
-                <Badge variant="secondary" className="font-normal">{announcements.length} รายการ</Badge>
-            </div>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base font-semibold text-foreground">
+              รายการประกาศทั้งหมด
+            </CardTitle>
+            <Badge variant="secondary" className="font-normal">
+              {announcements.length} รายการ
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader className="bg-muted/30">
               <TableRow>
-                <TableHead className="w-[40%]">หัวข้อ / เนื้อหา</TableHead>
+                <TableHead className="w-[45%]">หัวข้อ / เนื้อหา</TableHead>
                 <TableHead>ช่วงเวลาแสดงผล</TableHead>
                 <TableHead>ความสำคัญ</TableHead>
                 <TableHead>สถานะ</TableHead>
-                <TableHead>วันที่สร้าง</TableHead>
                 <TableHead className="text-right">จัดการ</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 Array.from({ length: 3 }).map((_, i) => (
-                    <TableRow key={i}>
-                        <TableCell><div className="h-4 w-3/4 bg-muted animate-pulse rounded mb-2" /><div className="h-3 w-1/2 bg-muted animate-pulse rounded" /></TableCell>
-                        <TableCell><div className="h-4 w-24 bg-muted animate-pulse rounded" /></TableCell>
-                        <TableCell><div className="h-5 w-16 bg-muted animate-pulse rounded" /></TableCell>
-                        <TableCell><div className="h-5 w-12 bg-muted animate-pulse rounded" /></TableCell>
-                        <TableCell><div className="h-4 w-20 bg-muted animate-pulse rounded" /></TableCell>
-                        <TableCell className="text-right"><div className="h-8 w-8 bg-muted animate-pulse rounded ml-auto" /></TableCell>
-                    </TableRow>
+                  <TableRow key={i}>
+                    <TableCell>
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-[250px]" />
+                        <Skeleton className="h-3 w-[350px]" />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-2">
+                        <Skeleton className="h-3 w-[100px]" />
+                        <Skeleton className="h-3 w-[100px]" />
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-5 w-[60px] rounded-full" />
+                    </TableCell>
+                    <TableCell>
+                      <Skeleton className="h-5 w-[80px]" />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Skeleton className="h-8 w-8 ml-auto rounded-md" />
+                    </TableCell>
+                  </TableRow>
                 ))
               ) : announcements.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                    ยังไม่มีประกาศในระบบ
+                  <TableCell colSpan={5} className="h-48 text-center text-muted-foreground">
+                    <Inbox className="h-10 w-10 mx-auto text-muted-foreground/30 mb-3" />
+                    <p>ยังไม่มีประกาศในระบบ</p>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -433,55 +502,85 @@ export default function AnnouncementsPage() {
                   <TableRow key={announcement.id} className="group hover:bg-muted/30">
                     <TableCell>
                       <div className="flex items-start gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary mt-0.5">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary mt-0.5 border border-primary/20">
                           <Megaphone className="h-4 w-4" />
                         </div>
-                        <div className="space-y-1">
-                          <p className="font-medium text-sm text-foreground line-clamp-1">{announcement.title}</p>
-                          <p className="text-xs text-muted-foreground line-clamp-1 max-w-[300px]">
+                        <div className="space-y-1 pr-4">
+                          <p
+                            className="font-medium text-sm text-foreground line-clamp-1"
+                            title={announcement.title}
+                          >
+                            {announcement.title}
+                          </p>
+                          <p
+                            className="text-xs text-muted-foreground line-clamp-2"
+                            title={announcement.body}
+                          >
                             {announcement.body}
                           </p>
                         </div>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {toThaiDate(announcement.start_at)}</span>
-                        <span className="ml-4">ถึง {toThaiDate(announcement.end_at)}</span>
+                      <div className="flex flex-col gap-1.5 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="h-3.5 w-3.5" />
+                          <span>เริ่ม: {toThaiDate(announcement.start_at)}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 ml-5">
+                          <span className="text-border">|</span>
+                          <span>สิ้นสุด: {toThaiDate(announcement.end_at)}</span>
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className={`font-normal ${getPriorityBadgeColor(announcement.priority)}`}>
+                      <Badge
+                        variant="outline"
+                        className={`font-normal px-2 py-0 h-5 ${getPriorityBadgeColor(announcement.priority)}`}
+                      >
                         {getPriorityLabel(announcement.priority)}
                       </Badge>
                     </TableCell>
                     <TableCell>
-                        <div className="flex items-center gap-2">
-                            <Switch
-                                checked={announcement.is_active}
-                                onCheckedChange={() => handleToggleActive(announcement.id, announcement.is_active)}
-                                disabled={activateMutation.isPending || deactivateMutation.isPending}
-                            />
-                            <span className={`text-xs ${announcement.is_active ? "text-emerald-600" : "text-muted-foreground"}`}>
-                                {announcement.is_active ? "Active" : "Inactive"}
-                            </span>
-                        </div>
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                        {toThaiDate(announcement.created_at)}
+                      <div className="flex items-center gap-2">
+                        <Switch
+                          checked={announcement.is_active}
+                          onCheckedChange={() =>
+                            handleToggleActive(announcement.id, announcement.is_active)
+                          }
+                          disabled={activateMutation.isPending || deactivateMutation.isPending}
+                        />
+                        <span
+                          className={cn(
+                            'text-xs font-medium w-[50px]',
+                            announcement.is_active ? 'text-emerald-600' : 'text-muted-foreground',
+                          )}
+                        >
+                          {announcement.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                          >
                             <MoreHorizontal className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>ตัวเลือก</DropdownMenuLabel>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuLabel className="text-xs text-muted-foreground">
+                            ตัวเลือกจัดการ
+                          </DropdownMenuLabel>
                           <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => openEdit(announcement)} className="cursor-pointer">
-                            <Pencil className="mr-2 h-4 w-4 text-muted-foreground" /> แก้ไขข้อมูล
+                          <DropdownMenuItem
+                            onClick={() => openEdit(announcement)}
+                            className="cursor-pointer"
+                          >
+                            <Pencil className="mr-2 h-4 w-4" /> แก้ไขประกาศ
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -499,13 +598,17 @@ export default function AnnouncementsPage() {
         <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>
             <DialogTitle>สร้างประกาศใหม่</DialogTitle>
-            <DialogDescription>เพิ่มข่าวสารหรือแจ้งเตือนเพื่อให้ผู้ใช้งานรับทราบ</DialogDescription>
+            <DialogDescription>
+              เพิ่มข่าวสารหรือแจ้งเตือนเพื่อให้ผู้ใช้งานในระบบรับทราบ
+            </DialogDescription>
           </DialogHeader>
-          {announcementForm}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>ยกเลิก</Button>
+          {renderFormContent()}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setIsCreateOpen(false)}>
+              ยกเลิก
+            </Button>
             <Button onClick={handleCreate} disabled={createMutation.isPending}>
-                {createMutation.isPending ? "กำลังสร้าง..." : "ยืนยันการสร้าง"}
+              {createMutation.isPending ? 'กำลังบันทึก...' : 'ยืนยันการสร้าง'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -516,18 +619,19 @@ export default function AnnouncementsPage() {
         <DialogContent className="sm:max-w-[550px]">
           <DialogHeader>
             <DialogTitle>แก้ไขประกาศ</DialogTitle>
-            <DialogDescription>ปรับปรุงข้อมูลประกาศที่มีอยู่เดิม</DialogDescription>
+            <DialogDescription>ปรับปรุงข้อมูลรายละเอียดของประกาศที่มีอยู่เดิม</DialogDescription>
           </DialogHeader>
-          {announcementForm}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditOpen(false)}>ยกเลิก</Button>
+          {renderFormContent()}
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setIsEditOpen(false)}>
+              ยกเลิก
+            </Button>
             <Button onClick={handleSaveEdit} disabled={updateMutation.isPending}>
-                {updateMutation.isPending ? "กำลังบันทึก..." : "บันทึกการเปลี่ยนแปลง"}
+              {updateMutation.isPending ? 'กำลังบันทึก...' : 'บันทึกการเปลี่ยนแปลง'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
     </div>
   );
 }

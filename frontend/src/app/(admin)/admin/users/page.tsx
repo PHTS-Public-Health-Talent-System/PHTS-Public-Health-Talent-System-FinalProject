@@ -49,6 +49,10 @@ import {
   Eye,
   Filter,
   AlertCircle,
+  Users,
+  ChevronLeft,
+  ChevronRight,
+  ArrowRight,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -60,19 +64,7 @@ import {
 } from '@/features/system/hooks';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
-
-// --- Constants ---
-const roleOptions = [
-  'USER',
-  'HEAD_WARD',
-  'HEAD_DEPT',
-  'PTS_OFFICER',
-  'HEAD_HR',
-  'HEAD_FINANCE',
-  'FINANCE_OFFICER',
-  'DIRECTOR',
-  'ADMIN',
-];
+import { getRoleLabel, ROLE_OPTIONS } from '@/shared/utils/role-label';
 
 type SystemUserRow = {
   id: number;
@@ -82,7 +74,7 @@ type SystemUserRow = {
   last_login_at: string | null;
   first_name: string | null;
   last_name: string | null;
-  avatar_url?: string; // Optional: if available
+  avatar_url?: string;
 };
 
 // --- Helpers ---
@@ -101,11 +93,12 @@ const getRoleBadgeColor = (role: string) => {
 const fullName = (u: SystemUserRow) =>
   [u.first_name ?? '', u.last_name ?? ''].join(' ').trim() || u.citizen_id;
 
+// UX Tweak: Simplified initials for Thai names to prevent weird vowel combinations
 const getInitials = (name: string) => {
   const parts = name.split(' ').filter(Boolean);
   if (parts.length === 0) return '?';
-  if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
-  return (parts[0][0] + parts[1][0]).toUpperCase();
+  // Use first character of first name, and first character of last name (if exists)
+  return (parts[0].charAt(0) + (parts[1]?.charAt(0) || '')).toUpperCase();
 };
 
 export default function UsersPage() {
@@ -139,7 +132,7 @@ export default function UsersPage() {
     const timer = window.setTimeout(() => {
       setSearchQuery(searchInput.trim());
       setPage(1);
-    }, 400); // Increased debounce slightly
+    }, 400);
     return () => window.clearTimeout(timer);
   }, [searchInput]);
 
@@ -185,8 +178,9 @@ export default function UsersPage() {
       setIsRoleDialogOpen(false);
       setSelectedUser(null);
     } catch {
-      setActionError('ไม่สามารถอัปเดตบทบาทได้');
-      toast.error('ไม่สามารถอัปเดตบทบาทได้');
+      const msg = 'ไม่สามารถอัปเดตบทบาทได้ กรุณาลองอีกครั้ง';
+      setActionError(msg);
+      toast.error(msg);
     }
   };
 
@@ -204,8 +198,9 @@ export default function UsersPage() {
       toast.success(isActive ? 'ระงับการใช้งานบัญชีแล้ว' : 'เปิดใช้งานบัญชีแล้ว');
       usersQuery.refetch();
     } catch {
-      setActionError('ไม่สามารถเปลี่ยนสถานะผู้ใช้ได้');
-      toast.error('ไม่สามารถเปลี่ยนสถานะผู้ใช้ได้');
+      const msg = 'ไม่สามารถเปลี่ยนสถานะผู้ใช้ได้';
+      setActionError(msg);
+      toast.error(msg);
     }
   };
 
@@ -214,14 +209,14 @@ export default function UsersPage() {
     const promise = triggerSync.mutateAsync();
     toast.promise(promise, {
       loading: 'กำลังซิงค์ข้อมูลจาก HRMS...',
-      success: 'ซิงค์ข้อมูลสำเร็จ',
+      success: 'ซิงค์ข้อมูลระบบสำเร็จ',
       error: 'การซิงค์ล้มเหลว',
     });
     try {
       await promise;
       usersQuery.refetch();
     } catch {
-      setActionError('การซิงค์ข้อมูลล้มเหลว กรุณาลองใหม่อีกครั้ง');
+      setActionError('การซิงค์ข้อมูลล้มเหลว ระบบอาจไม่สามารถเชื่อมต่อ HRMS ได้ชั่วคราว');
     }
   };
 
@@ -229,25 +224,25 @@ export default function UsersPage() {
     setActionError(null);
     const promise = triggerUserSync.mutateAsync(userId);
     toast.promise(promise, {
-      loading: 'กำลังซิงค์ข้อมูลผู้ใช้...',
-      success: 'ซิงค์ข้อมูลผู้ใช้สำเร็จ',
+      loading: 'กำลังอัปเดตข้อมูลผู้ใช้...',
+      success: 'อัปเดตข้อมูลผู้ใช้สำเร็จ',
       error: 'การซิงค์ล้มเหลว',
     });
     try {
       await promise;
       usersQuery.refetch();
     } catch {
-      setActionError('การซิงค์ข้อมูลผู้ใช้ล้มเหลว กรุณาลองใหม่อีกครั้ง');
+      setActionError('การอัปเดตข้อมูลผู้ใช้รายนี้ล้มเหลว');
     }
   };
 
   return (
-    <div className="p-6 lg:p-8 space-y-6">
+    <div className="p-6 lg:p-8 space-y-6 max-w-[1400px] mx-auto">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            จัดการผู้ใช้
+          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
+            <Users className="h-6 w-6 text-primary" /> จัดการผู้ใช้ (User Management)
           </h1>
           <p className="text-muted-foreground mt-1">
             ค้นหา ตรวจสอบ และกำหนดสิทธิ์การเข้าถึงของผู้ใช้งานในระบบ
@@ -257,10 +252,10 @@ export default function UsersPage() {
           variant="outline"
           onClick={handleSync}
           disabled={triggerSync.isPending}
-          className="gap-2"
+          className="gap-2 bg-background shadow-sm"
         >
-          <RefreshCw className={`h-4 w-4 ${triggerSync.isPending ? 'animate-spin' : ''}`} />
-          ซิงค์ HRMS
+          <RefreshCw className={triggerSync.isPending ? 'animate-spin' : ''} size={16} />
+          ซิงค์ HRMS ทั้งระบบ
         </Button>
       </div>
 
@@ -274,17 +269,17 @@ export default function UsersPage() {
       {/* Filters & Actions */}
       <Card className="border-border shadow-sm">
         <CardContent className="p-4 space-y-4">
-          <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex flex-col lg:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="ค้นหาด้วยชื่อ หรือเลขบัตรประชาชน..."
+                placeholder="ค้นหาด้วยชื่อ สกุล หรือเลขบัตรประชาชน..."
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
-                className="pl-9 h-10 bg-background border-input"
+                className="pl-9 h-10 bg-background"
               />
             </div>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 sm:gap-3 flex-wrap lg:flex-nowrap">
               <Select
                 value={roleFilter}
                 onValueChange={(v) => {
@@ -292,7 +287,7 @@ export default function UsersPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-[180px] h-10 bg-background border-input">
+                <SelectTrigger className="w-full sm:w-[180px] h-10 bg-background">
                   <div className="flex items-center gap-2">
                     <Shield className="h-3.5 w-3.5 text-muted-foreground" />
                     <SelectValue placeholder="บทบาท" />
@@ -300,9 +295,9 @@ export default function UsersPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">ทุกบทบาท</SelectItem>
-                  {roleOptions.map((role) => (
+                  {ROLE_OPTIONS.map((role) => (
                     <SelectItem key={role} value={role}>
-                      {role}
+                      {getRoleLabel(role)}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -315,7 +310,7 @@ export default function UsersPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger className="w-[190px] h-10 bg-background border-input">
+                <SelectTrigger className="w-full sm:w-[180px] h-10 bg-background">
                   <div className="flex items-center gap-2">
                     <Filter className="h-3.5 w-3.5 text-muted-foreground" />
                     <SelectValue placeholder="สถานะ" />
@@ -333,24 +328,25 @@ export default function UsersPage() {
       </Card>
 
       {/* Users Table */}
-      <Card className="border-border shadow-sm overflow-hidden">
+      <Card className="border-border shadow-sm overflow-hidden flex flex-col">
         <CardHeader className="border-b bg-muted/10 py-4 px-6">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-semibold">รายการผู้ใช้งาน</CardTitle>
-            <Badge variant="secondary" className="font-normal">
+            <Badge variant="secondary" className="font-normal text-xs">
               {formatThaiNumber(totalRows)} รายการ
             </Badge>
           </div>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           <Table>
-            <TableHeader className="bg-muted/30">
+            <TableHeader className="bg-muted/30 whitespace-nowrap">
               <TableRow>
-                <TableHead className="w-[300px]">ผู้ใช้งาน</TableHead>
-                <TableHead>บทบาท</TableHead>
-                <TableHead>สถานะ</TableHead>
-                <TableHead>เข้าใช้งานล่าสุด</TableHead>
-                <TableHead className="text-right w-[80px]"></TableHead>
+                <TableHead className="w-[300px] min-w-[250px]">ผู้ใช้งาน</TableHead>
+                {/* Tweak: Adjusted min-w slightly to balance columns */}
+                <TableHead className="min-w-[120px]">บทบาท</TableHead>
+                <TableHead className="min-w-[100px]">สถานะ</TableHead>
+                <TableHead className="min-w-[150px]">เข้าใช้งานล่าสุด</TableHead>
+                <TableHead className="text-right w-[80px] sticky right-0 bg-muted/30 backdrop-blur-sm"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -360,30 +356,33 @@ export default function UsersPage() {
                     <TableCell>
                       <div className="flex items-center gap-3">
                         <Skeleton className="h-9 w-9 rounded-full" />
-                        <div className="space-y-1">
+                        <div className="space-y-2">
                           <Skeleton className="h-4 w-32" />
                           <Skeleton className="h-3 w-24" />
                         </div>
                       </div>
                     </TableCell>
                     <TableCell>
+                      <Skeleton className="h-5 w-24 rounded-full" />
+                    </TableCell>
+                    <TableCell>
                       <Skeleton className="h-5 w-20" />
                     </TableCell>
                     <TableCell>
-                      <Skeleton className="h-5 w-16" />
+                      <Skeleton className="h-4 w-28" />
                     </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-4 w-24" />
-                    </TableCell>
-                    <TableCell>
-                      <Skeleton className="h-8 w-8 ml-auto" />
+                    <TableCell className="text-right sticky right-0 bg-background">
+                      <Skeleton className="h-8 w-8 ml-auto rounded-md" />
                     </TableCell>
                   </TableRow>
                 ))
               ) : users.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="h-32 text-center text-muted-foreground">
-                    ไม่พบข้อมูลผู้ใช้งานที่ตรงกับเงื่อนไข
+                  <TableCell colSpan={5} className="h-48 text-center text-muted-foreground">
+                    <div className="flex flex-col items-center justify-center gap-2">
+                      <Users className="h-10 w-10 text-muted-foreground/30 mb-2" />
+                      <p>ไม่พบข้อมูลผู้ใช้งานที่ตรงกับเงื่อนไข</p>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -394,14 +393,19 @@ export default function UsersPage() {
                     <TableRow key={user.id} className="group hover:bg-muted/30">
                       <TableCell>
                         <div className="flex items-center gap-3">
-                          <Avatar className="h-9 w-9 border">
+                          <Avatar className="h-9 w-9 border shadow-sm">
                             <AvatarImage src={user.avatar_url} />
-                            <AvatarFallback className="text-xs bg-muted text-muted-foreground">
+                            <AvatarFallback className="text-xs bg-muted text-muted-foreground font-medium">
                               {getInitials(userName)}
                             </AvatarFallback>
                           </Avatar>
-                          <div className="flex flex-col">
-                            <span className="font-medium text-sm text-foreground">{userName}</span>
+                          <div className="flex flex-col max-w-[200px] sm:max-w-[300px]">
+                            <span
+                              className="font-medium text-sm text-foreground truncate"
+                              title={userName}
+                            >
+                              {userName}
+                            </span>
                             <span className="text-xs text-muted-foreground font-mono">
                               {user.citizen_id}
                             </span>
@@ -411,24 +415,24 @@ export default function UsersPage() {
                       <TableCell>
                         <Badge
                           variant="outline"
-                          className={`font-normal ${getRoleBadgeColor(user.role)}`}
+                          className={`font-normal whitespace-nowrap ${getRoleBadgeColor(user.role)}`}
                         >
-                          {user.role}
+                          {getRoleLabel(user.role)}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 whitespace-nowrap">
                           <div
                             className={`h-2 w-2 rounded-full ${isActive ? 'bg-emerald-500' : 'bg-slate-300'}`}
                           />
                           <span
-                            className={`text-sm ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}
+                            className={`text-xs font-medium ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}
                           >
                             {isActive ? 'ใช้งานอยู่' : 'ระงับ'}
                           </span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                         {user.last_login_at
                           ? formatThaiDateTime(user.last_login_at, {
                               dateStyle: 'medium',
@@ -436,19 +440,19 @@ export default function UsersPage() {
                             })
                           : 'ไม่เคยเข้าใช้งาน'}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right sticky right-0 bg-background group-hover:bg-muted/50 transition-colors">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                              className="h-8 w-8 text-muted-foreground md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                             >
                               <MoreHorizontal className="h-4 w-4" />
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuLabel>จัดการบัญชี</DropdownMenuLabel>
+                            <DropdownMenuLabel className="text-xs">จัดการบัญชี</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem asChild>
                               <Link href={`/admin/users/${user.id}`} className="cursor-pointer">
@@ -459,14 +463,16 @@ export default function UsersPage() {
                               onClick={() => handleChangeRole(user)}
                               className="cursor-pointer"
                             >
-                              <UserCog className="mr-2 h-4 w-4 text-muted-foreground" /> เปลี่ยนบทบาท
+                              <UserCog className="mr-2 h-4 w-4 text-muted-foreground" />{' '}
+                              เปลี่ยนบทบาท
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               onClick={() => handleSyncUser(user.id)}
                               disabled={triggerUserSync.isPending}
                               className="cursor-pointer"
                             >
-                              <RefreshCw className="mr-2 h-4 w-4 text-muted-foreground" /> ซิงค์ข้อมูล
+                              <RefreshCw className="mr-2 h-4 w-4 text-muted-foreground" />{' '}
+                              ซิงค์ดึงข้อมูลล่าสุด
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             <DropdownMenuItem
@@ -493,9 +499,13 @@ export default function UsersPage() {
         </CardContent>
 
         {/* Pagination Footer */}
-        <div className="border-t bg-muted/10 p-4 flex items-center justify-between">
+        <div className="border-t bg-muted/10 p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <span className="text-xs text-muted-foreground">
-            แสดง {startRow}-{endRow} จาก {totalRows}
+            แสดง{' '}
+            <span className="font-medium text-foreground">
+              {startRow}-{endRow}
+            </span>{' '}
+            จาก <span className="font-medium text-foreground">{totalRows}</span> รายการ
           </span>
           <div className="flex gap-2">
             <Button
@@ -503,18 +513,18 @@ export default function UsersPage() {
               size="sm"
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={currentPage <= 1 || usersQuery.isLoading}
-              className="h-8 text-xs bg-background"
+              className="h-8 text-xs bg-background gap-1 pl-2.5"
             >
-              ย้อนกลับ
+              <ChevronLeft className="h-3.5 w-3.5" /> ก่อนหน้า
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={currentPage >= totalPages || usersQuery.isLoading}
-              className="h-8 text-xs bg-background"
+              className="h-8 text-xs bg-background gap-1 pr-2.5"
             >
-              ถัดไป
+              ถัดไป <ChevronRight className="h-3.5 w-3.5" />
             </Button>
           </div>
         </div>
@@ -524,42 +534,77 @@ export default function UsersPage() {
       <Dialog open={isRoleDialogOpen} onOpenChange={setIsRoleDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle>เปลี่ยนสิทธิ์การใช้งาน</DialogTitle>
-            <DialogDescription>
-              กำหนดระดับสิทธิ์ใหม่ให้กับ{' '}
-              <span className="font-medium text-foreground">
-                {selectedUser ? fullName(selectedUser) : ''}
-              </span>
-            </DialogDescription>
+            <DialogTitle>เปลี่ยนบทบาท (Role)</DialogTitle>
+            <DialogDescription>ปรับเปลี่ยนระดับสิทธิ์การเข้าถึงระบบของพนักงาน</DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <div className="space-y-2">
-              <Label htmlFor="role-select">เลือกบทบาทใหม่</Label>
-              <Select value={newRole} onValueChange={setNewRole}>
-                <SelectTrigger id="role-select">
-                  <SelectValue placeholder="เลือกบทบาท" />
-                </SelectTrigger>
-                <SelectContent>
-                  {roleOptions.map((role) => (
-                    <SelectItem key={role} value={role}>
-                      {role}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+
+          {selectedUser && (
+            <div className="py-4 space-y-5">
+              <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg border">
+                <Avatar className="h-10 w-10 border shadow-sm">
+                  <AvatarImage src={selectedUser.avatar_url} />
+                  <AvatarFallback className="text-xs">
+                    {getInitials(fullName(selectedUser))}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <p className="text-sm font-semibold">{fullName(selectedUser)}</p>
+                  <p className="text-xs text-muted-foreground font-mono">
+                    {selectedUser.citizen_id}
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {/* Visual Context: Current vs New Role */}
+                <div className="flex items-center justify-between text-sm px-1">
+                  <span className="text-muted-foreground">บทบาทปัจจุบัน</span>
+                  <Badge
+                    variant="outline"
+                    className={`font-normal ${getRoleBadgeColor(selectedUser.role)}`}
+                  >
+                    {getRoleLabel(selectedUser.role)}
+                  </Badge>
+                </div>
+
+                <div className="flex justify-center text-muted-foreground/50">
+                  <ArrowRight className="h-4 w-4 rotate-90 sm:rotate-0" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="role-select">เลือกบทบาทใหม่</Label>
+                  <Select value={newRole} onValueChange={setNewRole}>
+                    <SelectTrigger id="role-select" className="w-full">
+                      <SelectValue placeholder="เลือกบทบาท" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {ROLE_OPTIONS.map((role) => (
+                        <SelectItem key={role} value={role}>
+                          {getRoleLabel(role)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
             </div>
-          </div>
-          <DialogFooter>
+          )}
+
+          <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setIsRoleDialogOpen(false)}>
               ยกเลิก
             </Button>
-            <Button onClick={confirmChangeRole} disabled={updateRole.isPending} className="gap-2">
+            <Button
+              onClick={confirmChangeRole}
+              disabled={updateRole.isPending || newRole === selectedUser?.role}
+              className="gap-2"
+            >
               {updateRole.isPending ? (
                 <RefreshCw className="h-4 w-4 animate-spin" />
               ) : (
                 <UserCog className="h-4 w-4" />
               )}
-              บันทึกการเปลี่ยนแปลง
+              บันทึกสิทธิ์
             </Button>
           </DialogFooter>
         </DialogContent>

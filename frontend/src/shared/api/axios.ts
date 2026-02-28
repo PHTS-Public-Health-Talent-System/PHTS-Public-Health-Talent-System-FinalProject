@@ -23,7 +23,7 @@ type ValidationDetail = {
 
 type ApiErrorBody = {
   success?: boolean;
-  error?: string;
+  error?: unknown;
   message?: string;
   details?: ValidationDetail[];
 };
@@ -36,7 +36,17 @@ const toReadableErrorMessage = (body?: ApiErrorBody): string => {
     if (first?.message) return first.message;
   }
 
-  return body.error || body.message || 'เกิดข้อผิดพลาดจากการเชื่อมต่อระบบ';
+  if (typeof body.error === 'string' && body.error.trim().length > 0) {
+    return body.error;
+  }
+  if (body.error && typeof body.error === 'object') {
+    const nestedMessage = (body.error as { message?: unknown }).message;
+    if (typeof nestedMessage === 'string' && nestedMessage.trim().length > 0) {
+      return nestedMessage;
+    }
+  }
+
+  return body.message || 'เกิดข้อผิดพลาดจากการเชื่อมต่อระบบ';
 };
 
 // Interceptor: Attach Token

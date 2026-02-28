@@ -1,16 +1,6 @@
-const loadModule = async () => import("../services/sync.service.js");
+const loadModule = async () => import("../repositories/sync-query-builders.repository.js");
 
 describe("SyncService view usage", () => {
-  test("licenses query does not join users", async () => {
-    const mod = await loadModule();
-    const build = (mod as any).buildLicensesViewQuery ?? null;
-    const sql = build?.() ?? "";
-
-    expect(sql).toContain("FROM hrms_databases.tb_bp_license");
-    expect(sql).toContain("JOIN emp_profiles");
-    expect(sql).not.toContain("JOIN users");
-  });
-
   test("quotas query does not join users", async () => {
     const mod = await loadModule();
     const build = (mod as any).buildQuotasViewQuery ?? null;
@@ -31,13 +21,4 @@ describe("SyncService view usage", () => {
     expect(sql).not.toContain("JOIN users");
   });
 
-  test("movements query uses hrms table and does not join users", async () => {
-    const mod = await loadModule();
-    const build = (mod as any).buildMovementsViewQuery ?? null;
-    const sql = build?.() ?? "";
-
-    expect(sql).toContain("FROM hrms_databases.tb_bp_status");
-    expect(sql).toContain("JOIN emp_profiles");
-    expect(sql).not.toContain("JOIN users");
-  });
 });

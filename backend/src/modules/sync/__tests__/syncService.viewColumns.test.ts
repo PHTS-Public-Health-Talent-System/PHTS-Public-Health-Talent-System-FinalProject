@@ -1,7 +1,7 @@
-const loadModule = async () => import("../services/sync.service.js");
+const loadModule = async () => import("../repositories/sync-query-builders.repository.js");
 
 describe("SyncService view column lists", () => {
-  test("vw_hrms_employees columns are explicit", async () => {
+  test("hrms_employees columns are explicit", async () => {
     const mod = await loadModule();
     const cols = (mod as any).VIEW_EMPLOYEE_COLUMNS ?? null;
 
@@ -29,7 +29,7 @@ describe("SyncService view column lists", () => {
     ]);
   });
 
-  test("vw_hrms_support_staff columns are explicit", async () => {
+  test("hrms_support_staff columns are explicit", async () => {
     const mod = await loadModule();
     const cols = (mod as any).VIEW_SUPPORT_COLUMNS ?? null;
 
@@ -53,23 +53,4 @@ describe("SyncService view column lists", () => {
     ]);
   });
 
-  test("vw_hrms_leave_requests columns are explicit", async () => {
-    const mod = await loadModule();
-    const cols = (mod as any).VIEW_LEAVE_COLUMNS ?? null;
-
-    expect(cols).toEqual([
-      "ref_id",
-      "citizen_id",
-      "hrms_leave_type",
-      "start_date",
-      "end_date",
-      "end_date_detail",
-      "half_day",
-      "remark",
-      "status",
-      "sex",
-      "source_type",
-      "duration_days",
-    ]);
-  });
 });

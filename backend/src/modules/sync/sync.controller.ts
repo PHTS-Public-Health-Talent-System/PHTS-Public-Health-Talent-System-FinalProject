@@ -2,15 +2,18 @@ import { Request, Response } from "express";
 import { asyncHandler } from "@middlewares/errorHandler.js";
 import { SyncService } from "@/modules/sync/services/sync.service.js";
 import { TransformMonitorRepository } from "@/modules/sync/repositories/transform-monitor.repository.js";
+import {
+  getSyncAutoScheduleConfig,
+  setSyncAutoScheduleConfig,
+} from "@/modules/sync/services/sync-auto-schedule.service.js";
 import type {
-  CreateTransformRuleBody,
   DataIssuesQuery,
   RefreshAccessReviewBody,
+  SyncScheduleBody,
+  SyncRecordsQuery,
   SyncBatchesQuery,
   SyncUserParams,
-  TransformLogsQuery,
-  UpdateTransformRuleBody,
-  UpdateTransformRuleParams,
+  UserSyncAuditsQuery,
 } from "@/modules/sync/sync.schema.js";
 
 export const triggerSync = asyncHandler(async (_req: Request, res: Response) => {
@@ -46,65 +49,71 @@ export const getSyncBatches = asyncHandler(async (req: Request, res: Response) =
   res.json({ success: true, data });
 });
 
-export const getTransformRules = asyncHandler(async (_req: Request, res: Response) => {
-  const data = await TransformMonitorRepository.getTransformRules();
-  res.json({ success: true, data });
-});
-
-export const getTransformLogs = asyncHandler(async (req: Request, res: Response) => {
-  const { limit, batch_id } = req.query as unknown as TransformLogsQuery;
-  const safeLimit = Math.max(1, Math.min(Number(limit || 50), 200));
-  const data = await TransformMonitorRepository.getTransformLogs({
-    limit: safeLimit,
-    batchId: batch_id ? Number(batch_id) : undefined,
-  });
-  res.json({ success: true, data });
-});
-
 export const getDataIssues = asyncHandler(async (req: Request, res: Response) => {
-  const { limit, status } = req.query as unknown as DataIssuesQuery;
+  const { page, limit, batch_id, target_table, issue_code, severity } =
+    req.query as unknown as DataIssuesQuery;
+  const safePage = Math.max(1, Number(page || 1));
   const safeLimit = Math.max(1, Math.min(Number(limit || 50), 200));
   const data = await TransformMonitorRepository.getDataIssues({
+    page: safePage,
     limit: safeLimit,
-    status,
+    batchId: batch_id ? Number(batch_id) : undefined,
+    targetTable: target_table?.trim() || undefined,
+    issueCode: issue_code?.trim() || undefined,
+    severity: severity || undefined,
   });
   res.json({ success: true, data });
 });
 
-export const createTransformRule = asyncHandler(async (req: Request, res: Response) => {
-  const body = req.body as CreateTransformRuleBody;
-  const actorId = req.user?.userId ?? null;
-  const ruleId = await TransformMonitorRepository.createTransformRule({
-    targetView: body.target_view,
-    targetField: body.target_field,
-    ruleType: body.rule_type,
-    matchPattern: body.match_pattern ?? null,
-    replaceValue: body.replace_value ?? null,
-    priority: body.priority ?? 100,
-    isActive: body.is_active ?? true,
-    notes: body.notes ?? null,
-    actorId,
+export const getSyncRecords = asyncHandler(async (req: Request, res: Response) => {
+  const { page, limit, batch_id, target_table, search } = req.query as unknown as SyncRecordsQuery;
+  const safePage = Math.max(1, Number(page || 1));
+  const safeLimit = Math.max(1, Math.min(Number(limit || 20), 200));
+  const data = await TransformMonitorRepository.getSyncRecords({
+    page: safePage,
+    limit: safeLimit,
+    batchId: batch_id ? Number(batch_id) : undefined,
+    targetTable: target_table,
+    search: search?.trim() || undefined,
   });
-  const data = await TransformMonitorRepository.getTransformRuleById(ruleId);
-  res.status(201).json({ success: true, data });
+  res.json({ success: true, data });
 });
 
-export const updateTransformRule = asyncHandler(async (req: Request, res: Response) => {
-  const { ruleId } = req.params as unknown as UpdateTransformRuleParams;
-  const body = req.body as UpdateTransformRuleBody;
-  const actorId = req.user?.userId ?? null;
-  await TransformMonitorRepository.updateTransformRule(Number(ruleId), {
-    matchPattern: body.match_pattern,
-    replaceValue: body.replace_value,
-    priority: body.priority,
-    isActive: body.is_active,
-    notes: body.notes,
-    actorId,
+export const getUserSyncAudits = asyncHandler(async (req: Request, res: Response) => {
+  const { limit, batch_id, citizen_id, action } = req.query as unknown as UserSyncAuditsQuery;
+  const safeLimit = Math.max(1, Math.min(Number(limit || 100), 500));
+  const data = await TransformMonitorRepository.getUserSyncStateAudits({
+    limit: safeLimit,
+    batchId: batch_id ? Number(batch_id) : undefined,
+    citizenId: citizen_id,
+    action,
   });
-  const data = await TransformMonitorRepository.getTransformRuleById(Number(ruleId));
-  if (!data) {
-    res.status(404).json({ success: false, error: "Transform rule not found" });
-    return;
-  }
   res.json({ success: true, data });
+});
+
+export const getSyncReconciliation = asyncHandler(async (_req: Request, res: Response) => {
+  const data = await SyncService.getReconciliationSummary();
+  res.json({ success: true, data });
+});
+
+export const getRoleMappingDiagnostics = asyncHandler(async (_req: Request, res: Response) => {
+  const data = await SyncService.getRoleMappingDiagnostics();
+  res.json({ success: true, data });
+});
+
+export const getSyncSchedule = asyncHandler(async (_req: Request, res: Response) => {
+  const data = await getSyncAutoScheduleConfig();
+  res.json({ success: true, data });
+});
+
+export const updateSyncSchedule = asyncHandler(async (req: Request, res: Response) => {
+  const body = req.body as SyncScheduleBody;
+  const data = await setSyncAutoScheduleConfig({
+    mode: body.mode,
+    hour: body.hour,
+    minute: body.minute,
+    interval_minutes: body.interval_minutes,
+    timezone: body.timezone,
+  });
+  res.json({ success: true, data, message: "Sync schedule updated" });
 });

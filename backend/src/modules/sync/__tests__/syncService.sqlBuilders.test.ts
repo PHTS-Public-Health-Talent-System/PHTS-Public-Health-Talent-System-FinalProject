@@ -9,8 +9,7 @@ describe('SyncService SQL Builder Helpers', () => {
   let buildSupportEmployeeValues: any;
 
   beforeAll(async () => {
-    const mod = await import('../services/sync.service.js');
-    // Access internal functions through dynamic import
+    const mod = await import('../repositories/sync-query-builders.repository.js');
     buildLeaveRecordSql = (mod as any).buildLeaveRecordSql;
     buildLeaveRecordValues = (mod as any).buildLeaveRecordValues;
     buildSupportEmployeeSql = (mod as any).buildSupportEmployeeSql;

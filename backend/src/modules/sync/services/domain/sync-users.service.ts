@@ -1,9 +1,10 @@
 import bcrypt from 'bcryptjs';
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from 'mysql2/promise';
 import type { SyncStats } from '@/modules/sync/services/shared/sync.types.js';
+import Logger from '@shared/utils/logger.js';
 
 const SALT_ROUNDS = 10;
-let userSyncAuditTableEnsured = false;
+const log = Logger.create('SyncUsersService');
 
 type UserSyncSource = {
   profileStatusCode: string | null;
@@ -13,27 +14,6 @@ type UserSyncSource = {
 };
 
 const isBcryptHash = (str: string): boolean => /^\$2[axy]\$\d{2}\$[A-Za-z0-9./]{53}$/.test(str);
-
-const ensureUserSyncAuditTable = async (conn: PoolConnection): Promise<void> => {
-  if (userSyncAuditTableEnsured) return;
-  await conn.query(`
-    CREATE TABLE IF NOT EXISTS user_sync_state_audits (
-      audit_id BIGINT AUTO_INCREMENT PRIMARY KEY,
-      sync_batch_id BIGINT NULL,
-      user_id INT NULL,
-      citizen_id VARCHAR(20) NOT NULL,
-      action VARCHAR(40) NOT NULL,
-      before_is_active TINYINT(1) NULL,
-      after_is_active TINYINT(1) NULL,
-      reason VARCHAR(255) NULL,
-      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      INDEX idx_user_sync_audits_batch (sync_batch_id),
-      INDEX idx_user_sync_audits_citizen (citizen_id, created_at),
-      INDEX idx_user_sync_audits_action (action, created_at)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-  `);
-  userSyncAuditTableEnsured = true;
-};
 
 const insertUserSyncAudit = async (
   conn: PoolConnection,
@@ -156,7 +136,7 @@ const createUserFromSource = async (
   const finalPass = await resolvePasswordHash(passwordMap.get(citizenId));
   if (!finalPass) {
     stats.users.skipped++;
-    console.warn(`[SyncService] Skipping user creation without password: citizen_id=${citizenId}`);
+    log.warn('Skipping user creation without password', { citizenId });
     return;
   }
   const [insertResult] = await conn.execute<ResultSetHeader>(
@@ -278,7 +258,6 @@ export const syncUsersFromProfilesAndSupport = async (
   options?: { citizenId?: string },
 ): Promise<void> => {
   console.log('[SyncService] Processing users (from profiles/support)...');
-  await ensureUserSyncAuditTable(conn);
 
   const [existingUsers] = await conn.query<RowDataPacket[]>(
     'SELECT id, citizen_id, role, is_active, password_hash FROM users',

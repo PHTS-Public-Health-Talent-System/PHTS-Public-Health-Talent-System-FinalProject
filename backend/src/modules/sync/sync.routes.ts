@@ -4,13 +4,13 @@ import { validate } from "@shared/validate.middleware.js";
 import { UserRole } from "@/types/auth.js";
 import * as syncController from "@/modules/sync/sync.controller.js";
 import {
-  createTransformRuleSchema,
   dataIssuesQuerySchema,
   refreshAccessReviewSchema,
+  syncScheduleSchema,
+  syncRecordsQuerySchema,
   syncBatchesQuerySchema,
   syncUserSchema,
-  transformLogsQuerySchema,
-  updateTransformRuleSchema,
+  userSyncAuditsQuerySchema,
 } from "@/modules/sync/sync.schema.js";
 
 const router = Router();
@@ -37,30 +37,40 @@ router.post(
   validate(syncUserSchema),
   syncController.triggerUserSync,
 );
-router.get("/sync/rules", adminAuth, syncController.getTransformRules);
-router.get(
-  "/sync/logs",
-  adminAuth,
-  validate(transformLogsQuerySchema),
-  syncController.getTransformLogs,
-);
 router.get(
   "/sync/issues",
   adminAuth,
   validate(dataIssuesQuerySchema),
   syncController.getDataIssues,
 );
-router.post(
-  "/sync/rules",
+router.get(
+  "/sync/records",
   adminAuth,
-  validate(createTransformRuleSchema),
-  syncController.createTransformRule,
+  validate(syncRecordsQuerySchema),
+  syncController.getSyncRecords,
 );
-router.patch(
-  "/sync/rules/:ruleId",
+router.get(
+  "/sync/user-audits",
   adminAuth,
-  validate(updateTransformRuleSchema),
-  syncController.updateTransformRule,
+  validate(userSyncAuditsQuerySchema),
+  syncController.getUserSyncAudits,
+);
+router.get(
+  "/sync/reconciliation",
+  adminAuth,
+  syncController.getSyncReconciliation,
+);
+router.get(
+  "/sync/role-mapping-diagnostics",
+  adminAuth,
+  syncController.getRoleMappingDiagnostics,
+);
+router.get("/sync/schedule", adminAuth, syncController.getSyncSchedule);
+router.put(
+  "/sync/schedule",
+  adminAuth,
+  validate(syncScheduleSchema),
+  syncController.updateSyncSchedule,
 );
 
 export default router;

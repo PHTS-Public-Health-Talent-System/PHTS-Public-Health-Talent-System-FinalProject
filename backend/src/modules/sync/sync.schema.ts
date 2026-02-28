@@ -20,46 +20,74 @@ export const syncBatchesQuerySchema = z.object({
 
 export type SyncBatchesQuery = z.infer<typeof syncBatchesQuerySchema>['query'];
 
-export const transformLogsQuerySchema = z.object({
-  query: z.object({
-    limit: z
-      .string()
-      .regex(/^\d+$/, 'limit ต้องเป็นตัวเลข')
-      .optional()
-      .default('50'),
-    batch_id: z.string().regex(/^\d+$/, 'batch_id ต้องเป็นตัวเลข').optional(),
-  }),
-});
-
-export type TransformLogsQuery = z.infer<typeof transformLogsQuerySchema>['query'];
-
 export const dataIssuesQuerySchema = z.object({
   query: z.object({
+    page: z
+      .string()
+      .regex(/^\d+$/, 'page ต้องเป็นตัวเลข')
+      .optional()
+      .default('1'),
     limit: z
       .string()
       .regex(/^\d+$/, 'limit ต้องเป็นตัวเลข')
       .optional()
-      .default('50'),
-    status: z.enum(['OPEN', 'RESOLVED', 'IGNORED']).optional(),
+      .default('20'),
+    batch_id: z.string().regex(/^\d+$/, 'batch_id ต้องเป็นตัวเลข').optional(),
+    target_table: z.string().trim().min(1).max(64).optional(),
+    issue_code: z.string().trim().min(1).max(64).optional(),
+    severity: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional(),
   }),
 });
 
 export type DataIssuesQuery = z.infer<typeof dataIssuesQuerySchema>['query'];
 
-export const createTransformRuleSchema = z.object({
-  body: z.object({
-    target_view: z.string().trim().min(1).max(64),
-    target_field: z.string().trim().min(1).max(64),
-    rule_type: z.enum(['REGEX_REPLACE', 'MAP_VALUE', 'DATE_NORMALIZE', 'CLASSIFY_LEAVE_TYPE']),
-    match_pattern: z.string().trim().max(500).nullable().optional(),
-    replace_value: z.string().trim().max(500).nullable().optional(),
-    priority: z.number().int().min(0).max(9999).optional(),
-    is_active: z.boolean().optional(),
-    notes: z.string().trim().max(255).nullable().optional(),
+const syncRecordTableEnum = z.enum([
+  'users',
+  'emp_profiles',
+  'emp_support_staff',
+  'leave_records',
+  'emp_licenses',
+  'leave_quotas',
+  'emp_movements',
+  'sig_images',
+]);
+
+export const syncRecordsQuerySchema = z.object({
+  query: z.object({
+    page: z
+      .string()
+      .regex(/^\d+$/, 'page ต้องเป็นตัวเลข')
+      .optional()
+      .default('1'),
+    limit: z
+      .string()
+      .regex(/^\d+$/, 'limit ต้องเป็นตัวเลข')
+      .optional()
+      .default('20'),
+    batch_id: z.string().regex(/^\d+$/, 'batch_id ต้องเป็นตัวเลข').optional(),
+    target_table: syncRecordTableEnum.optional(),
+    search: z.string().trim().max(120).optional(),
   }),
 });
 
-export type CreateTransformRuleBody = z.infer<typeof createTransformRuleSchema>['body'];
+export type SyncRecordsQuery = z.infer<typeof syncRecordsQuerySchema>['query'];
+
+export const userSyncAuditsQuerySchema = z.object({
+  query: z.object({
+    limit: z
+      .string()
+      .regex(/^\d+$/, 'limit ต้องเป็นตัวเลข')
+      .optional()
+      .default('100'),
+    batch_id: z.string().regex(/^\d+$/, 'batch_id ต้องเป็นตัวเลข').optional(),
+    citizen_id: z.string().regex(/^\d{13}$/, 'citizen_id ต้องเป็นเลข 13 หลัก').optional(),
+    action: z
+      .enum(['CREATE', 'ACTIVATE', 'DEACTIVATE', 'PASSWORD_FILLED', 'DEACTIVATE_MISSING'])
+      .optional(),
+  }),
+});
+
+export type UserSyncAuditsQuery = z.infer<typeof userSyncAuditsQuerySchema>['query'];
 
 export const refreshAccessReviewSchema = z.object({
   body: z.object({
@@ -73,18 +101,29 @@ export const refreshAccessReviewSchema = z.object({
 
 export type RefreshAccessReviewBody = z.infer<typeof refreshAccessReviewSchema>['body'];
 
-export const updateTransformRuleSchema = z.object({
-  params: z.object({
-    ruleId: z.string().regex(/^\d+$/, 'ruleId ต้องเป็นตัวเลข'),
-  }),
+export const syncScheduleSchema = z.object({
   body: z.object({
-    match_pattern: z.string().trim().max(500).nullable().optional(),
-    replace_value: z.string().trim().max(500).nullable().optional(),
-    priority: z.number().int().min(0).max(9999).optional(),
-    is_active: z.boolean().optional(),
-    notes: z.string().trim().max(255).nullable().optional(),
+    mode: z.enum(['DAILY', 'INTERVAL']),
+    hour: z
+      .number({ error: 'hour ต้องเป็นตัวเลข' })
+      .int('hour ต้องเป็นจำนวนเต็ม')
+      .min(0, 'hour ต้องอยู่ระหว่าง 0-23')
+      .max(23, 'hour ต้องอยู่ระหว่าง 0-23')
+      .optional(),
+    minute: z
+      .number({ error: 'minute ต้องเป็นตัวเลข' })
+      .int('minute ต้องเป็นจำนวนเต็ม')
+      .min(0, 'minute ต้องอยู่ระหว่าง 0-59')
+      .max(59, 'minute ต้องอยู่ระหว่าง 0-59')
+      .optional(),
+    interval_minutes: z
+      .number({ error: 'interval_minutes ต้องเป็นตัวเลข' })
+      .int('interval_minutes ต้องเป็นจำนวนเต็ม')
+      .min(1, 'interval_minutes ต้องมากกว่า 0')
+      .max(1440, 'interval_minutes ต้องไม่เกิน 1440')
+      .optional(),
+    timezone: z.string().trim().min(1).max(64).optional(),
   }),
 });
 
-export type UpdateTransformRuleParams = z.infer<typeof updateTransformRuleSchema>['params'];
-export type UpdateTransformRuleBody = z.infer<typeof updateTransformRuleSchema>['body'];
+export type SyncScheduleBody = z.infer<typeof syncScheduleSchema>['body'];

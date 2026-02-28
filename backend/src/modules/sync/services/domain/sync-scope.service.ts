@@ -1,51 +1,8 @@
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
+import { buildScopesFromSpecialPosition as buildScopesFromSpecialPositionShared } from '@/modules/request/scope/domain/scope-parser.js';
 
-export const buildScopesFromSpecialPosition = (
-  specialPosition: string | null,
-  deps: {
-    parseSpecialPositionScopes: (specialPosition: string) => string[];
-    removeOverlaps: (wardScopes: string[], deptScopes: string[]) => string[];
-    inferScopeType: (scopeName: string) => 'UNIT' | 'DEPT' | 'IGNORE' | 'UNKNOWN';
-  },
-) => {
-  if (!specialPosition) return { wardScopes: [], deptScopes: [] };
-  const allScopes = deps.parseSpecialPositionScopes(specialPosition);
-  const wardScopes: string[] = [];
-  const deptScopes: string[] = [];
-
-  const normalizeScopeName = (scope: string): string => {
-    const parts = scope.split('-');
-    return parts.length > 1 ? parts.slice(1).join('-').trim() : scope.trim();
-  };
-
-  const addScope = (target: string[], scopeName: string): void => {
-    if (!scopeName || deps.inferScopeType(scopeName) === 'IGNORE') return;
-    target.push(scopeName);
-  };
-
-  for (const scope of allScopes) {
-    if (scope.includes('ตำแหน่งด้านบริหาร')) continue;
-    const isHeadWard = scope.includes('หัวหน้าตึก') || scope.includes('หัวหน้างาน-');
-    const isHeadDept = scope.includes('หัวหน้ากลุ่มงาน') || scope.includes('หัวหน้ากลุ่มภารกิจ');
-    const scopeName = normalizeScopeName(scope);
-
-    if (isHeadWard) {
-      addScope(wardScopes, scopeName);
-      if (deps.inferScopeType(scopeName) === 'DEPT') addScope(deptScopes, scopeName);
-      continue;
-    }
-
-    if (isHeadDept) {
-      addScope(deptScopes, scopeName);
-      continue;
-    }
-  }
-
-  const cleanedWardScopes = deps.removeOverlaps(wardScopes, deptScopes);
-  const uniqWard = Array.from(new Set(cleanedWardScopes.map((s) => s.trim())));
-  const uniqDept = Array.from(new Set(deptScopes.map((s) => s.trim())));
-  return { wardScopes: uniqWard, deptScopes: uniqDept };
-};
+export const buildScopesFromSpecialPosition = (specialPosition: string | null) =>
+  buildScopesFromSpecialPositionShared(specialPosition);
 
 export const syncSpecialPositionScopes = async (
   conn: PoolConnection,

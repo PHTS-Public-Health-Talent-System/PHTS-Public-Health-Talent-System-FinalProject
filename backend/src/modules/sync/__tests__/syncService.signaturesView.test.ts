@@ -1,4 +1,4 @@
-const loadModule = async () => import("../services/sync.service.js");
+const loadModule = async () => import("../repositories/sync-query-builders.repository.js");
 
 describe("SyncService signatures source", () => {
   test("signatures query uses hrms signature table and selects citizen_id without joining users", async () => {

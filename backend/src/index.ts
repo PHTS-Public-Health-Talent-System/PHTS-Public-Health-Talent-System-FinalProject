@@ -40,11 +40,20 @@ import navigationRoutes from '@/modules/navigation/routes/navigation.routes.js';
 import {
   startOcrPrecheckWorker,
   stopOcrPrecheckWorker,
-} from '@/modules/request/services/ocr-precheck.service.js';
+} from '@/modules/ocr/services/ocr-worker.service.js';
 import {
   startSnapshotWorker,
   stopSnapshotWorker,
 } from '@/modules/snapshot/services/snapshot-worker.service.js';
+import { startSyncWorker, stopSyncWorker } from '@/modules/sync/services/sync-worker.service.js';
+import {
+  startBackupWorker,
+  stopBackupWorker,
+} from '@/modules/backup/services/backup-worker.service.js';
+import {
+  startNotificationOutboxWorker,
+  stopNotificationOutboxWorker,
+} from '@/modules/notification/services/notification-outbox-worker.service.js';
 import { isMaintenanceModeEnabled } from '@/modules/system/services/maintenance.service.js';
 import { errorHandler, notFoundHandler } from '@middlewares/errorHandler.js';
 import { apiRateLimiter } from '@middlewares/rateLimiter.js';
@@ -172,7 +181,8 @@ app.use(
   protect,
   authorizeUploadAccess,
   (_req, res, next) => {
-    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+    // Allow authenticated upload assets to be rendered from frontend on another origin/port.
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     next();
   },
   express.static(path.join(process.cwd(), 'uploads')),
@@ -269,6 +279,9 @@ async function gracefulShutdown(signal: string) {
   try {
     await stopOcrPrecheckWorker();
     await stopSnapshotWorker();
+    await stopSyncWorker();
+    await stopBackupWorker();
+    await stopNotificationOutboxWorker();
     await closePool();
     console.log('Server shut down successfully');
     process.exit(0);
@@ -304,6 +317,9 @@ if (process.env.NODE_ENV !== 'test' && process.env.START_SERVER !== 'false') {
     await testConnection();
     startOcrPrecheckWorker();
     startSnapshotWorker();
+    startSyncWorker();
+    startBackupWorker();
+    startNotificationOutboxWorker();
 
     // Start Express server
     app.listen(PORT, () => {

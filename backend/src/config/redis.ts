@@ -13,6 +13,7 @@ interface RedisClient {
   del(...keys: string[]): Promise<number>;
   keys(pattern: string): Promise<string[]>;
   lpush(key: string, ...values: string[]): Promise<number>;
+  llen(key: string): Promise<number>;
   brpop(key: string, timeoutSeconds: number): Promise<[string, string] | null>;
   duplicate(): RedisClient;
   on(event: string, listener: (...args: unknown[]) => void): RedisClient;
@@ -59,6 +60,10 @@ const createTestRedisClient = (
         list.unshift(value);
       }
       lists.set(key, list);
+      return list.length;
+    },
+    llen: async (key: string) => {
+      const list = lists.get(key) ?? [];
       return list.length;
     },
     brpop: async (key: string, _timeoutSeconds: number) => {

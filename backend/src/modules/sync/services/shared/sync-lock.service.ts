@@ -7,10 +7,11 @@ const LOCK_TTL_SECONDS = 300;
 const LOCK_HEARTBEAT_MS = 60_000;
 const RESULT_TTL_SECONDS = 60 * 60 * 24;
 
-const parseLastResult = (data: string | null): { success?: boolean } | null => {
+const parseLastResult = (data: string | null): Record<string, unknown> | null => {
   if (!data) return null;
   try {
-    return JSON.parse(data) as { success?: boolean };
+    const parsed = JSON.parse(data) as Record<string, unknown>;
+    return parsed && typeof parsed === 'object' ? parsed : null;
   } catch {
     return null;
   }

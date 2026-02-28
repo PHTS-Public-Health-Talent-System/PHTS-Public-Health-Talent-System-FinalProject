@@ -1,6 +1,16 @@
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { createHash } from 'node:crypto';
 
+const parseBooleanEnv = (value: string | undefined, fallback: boolean): boolean => {
+  if (value == null) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(normalized);
+};
+
+const isSyncHistoryArtifactsEnabled = (): boolean =>
+  parseBooleanEnv(process.env.SYNC_HISTORY_ARTIFACTS_ENABLED, true);
+
 export const hasLeaveStatusColumn = async (conn: PoolConnection): Promise<boolean> => {
   const [leaveCols] = await conn.query<RowDataPacket[]>(
     `SELECT COLUMN_NAME
@@ -238,6 +248,10 @@ export const persistEmployeeProfileSyncArtifacts = async (
       `,
       [syncBatchId, vEmp.citizen_id],
     );
+  }
+
+  if (!isSyncHistoryArtifactsEnabled()) {
+    return;
   }
 
   const [lastHistoryRows] = await conn.query<RowDataPacket[]>(
@@ -492,6 +506,10 @@ export const persistSupportProfileSyncArtifacts = async (
       `,
       [profileFingerprint, vSup.citizen_id],
     );
+  }
+
+  if (!isSyncHistoryArtifactsEnabled()) {
+    return;
   }
 
   if (!fpCols.hasSupportHistoryTable && !fpCols.hasSupportRawTable) {

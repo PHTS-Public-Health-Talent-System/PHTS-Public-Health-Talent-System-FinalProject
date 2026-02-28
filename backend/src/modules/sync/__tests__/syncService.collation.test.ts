@@ -1,4 +1,4 @@
-const loadModule = async () => import("../services/sync.service.js");
+const loadModule = async () => import("../repositories/sync-query-builders.repository.js");
 
 describe("SyncService collation helpers", () => {
   test("citizenIdJoinBinary builds binary join", async () => {

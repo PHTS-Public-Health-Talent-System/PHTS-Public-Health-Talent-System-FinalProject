@@ -8,6 +8,15 @@ import type {
   BackupJobRecord,
   BackupSchedule,
   BackupTriggerResult,
+  DataIssueListResponse,
+  SyncSchedule,
+  SyncRecordListResponse,
+  SnapshotOutboxFilterStatus,
+  SnapshotOutboxListResponse,
+  SyncBatchRecord,
+  SyncReconciliationSummary,
+  UserSyncAuditAction,
+  UserSyncAuditRecord,
 } from "./types";
 
 export async function searchUsers(params: ApiParams) {
@@ -103,5 +112,105 @@ export async function updateBackupSchedule(payload: {
     "/system/backup/schedule",
     payload,
   );
+  return res.data.data;
+}
+
+export async function getSyncSchedule(): Promise<SyncSchedule> {
+  const res = await api.get<ApiResponse<SyncSchedule>>("/system/sync/schedule");
+  return res.data.data;
+}
+
+export async function updateSyncSchedule(payload: {
+  mode: "DAILY" | "INTERVAL";
+  hour?: number;
+  minute?: number;
+  interval_minutes?: number;
+  timezone?: string;
+}): Promise<SyncSchedule> {
+  const res = await api.put<ApiResponse<SyncSchedule>>("/system/sync/schedule", payload);
+  return res.data.data;
+}
+
+export async function getSyncReconciliation(): Promise<SyncReconciliationSummary> {
+  const res = await api.get<ApiResponse<SyncReconciliationSummary>>(
+    "/system/sync/reconciliation",
+  );
+  return res.data.data;
+}
+
+export async function getSyncBatches(limit: number = 20): Promise<SyncBatchRecord[]> {
+  const safeLimit = Math.max(1, Math.min(limit, 100));
+  const res = await api.get<ApiResponse<SyncBatchRecord[]>>('/system/sync/batches', {
+    params: { limit: safeLimit },
+  });
+  return res.data.data;
+}
+
+export async function getUserSyncAudits(params?: {
+  limit?: number;
+  batch_id?: number;
+  citizen_id?: string;
+  action?: UserSyncAuditAction;
+}): Promise<UserSyncAuditRecord[]> {
+  const res = await api.get<ApiResponse<UserSyncAuditRecord[]>>(
+    "/system/sync/user-audits",
+    {
+      params,
+    },
+  );
+  return res.data.data;
+}
+
+export async function getDataIssues(params?: {
+  page?: number;
+  limit?: number;
+  batch_id?: number;
+  target_table?: string;
+  issue_code?: string;
+  severity?: "LOW" | "MEDIUM" | "HIGH";
+}): Promise<DataIssueListResponse> {
+  const res = await api.get<ApiResponse<DataIssueListResponse>>(
+    "/system/sync/issues",
+    {
+      params,
+    },
+  );
+  return res.data.data;
+}
+
+export async function getSyncRecords(params?: {
+  page?: number;
+  limit?: number;
+  batch_id?: number;
+  target_table?: string;
+  search?: string;
+}): Promise<SyncRecordListResponse> {
+  const res = await api.get<ApiResponse<SyncRecordListResponse>>(
+    "/system/sync/records",
+    { params },
+  );
+  return res.data.data;
+}
+
+export async function getSnapshotOutbox(params?: {
+  page?: number;
+  limit?: number;
+  status?: SnapshotOutboxFilterStatus;
+  period_id?: number;
+}): Promise<SnapshotOutboxListResponse> {
+  const res = await api.get<ApiResponse<SnapshotOutboxListResponse>>(
+    "/system/snapshot-outbox",
+    { params },
+  );
+  return res.data.data;
+}
+
+export async function retrySnapshotOutbox(outboxId: number) {
+  const res = await api.post<ApiResponse<ApiPayload>>(`/system/snapshot-outbox/${outboxId}/retry`);
+  return res.data.data;
+}
+
+export async function retrySnapshotDeadLetters() {
+  const res = await api.post<ApiResponse<{ count: number }>>("/system/snapshot-outbox/retry-dead-letter");
   return res.data.data;
 }

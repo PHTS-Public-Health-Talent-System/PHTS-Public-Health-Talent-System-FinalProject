@@ -13,6 +13,9 @@ import {
   getAccessReviewCycle,
   getAccessReviewCycles,
   getAccessReviewItems,
+  getAccessReviewQueue,
+  getAccessReviewQueueEvents,
+  resolveAccessReviewQueueItem,
   updateAccessReviewItem,
 } from "./api";
 
@@ -81,5 +84,47 @@ export function useAutoReviewAccessReviewCycle() {
       id: number | string;
       payload?: ApiPayload;
     }) => autoReviewAccessReviewCycle(id, payload),
+  });
+}
+
+export function useAccessReviewQueue(params?: {
+  page?: number;
+  limit?: number;
+  status?: "OPEN" | "IN_REVIEW" | "RESOLVED" | "DISMISSED";
+  reason_code?: string;
+  current_role?: string;
+  is_active?: 0 | 1;
+  detected_from?: string;
+  detected_to?: string;
+  batch_id?: number;
+  search?: string;
+}, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["access-review-queue", params ?? {}],
+    queryFn: () => getAccessReviewQueue(params),
+    enabled: options?.enabled ?? true,
+  });
+}
+
+export function useAccessReviewQueueEvents(
+  queueId: number | string | undefined,
+  params?: { limit?: number },
+) {
+  return useQuery({
+    queryKey: ["access-review-queue-events", queueId, params ?? {}],
+    queryFn: () => getAccessReviewQueueEvents(queueId!, params),
+    enabled: !!queueId,
+  });
+}
+
+export function useResolveAccessReviewQueueItem() {
+  return useMutation({
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: number | string;
+      payload: { action: "RESOLVE" | "DISMISS"; note?: string };
+    }) => resolveAccessReviewQueueItem(id, payload),
   });
 }

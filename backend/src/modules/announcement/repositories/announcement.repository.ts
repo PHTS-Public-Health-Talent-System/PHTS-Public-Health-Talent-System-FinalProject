@@ -5,6 +5,19 @@ import type {
   AnnouncementPriority,
 } from "../entities/announcement.entity.js";
 
+const toMysqlDateTime = (value: string | null | undefined): string | null => {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const yyyy = parsed.getUTCFullYear();
+  const mm = String(parsed.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(parsed.getUTCDate()).padStart(2, '0');
+  const hh = String(parsed.getUTCHours()).padStart(2, '0');
+  const mi = String(parsed.getUTCMinutes()).padStart(2, '0');
+  const ss = String(parsed.getUTCSeconds()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+};
+
 export class AnnouncementRepository {
   private getDb(connection?: PoolConnection) {
     return connection || pool;
@@ -32,8 +45,8 @@ export class AnnouncementRepository {
         data.body,
         data.priority,
         data.is_active ? 1 : 0,
-        data.start_at,
-        data.end_at,
+        toMysqlDateTime(data.start_at),
+        toMysqlDateTime(data.end_at),
         data.created_by,
       ],
     );
@@ -91,11 +104,11 @@ export class AnnouncementRepository {
     }
     if (data.start_at !== undefined) {
       updates.push("start_at = ?");
-      params.push(data.start_at);
+      params.push(toMysqlDateTime(data.start_at));
     }
     if (data.end_at !== undefined) {
       updates.push("end_at = ?");
-      params.push(data.end_at);
+      params.push(toMysqlDateTime(data.end_at));
     }
     if (!updates.length) return;
     params.push(announcementId);

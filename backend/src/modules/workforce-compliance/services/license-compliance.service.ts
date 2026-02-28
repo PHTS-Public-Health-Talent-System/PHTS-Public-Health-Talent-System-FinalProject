@@ -3,40 +3,34 @@ import { NotificationService } from '@/modules/notification/services/notificatio
 import { AlertLogsRepository } from '@/modules/workforce-compliance/repositories/alert-logs.repository.js';
 import { WorkforceComplianceRepository } from '@/modules/workforce-compliance/repositories/workforce-compliance.repository.js';
 import { LicenseComplianceRepository } from '@/modules/workforce-compliance/repositories/license-compliance.repository.js';
+import { formatOpsDate } from '@/modules/workforce-compliance/services/jobs/shared/job-date.js';
+import type {
+  AlertBucket,
+  LicenseAlertRow,
+  LicenseAlertSummary,
+} from '@/modules/workforce-compliance/entities/license-compliance.entity.js';
 
-type AlertBucket = "expired" | "30" | "60" | "90";
-
-type LicenseAlertRow = {
-  citizen_id: string;
-  full_name: string;
-  position_name: string;
-  department: string | null;
-  profession_code: string | null;
-  license_no: string | null;
-  license_expiry: string | null;
-  days_left: number | null;
-  bucket: AlertBucket;
-  last_notified_at?: string | null;
-};
-
-export async function getLicenseAlertSummary(asOf: Date = new Date()) {
+export async function getLicenseAlertSummary(
+  asOf: Date = new Date(),
+): Promise<LicenseAlertSummary> {
   return LicenseComplianceRepository.getSummary(asOf);
 }
 
 export async function getLicenseAlertList(
   bucket: AlertBucket,
   asOf: Date = new Date(),
-) {
+): Promise<LicenseAlertRow[]> {
   const rows = await LicenseComplianceRepository.getListByBucket(bucket, asOf);
-  const normalizedRows = (rows as any[]).map((row) => ({
+  const normalizedRows: LicenseAlertRow[] = rows.map((row) => ({
     citizen_id: row.citizen_id,
     full_name: row.full_name?.trim() ? row.full_name.trim() : row.citizen_id,
     position_name: row.position_name,
     profession_code: row.profession_code ?? null,
     license_expiry: row.license_expiry ? String(row.license_expiry) : null,
     days_left: row.days_left !== null ? Number(row.days_left) : null,
-    bucket: row.bucket as AlertBucket,
-  })) as LicenseAlertRow[];
+    bucket: row.bucket,
+    last_notified_at: null,
+  }));
 
   const refs = normalizedRows.map((row) => `${row.citizen_id}:${row.bucket}`);
   if (refs.length === 0) return normalizedRows;
@@ -59,14 +53,14 @@ const hashKey = (value: string) =>
   crypto.createHash("sha256").update(value).digest("hex");
 
 async function hasDailyNotification(citizenId: string, bucket: AlertBucket, date: Date): Promise<boolean> {
-  const key = `LICENSE_EXPIRING:citizen:${citizenId}:${bucket}:${date.toISOString().slice(0, 10)}`;
+  const key = `LICENSE_EXPIRING:citizen:${citizenId}:${bucket}:${formatOpsDate(date)}`;
   return AlertLogsRepository.hasPayloadHash(hashKey(key));
 }
 
 export async function notifyLicenseAlerts(
   items: Array<{ citizen_id: string; bucket: AlertBucket }>,
   asOf: Date = new Date(),
-) {
+): Promise<{ sent: number; skipped: number }> {
   let sent = 0;
   let skipped = 0;
 
@@ -89,7 +83,7 @@ export async function notifyLicenseAlerts(
       );
     }
 
-    const dedupeKey = `LICENSE_EXPIRING:citizen:${citizenId}:${item.bucket}:${asOf.toISOString().slice(0, 10)}`;
+    const dedupeKey = `LICENSE_EXPIRING:citizen:${citizenId}:${item.bucket}:${formatOpsDate(asOf)}`;
     await AlertLogsRepository.insertLog({
       alert_type: "LICENSE_EXPIRING",
       target_user_id: userId ?? null,
@@ -105,4 +99,4 @@ export async function notifyLicenseAlerts(
   return { sent, skipped };
 }
 
-export type { AlertBucket, LicenseAlertRow };
+export type { AlertBucket };

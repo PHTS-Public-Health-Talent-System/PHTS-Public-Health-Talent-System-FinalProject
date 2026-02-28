@@ -43,7 +43,7 @@ jest.mock('@/modules/sla/services/sla.service.js', () => ({
   getSLAReport: jest.fn(),
 }));
 
-import { runLeaveReportAlerts } from '@/modules/workforce-compliance/services/workforce-compliance-jobs.service.js';
+import { runLeaveReportAlerts } from '@/modules/workforce-compliance/services/jobs/leave-report-alerts.job.js';
 import { WorkforceComplianceRepository } from '@/modules/workforce-compliance/repositories/workforce-compliance.repository.js';
 import { AlertLogsRepository } from '@/modules/workforce-compliance/repositories/alert-logs.repository.js';
 import { NotificationService } from '@/modules/notification/services/notification.service.js';

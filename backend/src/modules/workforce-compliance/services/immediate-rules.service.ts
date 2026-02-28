@@ -1,8 +1,6 @@
 import type { PoolConnection } from "mysql2/promise";
 import { WorkforceComplianceRepository } from '@/modules/workforce-compliance/repositories/workforce-compliance.repository.js';
-
-const toDateString = (value: Date | string) =>
-  new Date(value).toISOString().slice(0, 10);
+import { formatOpsDate } from '@/modules/workforce-compliance/services/jobs/shared/job-date.js';
 
 export async function applyImmediateMovementEligibilityCutoff(
   asOf: Date = new Date(),
@@ -12,7 +10,7 @@ export async function applyImmediateMovementEligibilityCutoff(
   let cut = 0;
 
   for (const row of due) {
-    const cutoffDate = toDateString(row.effective_date);
+    const cutoffDate = formatOpsDate(row.effective_date);
     const affected = await WorkforceComplianceRepository.setEligibilityExpiry(
       row.citizen_id,
       cutoffDate,

@@ -18,6 +18,7 @@ export interface LicenseAlertRow {
   license_expiry: string | null;
   days_left: number | null;
   bucket: AlertBucket;
+  last_notified_at?: string | null;
 }
 
 // ─── License alert summary ────────────────────────────────────────────────────

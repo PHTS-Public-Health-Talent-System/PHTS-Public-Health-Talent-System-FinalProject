@@ -3,41 +3,37 @@
  *
  */
 import { Request, Response } from "express";
+import { RetirementsRepository } from '@/modules/workforce-compliance/repositories/retirements.repository.js';
+import { WorkforceComplianceRepository } from '@/modules/workforce-compliance/repositories/workforce-compliance.repository.js';
 import {
-  createPersonnelMovement,
-  deletePersonnelMovement,
-  listRetirements,
-  listPersonnelMovements,
-  updatePersonnelMovement,
   createRetirement,
   updateRetirement,
-  deleteRetirement,
-} from "@/modules/workforce-compliance/services/workforce-compliance.service.js";
+} from "@/modules/workforce-compliance/services/retirement-admin.service.js";
 
 export async function getRetirements(_req: Request, res: Response) {
-  const records = await listRetirements();
+  const records = await RetirementsRepository.list();
   res.json({ success: true, data: records });
 }
 
 export async function getPersonnelMovements(_req: Request, res: Response) {
-  const records = await listPersonnelMovements();
+  const records = await WorkforceComplianceRepository.getPersonnelMovements();
   res.json({ success: true, data: records });
 }
 
 export async function postPersonnelMovement(req: Request, res: Response) {
-  await createPersonnelMovement(req.body);
+  await WorkforceComplianceRepository.createPersonnelMovement(req.body);
   res.json({ success: true });
 }
 
 export async function putPersonnelMovement(req: Request, res: Response) {
   const movementId = Number(req.params.id);
-  await updatePersonnelMovement(movementId, req.body);
+  await WorkforceComplianceRepository.updatePersonnelMovement(movementId, req.body);
   res.json({ success: true });
 }
 
 export async function removePersonnelMovement(req: Request, res: Response) {
   const movementId = Number(req.params.id);
-  await deletePersonnelMovement(movementId);
+  await WorkforceComplianceRepository.deletePersonnelMovement(movementId);
   res.json({ success: true });
 }
 
@@ -56,6 +52,6 @@ export async function putRetirement(req: Request, res: Response) {
 
 export async function removeRetirement(req: Request, res: Response) {
   const retirementId = Number(req.params.id);
-  await deleteRetirement(retirementId);
+  await RetirementsRepository.delete(retirementId);
   res.json({ success: true });
 }

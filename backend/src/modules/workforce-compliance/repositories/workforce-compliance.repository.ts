@@ -25,33 +25,20 @@ export class WorkforceComplianceRepository {
     const [rows] = await executor.query<RowDataPacket[]>(
       `
        SELECT
-         mm.movement_id,
-         mm.citizen_id,
-         mm.movement_type,
-         mm.effective_date,
-         mm.remark,
+         m.movement_id,
+         m.citizen_id,
+         m.movement_type,
+         m.effective_date,
+         m.remark,
          e.first_name,
          e.last_name,
          e.position_name,
          e.department
-       FROM (
-         -- De-dup sync noise: some sources insert the same movement multiple times.
-         SELECT
-           MAX(m.movement_id) AS movement_id,
-           m.citizen_id,
-           m.movement_type,
-           DATE(m.effective_date) AS effective_date,
-           m.remark
-         FROM emp_movements m
-         WHERE m.movement_type IN ('RESIGN', 'TRANSFER_OUT')
-         GROUP BY
-           m.citizen_id,
-           m.movement_type,
-           DATE(m.effective_date),
-           m.remark
-       ) mm
-       LEFT JOIN emp_profiles e ON e.citizen_id = mm.citizen_id
-       ORDER BY mm.effective_date DESC, mm.movement_id DESC
+       FROM emp_movements m
+       LEFT JOIN emp_profiles e ON e.citizen_id = m.citizen_id
+       WHERE m.movement_type IN ('RESIGN', 'TRANSFER_OUT')
+         AND m.source_movement_id IS NULL
+       ORDER BY m.effective_date DESC, m.movement_id DESC
       `,
     );
     return rows as PersonnelMovementRecord[];
@@ -90,6 +77,7 @@ export class WorkforceComplianceRepository {
       `UPDATE emp_movements
        SET citizen_id = ?, movement_type = ?, effective_date = ?, remark = ?
        WHERE movement_id = ?
+         AND source_movement_id IS NULL
          AND movement_type IN ('RESIGN', 'TRANSFER_OUT')`,
       [
         payload.citizen_id,
@@ -105,6 +93,7 @@ export class WorkforceComplianceRepository {
     await db.execute<ResultSetHeader>(
       `DELETE FROM emp_movements
        WHERE movement_id = ?
+         AND source_movement_id IS NULL
          AND movement_type IN ('RESIGN', 'TRANSFER_OUT')`,
       [movementId],
     );

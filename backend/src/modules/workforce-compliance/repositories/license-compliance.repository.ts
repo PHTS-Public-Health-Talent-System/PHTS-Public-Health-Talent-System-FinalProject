@@ -181,10 +181,4 @@ export class LicenseComplianceRepository {
       days_left: row.days_left !== null ? Number(row.days_left) : null,
     }));
   }
-
-  // ── Connection helper ───────────────────────────────────────────────────────
-
-  static async getConnection(): Promise<PoolConnection> {
-    return db.getConnection();
-  }
 }

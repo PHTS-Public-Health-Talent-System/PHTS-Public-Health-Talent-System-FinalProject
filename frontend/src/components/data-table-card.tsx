@@ -44,7 +44,7 @@ export function DataTableCard({
           )}
         </div>
 
-        <div className="flex items-center gap-2 pl-2">
+        <div className="flex flex-wrap items-center gap-2 pl-2">
           {action}
           {viewAllHref && (
             <Button
@@ -62,7 +62,7 @@ export function DataTableCard({
         </div>
       </CardHeader>
 
-      <CardContent className={cn('p-6 flex-1', contentClassName)}>{children}</CardContent>
+      <CardContent className={cn('flex-1 p-6', contentClassName)}>{children}</CardContent>
     </Card>
   );
 }

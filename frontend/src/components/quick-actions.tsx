@@ -48,7 +48,7 @@ export function QuickActions({
                   className={cn(
                     'w-full h-auto py-4 px-4 justify-start items-center gap-4 whitespace-normal text-left group transition-all duration-200',
                     'hover:border-primary/50 hover:shadow-sm hover:-translate-y-0.5',
-                    'bg-background', // Ensure background allows shadow to show
+                    'bg-background',
                   )}
                 >
                   <div
@@ -71,7 +71,7 @@ export function QuickActions({
                     )}
                   </div>
 
-                  <ChevronRight className="h-4 w-4 text-muted-foreground/50 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <ChevronRight className="h-4 w-4 text-muted-foreground/50 opacity-0 transition-opacity group-hover:opacity-100" />
                 </Button>
               </Link>
             );

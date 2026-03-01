@@ -29,6 +29,7 @@ export interface StatItem {
 interface StatCardsProps {
   stats: StatItem[];
   columns?: 2 | 3 | 4;
+  className?: string;
 }
 
 const colorStyles: Record<StatColor, string> = {
@@ -41,7 +42,7 @@ const colorStyles: Record<StatColor, string> = {
   indigo: 'bg-indigo-100 text-indigo-600',
 };
 
-export function StatCards({ stats, columns = 4 }: StatCardsProps) {
+export function StatCards({ stats, columns = 4, className }: StatCardsProps) {
   const gridCols = {
     2: 'grid-cols-1 md:grid-cols-2',
     3: 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3',
@@ -49,7 +50,7 @@ export function StatCards({ stats, columns = 4 }: StatCardsProps) {
   };
 
   return (
-    <div className={cn('grid gap-4', gridCols[columns])}>
+    <div className={cn('grid gap-4', gridCols[columns], className)}>
       {stats.map((stat, index) => {
         const Icon = stat.icon;
         const colorClass = colorStyles[stat.color || 'primary'];
@@ -96,7 +97,7 @@ export function StatCards({ stats, columns = 4 }: StatCardsProps) {
 
                 <div className="mt-4">
                   <p
-                    className="text-sm font-medium text-muted-foreground truncate"
+                    className="truncate text-sm font-medium text-muted-foreground"
                     title={stat.title}
                   >
                     {stat.title}

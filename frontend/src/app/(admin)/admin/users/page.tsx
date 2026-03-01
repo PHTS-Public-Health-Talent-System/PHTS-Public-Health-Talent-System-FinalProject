@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { startTransition, useDeferredValue, useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -56,15 +56,12 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import {
-  useSearchUsers,
-  useTriggerSync,
-  useTriggerUserSync,
-  useUpdateUserRole,
-} from '@/features/system/hooks';
+import { useSearchUsers, useTriggerUserSync, useUpdateUserRole } from '@/features/system/users';
+import { useTriggerSync } from '@/features/system/sync';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
 import { getRoleLabel, ROLE_OPTIONS } from '@/shared/utils/role-label';
+import { AdminPageShell } from '@/components/admin/admin-page-shell';
 
 type SystemUserRow = {
   id: number;
@@ -76,6 +73,16 @@ type SystemUserRow = {
   last_name: string | null;
   avatar_url?: string;
 };
+
+const EMPTY_USER_RESULT = {
+  rows: [],
+  total: 0,
+  active_total: 0,
+  inactive_total: 0,
+  page: 1,
+  limit: 20,
+  total_pages: 1,
+} as const;
 
 // --- Helpers ---
 const getRoleBadgeColor = (role: string) => {
@@ -113,6 +120,7 @@ export default function UsersPage() {
   const [newRole, setNewRole] = useState('');
   const [isRoleDialogOpen, setIsRoleDialogOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const deferredSearchInput = useDeferredValue(searchInput);
 
   // --- Hooks ---
   const usersQuery = useSearchUsers({
@@ -130,26 +138,17 @@ export default function UsersPage() {
   // --- Effects ---
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setSearchQuery(searchInput.trim());
-      setPage(1);
+      const nextSearchQuery = deferredSearchInput.trim();
+      startTransition(() => {
+        setSearchQuery((current) => (current === nextSearchQuery ? current : nextSearchQuery));
+        setPage(1);
+      });
     }, 400);
     return () => window.clearTimeout(timer);
-  }, [searchInput]);
+  }, [deferredSearchInput]);
 
   // --- Data Processing ---
-  const result = useMemo(
-    () =>
-      usersQuery.data ?? {
-        rows: [],
-        total: 0,
-        active_total: 0,
-        inactive_total: 0,
-        page: 1,
-        limit: Number(limit),
-        total_pages: 1,
-      },
-    [usersQuery.data, limit],
-  );
+  const result = usersQuery.data ?? { ...EMPTY_USER_RESULT, limit: Number(limit) };
 
   const users = result.rows as SystemUserRow[];
   const totalRows = Number(result.total ?? 0);
@@ -173,7 +172,6 @@ export default function UsersPage() {
         userId: selectedUser.id,
         payload: { role: newRole },
       });
-      await usersQuery.refetch();
       toast.success(`อัปเดตสิทธิ์ ${fullName(selectedUser)} เป็น ${newRole} สำเร็จ`);
       setIsRoleDialogOpen(false);
       setSelectedUser(null);
@@ -196,7 +194,6 @@ export default function UsersPage() {
         },
       });
       toast.success(isActive ? 'ระงับการใช้งานบัญชีแล้ว' : 'เปิดใช้งานบัญชีแล้ว');
-      usersQuery.refetch();
     } catch {
       const msg = 'ไม่สามารถเปลี่ยนสถานะผู้ใช้ได้';
       setActionError(msg);
@@ -214,7 +211,6 @@ export default function UsersPage() {
     });
     try {
       await promise;
-      usersQuery.refetch();
     } catch {
       setActionError('การซิงค์ข้อมูลล้มเหลว ระบบอาจไม่สามารถเชื่อมต่อ HRMS ได้ชั่วคราว');
     }
@@ -230,34 +226,29 @@ export default function UsersPage() {
     });
     try {
       await promise;
-      usersQuery.refetch();
     } catch {
       setActionError('การอัปเดตข้อมูลผู้ใช้รายนี้ล้มเหลว');
     }
   };
 
   return (
-    <div className="p-6 lg:p-8 space-y-6 max-w-[1400px] mx-auto">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Users className="h-6 w-6 text-primary" /> จัดการผู้ใช้ (User Management)
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            ค้นหา ตรวจสอบ และกำหนดสิทธิ์การเข้าถึงของผู้ใช้งานในระบบ
-          </p>
-        </div>
+    <AdminPageShell
+      eyebrow="Identity Control"
+      title="จัดการผู้ใช้"
+      description="ค้นหา ตรวจสอบสถานะบัญชี และกำหนดสิทธิ์การเข้าถึงของผู้ใช้งานในระบบ"
+      icon={Users}
+      actions={
         <Button
           variant="outline"
           onClick={handleSync}
           disabled={triggerSync.isPending}
-          className="gap-2 bg-background shadow-sm"
+          className="gap-2 bg-background/90 shadow-sm"
         >
           <RefreshCw className={triggerSync.isPending ? 'animate-spin' : ''} size={16} />
           ซิงค์ HRMS ทั้งระบบ
         </Button>
-      </div>
+      }
+    >
 
       {actionError && (
         <Alert variant="destructive" className="border-destructive/40 bg-destructive/10">
@@ -609,6 +600,6 @@ export default function UsersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPageShell>
   );
 }

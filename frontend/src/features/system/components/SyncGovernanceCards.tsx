@@ -11,7 +11,7 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from 'lucide-react';
-import type { SyncReconciliationSummary } from '@/features/system/types';
+import type { SyncReconciliationSummary } from '@/features/system/shared';
 import { formatThaiNumber } from '@/shared/utils/thai-locale';
 import { cn } from '@/lib/utils';
 

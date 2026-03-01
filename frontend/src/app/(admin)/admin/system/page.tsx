@@ -6,7 +6,6 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
 import {
   Dialog,
   DialogContent,
@@ -30,46 +29,60 @@ import {
   RefreshCw,
   Power,
   Download,
-  Activity,
-  FileWarning,
-  Layers,
-  Tag,
   History,
   Clock3,
   ShieldCheck,
   AlertTriangle,
-  CheckCircle2,
-  HardDrive,
-  Workflow,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
   SyncGovernanceCards,
+  SystemAttentionBanner,
+  SystemHealthPanel,
+  SystemOverviewCards,
+} from '@/features/system';
+import {
   useBackupHistory,
   useBackupSchedule,
+  useTriggerBackup,
+  useUpdateBackupSchedule,
+} from '@/features/system/backup';
+import {
   useMaintenanceStatus,
-  useSyncSchedule,
   useSystemJobStatus,
   useSystemVersionInfo,
   useToggleMaintenance,
-  useTriggerBackup,
-  useTriggerSync,
+} from '@/features/system/runtime';
+import {
   useSyncReconciliation,
-  useUpdateBackupSchedule,
+  useSyncSchedule,
+  useTriggerSync,
   useUpdateSyncSchedule,
-} from '@/features/system';
-import { Progress } from '@/components/ui/progress';
+} from '@/features/system/sync';
 import { formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
 import { cn } from '@/lib/utils';
+import { AdminPageShell } from '@/components/admin/admin-page-shell';
+import {
+  toQueueProgress,
+  toThaiServiceName,
+  type DashboardJobStatus,
+  type DashboardServiceRow,
+  type DashboardSyncRow,
+} from '@/features/system/dashboard';
 
 // --- Types ---
-type JobStatus = 'RUNNING' | 'IDLE' | 'FAILED' | 'DEGRADED' | 'UNKNOWN';
+type JobStatus = DashboardJobStatus;
 
 type JobStatusResponse = {
   partial: boolean;
   errors: Array<{ source: string; message: string }>;
   summary: {
     checked_at?: string;
+    sync?: {
+      status: JobStatus;
+      isSyncing: boolean;
+      lastResult: Record<string, unknown> | null;
+    };
     dependencies?: {
       mysql?: {
         status: 'IDLE' | 'FAILED';
@@ -138,61 +151,6 @@ type JobStatusResponse = {
 type VersionResponse = { version?: string; commit?: string; env?: string };
 type MaintenanceResponse = { enabled?: boolean };
 
-// --- Helpers ---
-const toStatusClass = (status: JobStatus) => {
-  if (status === 'IDLE') return 'bg-emerald-500';
-  if (status === 'RUNNING') return 'bg-blue-500';
-  if (status === 'DEGRADED') return 'bg-amber-500';
-  if (status === 'FAILED') return 'bg-red-500';
-  return 'bg-muted-foreground';
-};
-
-const toThaiServiceName = (key: string, fallbackName: string) => {
-  if (key === 'hrms-sync') return 'ซิงก์ข้อมูล HRMS';
-  if (key === 'notification-outbox') return 'คิวแจ้งเตือน';
-  if (key === 'snapshot-outbox') return 'คิวสร้างสแนปช็อตงวดจ่าย';
-  if (key === 'ocr-precheck') return 'คิว OCR ตรวจเอกสาร';
-  if (key === 'workforce-compliance') return 'งานกำกับบุคลากร';
-  if (key === 'payroll-periods') return 'งวดการจ่ายเงิน';
-  if (key === 'mysql') return 'ฐานข้อมูลหลัก (MySQL)';
-  if (key === 'redis') return 'แคช/ล็อก (Redis)';
-  if (key === 'hrms-source') return 'แหล่งข้อมูล HRMS';
-  return fallbackName;
-};
-
-const toServiceStatusBadge = (key: string, status: JobStatus, detail: Record<string, unknown>) => {
-  if (key === 'notification-outbox' || key === 'snapshot-outbox') {
-    if (status === 'IDLE') return 'ไม่มีคิวค้าง';
-    if (status === 'RUNNING') return 'มีคิวรอประมวลผล';
-    if (status === 'DEGRADED') return 'มีรายการล้มเหลว';
-    if (status === 'FAILED') return 'ระบบคิวผิดพลาด';
-  }
-  if (key === 'ocr-precheck') {
-    if (status === 'IDLE') return 'พร้อมใช้งาน';
-    if (status === 'RUNNING') return 'มีคิวรอตรวจ';
-    if (status === 'FAILED') return 'ตั้งค่าไม่พร้อม';
-  }
-  if (key === 'workforce-compliance') {
-    if (status === 'DEGRADED') return 'พบงานล้มเหลว';
-    if (status === 'IDLE') return 'ปกติ';
-  }
-  if (key === 'payroll-periods') {
-    if (status === 'RUNNING') return 'มีงวดเปิดอยู่';
-    if (status === 'IDLE') return 'ไม่มีงวดเปิด';
-  }
-  if (key === 'hrms-sync') {
-    if (status === 'RUNNING') return 'กำลังซิงก์';
-    if (status === 'IDLE') return 'ปกติ';
-    if (status === 'FAILED') return 'ซิงก์ล้มเหลว';
-  }
-  if (status === 'IDLE') return 'พร้อมใช้งาน';
-  if (status === 'RUNNING') return 'กำลังทำงาน';
-  if (status === 'DEGRADED') return 'มีความเสี่ยง';
-  if (status === 'FAILED') return 'ขัดข้อง';
-  if (detail.error) return 'มีข้อผิดพลาด';
-  return 'ไม่ทราบสถานะ';
-};
-
 const getErrorMessage = (error: unknown, fallback: string) =>
   error instanceof Error && error.message ? error.message : fallback;
 const formatDateTime = (value: string) => {
@@ -212,11 +170,6 @@ const formatBytes = (bytes: number | null) => {
   return `${size.toFixed(1)} ${units[unit]}`;
 };
 
-const toQueueProgress = (status: 'failed' | 'running' | 'success', activeCount: number) => {
-  if (status === 'failed') return activeCount > 0 ? 100 : 0;
-  if (status === 'running') return 100;
-  return 0;
-};
 export default function SystemPage() {
   // --- States ---
   const [isMaintenanceDialogOpen, setIsMaintenanceDialogOpen] = useState(false);
@@ -256,6 +209,7 @@ export default function SystemPage() {
     partial: false,
     errors: [],
     summary: {
+      sync: { status: 'UNKNOWN', isSyncing: false, lastResult: null },
       notifications: { pending: 0, processing: 0, failed: 0, sent: 0, total: 0 },
       snapshot: { pending: 0, processing: 0, failed: 0, sent: 0, total: 0 },
       ocr: { pending: 0, configured: false, worker_enabled: true },
@@ -288,7 +242,7 @@ export default function SystemPage() {
     (jobStatus.summary.ocr.worker_enabled && jobStatus.summary.ocr.configured ? 0 : 1) +
     Number(jobStatus.summary.workforce.failed_last_24h > 0 ? 1 : 0);
 
-  const serviceRows = useMemo(() => {
+  const serviceRows = useMemo<DashboardServiceRow[]>(() => {
     return jobStatus.jobs.map((job) => ({
       name: toThaiServiceName(job.key, job.name),
       status: job.status,
@@ -296,6 +250,11 @@ export default function SystemPage() {
       detail: job.detail ?? {},
     }));
   }, [jobStatus.jobs]);
+  const degradedJobsCount = useMemo(
+    () => serviceRows.filter((service) => service.status === 'DEGRADED').length,
+    [serviceRows],
+  );
+  const hasServiceRisk = jobStatus.partial || failedJobsCount > 0 || degradedJobsCount > 0;
 
   const infrastructureRows = useMemo(
     () => serviceRows.filter((s) => ['mysql', 'redis', 'hrms-source'].includes(s.key)),
@@ -306,7 +265,7 @@ export default function SystemPage() {
     [serviceRows],
   );
 
-  const syncRows = useMemo(
+  const syncRows = useMemo<DashboardSyncRow[]>(
     () => [
       {
         id: 'notification',
@@ -403,6 +362,12 @@ export default function SystemPage() {
         detail: `${formatThaiNumber(failedJobsCount)} รายการในคิว/อัตโนมัติ`,
         tone: 'danger',
       });
+    if (degradedJobsCount > 0)
+      items.push({
+        title: 'พบบริการมีคำเตือน',
+        detail: `${formatThaiNumber(degradedJobsCount)} บริการยังทำงานได้แต่ต้องตรวจสอบ`,
+        tone: 'warn',
+      });
     if ((jobStatus.summary.notifications.oldest_backlog_minutes ?? 0) >= 30)
       items.push({
         title: 'คิวแจ้งเตือนค้างนาน',
@@ -435,7 +400,7 @@ export default function SystemPage() {
         tone: 'ok',
       });
     return items.slice(0, 3);
-  }, [failedJobsCount, jobStatus.summary, maintenanceEnabled]);
+  }, [degradedJobsCount, failedJobsCount, jobStatus.summary, maintenanceEnabled]);
 
   // --- Handlers ---
   const handleMaintenanceSwitch = async (next: boolean) => {
@@ -470,7 +435,6 @@ export default function SystemPage() {
       });
       toast.success('อัปเดตเวลาสำรองข้อมูลเรียบร้อยแล้ว');
       setIsBackupScheduleDialogOpen(false);
-      backupScheduleQuery.refetch();
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, 'ไม่สามารถอัปเดตเวลาได้'));
     }
@@ -487,384 +451,48 @@ export default function SystemPage() {
       });
       toast.success('อัปเดตเวลาซิงก์ข้อมูลเรียบร้อยแล้ว');
       setIsSyncScheduleDialogOpen(false);
-      syncScheduleQuery.refetch();
     } catch (error: unknown) {
       toast.error(getErrorMessage(error, 'ไม่สามารถอัปเดตเวลาได้'));
     }
   };
 
   return (
-    <div className="p-6 lg:p-8 space-y-8 max-w-[1400px] mx-auto">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-          <Server className="h-6 w-6 text-primary" /> ตั้งค่าและการจัดการระบบ (System Settings)
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          ตรวจสอบสถานะเซิร์ฟเวอร์ การบำรุงรักษา และตั้งค่าการสำรอง/ซิงก์ข้อมูล
-        </p>
-      </div>
+    <AdminPageShell
+      eyebrow="Ops & Runtime"
+      title="ตั้งค่าและการจัดการระบบ"
+      description="ตรวจสอบสถานะเซิร์ฟเวอร์ การบำรุงรักษา การสำรองข้อมูล และการซิงก์งานสำคัญของระบบ"
+      icon={Server}
+    >
 
-      {/* Top Stat Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-border shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              เวอร์ชันระบบ
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-2xl font-bold">{versionInfo.version || '-'}</div>
-                <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span>Environment:</span>
-                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5 uppercase font-mono">
-                    {versionInfo.env || 'Unknown'}
-                  </Badge>
-                </div>
-              </div>
-              <div className="p-3 bg-primary/10 rounded-full text-primary">
-                <Tag className="h-5 w-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <SystemOverviewCards
+        version={versionInfo.version || '-'}
+        env={versionInfo.env || 'Unknown'}
+        maintenanceEnabled={maintenanceEnabled}
+        totalQueueBacklog={totalQueueBacklog}
+        failedJobsCount={failedJobsCount}
+        maintenanceLoading={maintenanceQuery.isLoading}
+        maintenancePending={toggleMaintenanceMutation.isPending}
+        onMaintenanceToggle={handleMaintenanceSwitch}
+      />
 
-        <Card
-          className={cn(
-            'border-border shadow-sm transition-all',
-            maintenanceEnabled &&
-              'border-destructive/50 bg-destructive/5 ring-1 ring-destructive/20',
-          )}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              โหมดปิดปรับปรุง (Maintenance)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <div
-                  className={cn(
-                    'text-2xl font-bold',
-                    maintenanceEnabled ? 'text-destructive' : 'text-emerald-600',
-                  )}
-                >
-                  {maintenanceEnabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {maintenanceEnabled ? 'จำกัดการเข้าถึงของผู้ใช้' : 'ระบบเปิดใช้งานปกติ'}
-                </p>
-              </div>
-              <Switch
-                checked={maintenanceEnabled}
-                onCheckedChange={handleMaintenanceSwitch}
-                disabled={maintenanceQuery.isLoading || toggleMaintenanceMutation.isPending}
-                className={maintenanceEnabled ? 'data-[state=checked]:bg-destructive' : ''}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border shadow-sm">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              คิวงานค้าง (Queue Backlog)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-2xl font-bold text-foreground">
-                  {formatThaiNumber(totalQueueBacklog)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">รวมจากทุกบริการคิว</p>
-              </div>
-              <div
-                className={cn(
-                  'p-3 rounded-full',
-                  totalQueueBacklog > 100
-                    ? 'bg-amber-100 text-amber-600'
-                    : 'bg-secondary text-muted-foreground',
-                )}
-              >
-                <Layers className="h-5 w-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card
-          className={cn(
-            'border-border shadow-sm transition-all',
-            failedJobsCount > 0 && 'border-destructive/30 bg-destructive/5',
-          )}
-        >
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              งานที่ล้มเหลว (Failed Jobs)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div>
-                <div
-                  className={cn(
-                    'text-2xl font-bold',
-                    failedJobsCount > 0 ? 'text-destructive' : 'text-foreground',
-                  )}
-                >
-                  {formatThaiNumber(failedJobsCount)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  รายการที่ไม่สำเร็จ / ต้องการแก้ไข
-                </p>
-              </div>
-              <div
-                className={cn(
-                  'p-3 rounded-full',
-                  failedJobsCount > 0
-                    ? 'bg-destructive/10 text-destructive'
-                    : 'bg-secondary text-muted-foreground',
-                )}
-              >
-                <FileWarning className="h-5 w-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Attention Banner Area */}
-      <Card className="border-border shadow-sm bg-muted/10">
-        <CardContent className="p-4 grid gap-3 md:grid-cols-3">
-          {attentionItems.map((item) => (
-            <div
-              key={item.title}
-              className={cn(
-                'rounded-lg border p-3 flex gap-3 items-start bg-background shadow-sm',
-                item.tone === 'danger' && 'border-destructive/40 bg-destructive/5',
-                item.tone === 'warn' && 'border-amber-200 bg-amber-50/50',
-                item.tone === 'ok' && 'border-emerald-200 bg-emerald-50/50',
-              )}
-            >
-              {item.tone === 'danger' && (
-                <AlertTriangle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-              )}
-              {item.tone === 'warn' && (
-                <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-              )}
-              {item.tone === 'ok' && (
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
-              )}
-              <div>
-                <p
-                  className={cn(
-                    'text-sm font-semibold',
-                    item.tone === 'danger'
-                      ? 'text-destructive'
-                      : item.tone === 'warn'
-                        ? 'text-amber-700'
-                        : 'text-emerald-700',
-                  )}
-                >
-                  {item.title}
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">{item.detail}</p>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+      <SystemAttentionBanner items={attentionItems} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* --- Left Column: System Health & Jobs --- */}
         <div className="lg:col-span-2 space-y-6">
-          <Card className="border-border shadow-sm">
-            <CardHeader className="pb-3 border-b bg-muted/5">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Activity className="h-4 w-4 text-muted-foreground" /> สถานะบริการหลัก (Service
-                  Health)
-                </CardTitle>
-                <Badge
-                  variant={jobStatus.partial ? 'destructive' : 'outline'}
-                  className={
-                    !jobStatus.partial ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : ''
-                  }
-                >
-                  {jobStatus.partial ? 'มีความเสี่ยง' : 'ทำงานปกติ'}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              {/* Infrastructure Section */}
-              <div className="p-5 border-b">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">
-                  <HardDrive className="h-3.5 w-3.5" /> โครงสร้างพื้นฐาน (Infrastructure)
-                </h3>
-                <div className="grid gap-4 sm:grid-cols-3">
-                  {infrastructureRows.map((service) => (
-                    <div key={service.key} className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-foreground">{service.name}</span>
-                        <div
-                          className={cn(
-                            'h-2 w-2 rounded-full',
-                            service.status === 'FAILED'
-                              ? 'bg-red-500 animate-pulse'
-                              : 'bg-emerald-500',
-                          )}
-                        />
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span
-                          className={cn(
-                            service.status === 'FAILED'
-                              ? 'text-destructive'
-                              : 'text-muted-foreground',
-                          )}
-                        >
-                          {toServiceStatusBadge(service.key, service.status, service.detail)}
-                        </span>
-                        {'latencyMs' in service.detail && (
-                          <span className="font-mono text-muted-foreground">
-                            {formatThaiNumber(Number(service.detail.latencyMs ?? 0))}ms
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Workflows Section */}
-              <div className="p-5">
-                <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-1.5">
-                  <Workflow className="h-3.5 w-3.5" /> บริการย่อย (Microservices)
-                </h3>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {workflowRows.map((service) => (
-                    <div
-                      key={service.key}
-                      className="p-3 border rounded-lg bg-card hover:border-primary/20 transition-colors flex items-start justify-between gap-3"
-                    >
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="relative flex h-2.5 w-2.5 items-center justify-center shrink-0">
-                            <span
-                              className={cn(
-                                'absolute inline-flex h-full w-full rounded-full opacity-30',
-                                toStatusClass(service.status),
-                              )}
-                            />
-                            <span
-                              className={cn(
-                                'relative inline-flex rounded-full h-1.5 w-1.5',
-                                toStatusClass(service.status),
-                              )}
-                            />
-                          </div>
-                          <span className="font-medium text-sm truncate">{service.name}</span>
-                        </div>
-                        {Boolean((service.detail as { error?: unknown }).error) && (
-                          <p className="text-[10px] text-destructive leading-tight line-clamp-2 mt-1">
-                            {String((service.detail as { error?: unknown }).error)}
-                          </p>
-                        )}
-                      </div>
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          'text-[10px] font-normal shrink-0',
-                          service.status === 'FAILED'
-                            ? 'text-destructive border-destructive'
-                            : 'text-muted-foreground',
-                        )}
-                      >
-                        {toServiceStatusBadge(service.key, service.status, service.detail)}
-                      </Badge>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Sync Processing Queue */}
-          <Card className="border-border shadow-sm">
-            <CardHeader className="pb-3 border-b bg-muted/5">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <RefreshCw className="h-4 w-4 text-muted-foreground" /> คิวงานประมวลผล (Processing
-                  Queues)
-                </CardTitle>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsSyncDialogOpen(true)}
-                  className="gap-2 h-8 text-xs bg-background"
-                >
-                  <RefreshCw className="h-3.5 w-3.5" /> ดึงข้อมูล HRMS
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="p-5 space-y-6">
-              {syncRows.map((row) => (
-                <div key={row.id} className="space-y-2">
-                  <div className="flex justify-between items-end">
-                    <div className="space-y-0.5">
-                      <span className="font-medium text-sm block">{row.type}</span>
-                      <span className="text-xs text-muted-foreground">{row.details}</span>
-                    </div>
-                    <span
-                      className={cn(
-                        'text-sm font-medium',
-                        row.status === 'failed' ? 'text-destructive' : 'text-foreground',
-                      )}
-                    >
-                      {formatThaiNumber(row.records)}{' '}
-                      <span className="text-xs text-muted-foreground font-normal">รายการ</span>
-                    </span>
-                  </div>
-                  <Progress
-                    value={row.progress}
-                    className={cn(
-                      'h-2 bg-secondary',
-                      row.status === 'failed' && 'bg-destructive/20 [&>div]:bg-destructive',
-                      row.status === 'running' && 'bg-blue-100 [&>div]:bg-blue-500 animate-pulse',
-                    )}
-                  />
-                  {row.highlight && (
-                    <p className="text-[10px] text-amber-600 font-medium">{row.highlight}</p>
-                  )}
-                </div>
-              ))}
-
-              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-border/50">
-                <div className="text-xs text-muted-foreground">
-                  อัตราส่งแจ้งเตือนล้มเหลว (1 ชม.):{' '}
-                  <span className="font-semibold text-foreground">
-                    {formatThaiNumber(
-                      Number(jobStatus.summary.notifications.failed_rate_last_hour ?? 0),
-                    )}
-                    %
-                  </span>
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  อัตราสร้าง Snapshot ล้มเหลว (1 ชม.):{' '}
-                  <span className="font-semibold text-foreground">
-                    {formatThaiNumber(
-                      Number(jobStatus.summary.snapshot.failed_rate_last_hour ?? 0),
-                    )}
-                    %
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <SystemHealthPanel
+            hasServiceRisk={hasServiceRisk}
+            infrastructureRows={infrastructureRows}
+            workflowRows={workflowRows}
+            syncRows={syncRows}
+            notificationFailedRateLastHour={Number(
+              jobStatus.summary.notifications.failed_rate_last_hour ?? 0,
+            )}
+            snapshotFailedRateLastHour={Number(
+              jobStatus.summary.snapshot.failed_rate_last_hour ?? 0,
+            )}
+            onOpenSyncDialog={() => setIsSyncDialogOpen(true)}
+          />
 
           {/* Sync Governance Link Card */}
           <SyncGovernanceCards
@@ -1309,6 +937,6 @@ export default function SystemPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </AdminPageShell>
   );
 }

@@ -139,6 +139,7 @@ const getMonitorRetentionPolicy = () => ({
   dataIssuesDays: parsePositiveIntEnv(process.env.SYNC_RETENTION_DATA_ISSUES_DAYS, 180),
   userAuditsDays: parsePositiveIntEnv(process.env.SYNC_RETENTION_USER_AUDITS_DAYS, 180),
   stageRunsDays: parsePositiveIntEnv(process.env.SYNC_RETENTION_STAGE_RUNS_DAYS, 120),
+  batchesDays: parsePositiveIntEnv(process.env.SYNC_RETENTION_BATCHES_DAYS, 365),
 });
 
 export const deriveUserIsActive = (

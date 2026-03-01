@@ -113,6 +113,14 @@ export interface SyncBatchRecord {
   stages: SyncBatchStageRun[];
 }
 
+export interface SyncBatchListResponse {
+  rows: SyncBatchRecord[];
+  total: number;
+  page: number;
+  limit: number;
+  has_more: boolean;
+}
+
 export type DataIssueSeverity = "LOW" | "MEDIUM" | "HIGH";
 
 export interface DataIssueRecord {

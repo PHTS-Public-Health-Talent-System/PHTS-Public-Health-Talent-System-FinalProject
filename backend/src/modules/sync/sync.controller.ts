@@ -43,9 +43,13 @@ export const triggerUserSync = asyncHandler(
 );
 
 export const getSyncBatches = asyncHandler(async (req: Request, res: Response) => {
-  const { limit } = req.query as unknown as SyncBatchesQuery;
+  const { page, limit } = req.query as unknown as SyncBatchesQuery;
+  const safePage = Math.max(1, Number(page || 1));
   const safeLimit = Math.max(1, Math.min(Number(limit || 20), 100));
-  const data = await TransformMonitorRepository.getSyncBatches(safeLimit);
+  const data = await TransformMonitorRepository.getSyncBatches({
+    page: safePage,
+    limit: safeLimit,
+  });
   res.json({ success: true, data });
 });
 

@@ -152,15 +152,18 @@ export class TransformMonitorRepository {
     dataIssuesDays?: number;
     userAuditsDays?: number;
     stageRunsDays?: number;
+    batchesDays?: number;
   }): Promise<{
     data_issues_deleted: number;
     user_audits_deleted: number;
     stage_runs_deleted: number;
+    sync_batches_deleted: number;
   }> {
     const result = {
       data_issues_deleted: 0,
       user_audits_deleted: 0,
       stage_runs_deleted: 0,
+      sync_batches_deleted: 0,
     };
 
     const dataIssuesDays = Number(input.dataIssuesDays ?? 0);
@@ -197,6 +200,26 @@ export class TransformMonitorRepository {
         [stageRunsDays],
       );
       result.stage_runs_deleted = Number(deleted?.affectedRows ?? 0);
+    }
+
+    const batchesDays = Number(input.batchesDays ?? 0);
+    if (batchesDays > 0) {
+      const deleted = await query<ResultSetHeader>(
+        `
+        DELETE b
+        FROM hrms_sync_batches b
+        LEFT JOIN hrms_sync_stage_runs sr ON sr.batch_id = b.batch_id
+        LEFT JOIN hrms_data_issues di ON di.batch_id = b.batch_id
+        LEFT JOIN user_sync_state_audits ua ON ua.sync_batch_id = b.batch_id
+        WHERE b.created_at < DATE_SUB(NOW(), INTERVAL ? DAY)
+          AND b.status <> 'RUNNING'
+          AND sr.batch_id IS NULL
+          AND di.batch_id IS NULL
+          AND ua.sync_batch_id IS NULL
+        `,
+        [batchesDays],
+      );
+      result.sync_batches_deleted = Number(deleted?.affectedRows ?? 0);
     }
 
     return result;
@@ -403,8 +426,26 @@ export class TransformMonitorRepository {
     );
   }
 
-  static async getSyncBatches(limit: number): Promise<RowDataPacket[]> {
-    const safeLimit = Math.max(1, Math.min(Number(limit || 20), 100));
+  static async getSyncBatches(input: {
+    page: number;
+    limit: number;
+  }): Promise<{
+    rows: RowDataPacket[];
+    total: number;
+    page: number;
+    limit: number;
+    has_more: boolean;
+  }> {
+    const safePage = Math.max(1, Math.min(Number(input.page || 1), 10_000));
+    const safeLimit = Math.max(1, Math.min(Number(input.limit || 20), 100));
+    const offset = (safePage - 1) * safeLimit;
+    const [countRow] = await query<RowDataPacket[]>(
+      `
+      SELECT COUNT(*) AS total
+      FROM hrms_sync_batches
+      `,
+    );
+    const total = Number(countRow?.total ?? 0);
     const batches = await query<RowDataPacket[]>(
       `
       SELECT batch_id, sync_type, status, core_status, post_status, overall_status, warnings_count,
@@ -414,6 +455,7 @@ export class TransformMonitorRepository {
       FROM hrms_sync_batches
       ORDER BY batch_id DESC
       LIMIT ${safeLimit}
+      OFFSET ${offset}
       `,
     );
     const stageRows = await this.getStageRunsByBatchIds(
@@ -426,10 +468,16 @@ export class TransformMonitorRepository {
       list.push(stage);
       stageMap.set(key, list);
     }
-    return batches.map((row) => ({
-      ...row,
-      stages: stageMap.get(Number(row.batch_id)) ?? [],
-    }));
+    return {
+      rows: batches.map((row) => ({
+        ...row,
+        stages: stageMap.get(Number(row.batch_id)) ?? [],
+      })),
+      total,
+      page: safePage,
+      limit: safeLimit,
+      has_more: offset + batches.length < total,
+    };
   }
 
   static async createDataIssue(input: {

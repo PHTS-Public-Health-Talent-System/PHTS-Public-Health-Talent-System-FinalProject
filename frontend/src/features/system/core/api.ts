@@ -9,11 +9,11 @@ import type {
   BackupSchedule,
   BackupTriggerResult,
   DataIssueListResponse,
+  SyncBatchListResponse,
   SyncSchedule,
   SyncRecordListResponse,
   SnapshotOutboxFilterStatus,
   SnapshotOutboxListResponse,
-  SyncBatchRecord,
   SyncReconciliationSummary,
   UserSyncAuditAction,
   UserSyncAuditRecord,
@@ -138,10 +138,17 @@ export async function getSyncReconciliation(): Promise<SyncReconciliationSummary
   return res.data.data;
 }
 
-export async function getSyncBatches(limit: number = 20): Promise<SyncBatchRecord[]> {
-  const safeLimit = Math.max(1, Math.min(limit, 100));
-  const res = await api.get<ApiResponse<SyncBatchRecord[]>>('/system/sync/batches', {
-    params: { limit: safeLimit },
+export async function getSyncBatches(params?: {
+  page?: number;
+  limit?: number;
+}): Promise<SyncBatchListResponse> {
+  const safePage = Math.max(1, params?.page ?? 1);
+  const safeLimit = Math.max(1, Math.min(params?.limit ?? 20, 100));
+  const res = await api.get<ApiResponse<SyncBatchListResponse>>('/system/sync/batches', {
+    params: {
+      page: safePage,
+      limit: safeLimit,
+    },
   });
   return res.data.data;
 }

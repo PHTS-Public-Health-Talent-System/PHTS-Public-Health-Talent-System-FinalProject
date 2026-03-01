@@ -59,7 +59,7 @@ const toLeaveTypeLabel = (raw: unknown): string => {
 
 const toReasonLabel = (reasonCode: unknown): string => {
   const key = String(reasonCode ?? '').trim();
-  return LEAVE_REASON_CODE_LABELS[key] ?? key ?? '-';
+  return LEAVE_REASON_CODE_LABELS[key] ?? key || '-';
 };
 
 const pickFirstString = (parsed: Record<string, unknown>, candidates: string[]): string | null => {

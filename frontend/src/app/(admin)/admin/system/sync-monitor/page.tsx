@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -13,7 +13,7 @@ import {
 } from '@/features/system';
 import {
   useDataIssues,
-  useSyncBatches,
+  useInfiniteSyncBatches,
   useSyncReconciliation,
   useSyncRecords,
   useSyncSchedule,
@@ -121,7 +121,7 @@ export default function SyncGovernancePage() {
   const [showAdvancedIssueFilters, setShowAdvancedIssueFilters] = useState(false);
 
   const reconciliationQuery = useSyncReconciliation();
-  const syncBatchesQuery = useSyncBatches(8);
+  const syncBatchesQuery = useInfiniteSyncBatches(12);
   const syncScheduleQuery = useSyncSchedule();
 
   const dataIssuesQuery = useDataIssues({
@@ -141,7 +141,10 @@ export default function SyncGovernancePage() {
     search: recordsSearchFilter,
   });
 
-  const syncBatches = syncBatchesQuery.data ?? EMPTY_LIST;
+  const syncBatches = useMemo(
+    () => syncBatchesQuery.data?.pages.flatMap((page) => page.rows) ?? EMPTY_LIST,
+    [syncBatchesQuery.data],
+  );
   const dataIssuesResponse = dataIssuesQuery.data;
   const dataIssues = dataIssuesResponse?.rows ?? EMPTY_LIST;
   const dataIssuesForSummary = dataIssuesSummaryQuery.data?.rows ?? EMPTY_LIST;
@@ -189,6 +192,11 @@ export default function SyncGovernancePage() {
     recordsTargetTableFilter ? { label: 'ตาราง', value: recordsTargetTableFilter } : null,
     recordsSearchFilter ? { label: 'ค้นหา', value: recordsSearchFilter } : null,
   ].filter(Boolean) as Array<{ label: string; value: string }>;
+
+  const handleLoadMoreBatches = useCallback(() => {
+    if (!syncBatchesQuery.hasNextPage || syncBatchesQuery.isFetchingNextPage) return;
+    void syncBatchesQuery.fetchNextPage();
+  }, [syncBatchesQuery]);
 
   const handleApplyRecordsFilter = () => {
     const resolvedBatchId =
@@ -292,6 +300,9 @@ export default function SyncGovernancePage() {
             batches={syncBatches as SyncBatchRecord[]}
             batchesLoading={syncBatchesQuery.isLoading}
             batchesFetching={syncBatchesQuery.isFetching}
+            batchesFetchingNextPage={syncBatchesQuery.isFetchingNextPage}
+            hasMoreBatches={Boolean(syncBatchesQuery.hasNextPage)}
+            onLoadMoreBatches={handleLoadMoreBatches}
             onRefreshBatches={() => syncBatchesQuery.refetch()}
             leaveIssueSummary={leaveIssueSummary}
             formatDateTime={formatDateTime}

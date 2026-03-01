@@ -1,8 +1,9 @@
-import { Activity, AlertCircle, BarChart3, RefreshCw } from 'lucide-react';
+import { Activity, AlertCircle, BarChart3, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useEffect, useRef } from 'react';
 import type { SyncBatchRecord, SyncSchedule } from '@/features/system';
 import type { LeaveIssueSummary } from '@/features/system/sync-monitor';
 
@@ -12,6 +13,9 @@ type SyncMonitorSidebarProps = {
   batches: SyncBatchRecord[];
   batchesLoading: boolean;
   batchesFetching: boolean;
+  batchesFetchingNextPage: boolean;
+  hasMoreBatches: boolean;
+  onLoadMoreBatches: () => void;
   onRefreshBatches: () => void;
   leaveIssueSummary: LeaveIssueSummary;
   formatDateTime: (value: string) => string;
@@ -26,6 +30,9 @@ export function SyncMonitorSidebar({
   batches,
   batchesLoading,
   batchesFetching,
+  batchesFetchingNextPage,
+  hasMoreBatches,
+  onLoadMoreBatches,
   onRefreshBatches,
   leaveIssueSummary,
   formatDateTime,
@@ -33,6 +40,24 @@ export function SyncMonitorSidebar({
   toStageStatusLabel,
   leaveReasonCodeLabels,
 }: SyncMonitorSidebarProps) {
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!hasMoreBatches || batchesFetchingNextPage) return;
+    const target = loadMoreRef.current;
+    if (!target) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          onLoadMoreBatches();
+        }
+      },
+      { rootMargin: '120px' },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [batchesFetchingNextPage, hasMoreBatches, onLoadMoreBatches]);
+
   return (
     <div className="space-y-6">
       <Card className="border-dashed border-border bg-muted/10 shadow-sm">
@@ -101,7 +126,7 @@ export function SyncMonitorSidebar({
           ) : batches.length === 0 ? (
             <p className="py-8 text-center text-sm text-muted-foreground">ยังไม่มีประวัติการซิงก์</p>
           ) : (
-            <div className="space-y-3">
+            <div className="max-h-[38rem] space-y-3 overflow-y-auto pr-1">
               {batches.map((batch) => (
                 <div
                   key={batch.batch_id}
@@ -142,6 +167,27 @@ export function SyncMonitorSidebar({
                   </div>
                 </div>
               ))}
+              {hasMoreBatches ? (
+                <div ref={loadMoreRef} className="flex justify-center py-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={onLoadMoreBatches}
+                    disabled={batchesFetchingNextPage}
+                    className="text-xs text-muted-foreground"
+                  >
+                    {batchesFetchingNextPage ? (
+                      <>
+                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        กำลังโหลดเพิ่ม...
+                      </>
+                    ) : (
+                      'โหลดประวัติเพิ่ม'
+                    )}
+                  </Button>
+                </div>
+              ) : null}
             </div>
           )}
         </CardContent>

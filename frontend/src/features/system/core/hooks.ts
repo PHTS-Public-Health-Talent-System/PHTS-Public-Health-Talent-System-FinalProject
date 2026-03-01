@@ -6,6 +6,7 @@
 
 import {
   keepPreviousData,
+  useInfiniteQuery,
   useMutation,
   useQuery,
   useQueryClient,
@@ -200,12 +201,17 @@ export function useSyncReconciliation() {
   });
 }
 
-export function useSyncBatches(limit: number = 20) {
-  return useQuery({
-    queryKey: ['sync-batches', limit],
-    queryFn: () => getSyncBatches(limit),
+export function useInfiniteSyncBatches(limit: number = 20) {
+  return useInfiniteQuery({
+    queryKey: ['sync-batches', 'infinite', limit],
+    queryFn: ({ pageParam }) =>
+      getSyncBatches({
+        page: pageParam,
+        limit,
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage) => (lastPage.has_more ? lastPage.page + 1 : undefined),
     refetchInterval: 60_000,
-    placeholderData: keepPreviousData,
   });
 }
 

@@ -1,6 +1,6 @@
 export {
   useDataIssues,
-  useSyncBatches,
+  useInfiniteSyncBatches,
   useSyncReconciliation,
   useSyncRecords,
   useSyncSchedule,
@@ -12,6 +12,7 @@ export type {
   DataIssueListResponse,
   DataIssueRecord,
   DataIssueSeverity,
+  SyncBatchListResponse,
   SyncBatchRecord,
   SyncBatchStageRun,
   SyncCoreStatus,

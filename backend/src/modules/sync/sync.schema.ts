@@ -19,6 +19,11 @@ export type SyncUserParams = z.infer<typeof syncUserSchema>['params'];
 
 export const syncBatchesQuerySchema = z.object({
   query: z.object({
+    page: z
+      .string()
+      .regex(/^\d+$/, 'page ต้องเป็นตัวเลข')
+      .optional()
+      .default('1'),
     limit: z
       .string()
       .regex(/^\d+$/, 'limit ต้องเป็นตัวเลข')

@@ -82,7 +82,7 @@ export class AuthorizationError extends AppError {
  * 404 Not Found - Resource not found
  */
 export class NotFoundError extends AppError {
-  constructor(resource: string = "ข้อมูล", identifier?: string | number) {
+  constructor(resource = "ข้อมูล", identifier?: string | number) {
     const message = identifier
       ? `ไม่พบ${resource} (${identifier})`
       : `ไม่พบ${resource}`;

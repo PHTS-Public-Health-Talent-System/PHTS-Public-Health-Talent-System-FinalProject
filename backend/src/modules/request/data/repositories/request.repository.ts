@@ -225,7 +225,7 @@ export class RequestRepository {
   }
 
   async findEligibilitySummary(
-    activeOnly: boolean = true,
+    activeOnly = true,
     connection?: PoolConnection,
   ): Promise<RowDataPacket[]> {
     const db = this.getDb(connection);

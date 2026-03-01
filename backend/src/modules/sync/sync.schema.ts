@@ -1,5 +1,14 @@
 import { z } from 'zod';
 
+const isValidTimeZone = (value: string): boolean => {
+  try {
+    new Intl.DateTimeFormat('en-GB', { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export const syncUserSchema = z.object({
   params: z.object({
     userId: z.string().regex(/^\d+$/, 'userId ต้องเป็นตัวเลข'),
@@ -122,7 +131,13 @@ export const syncScheduleSchema = z.object({
       .min(1, 'interval_minutes ต้องมากกว่า 0')
       .max(1440, 'interval_minutes ต้องไม่เกิน 1440')
       .optional(),
-    timezone: z.string().trim().min(1).max(64).optional(),
+    timezone: z
+      .string()
+      .trim()
+      .min(1)
+      .max(64)
+      .refine((value) => isValidTimeZone(value), 'timezone ไม่ถูกต้อง')
+      .optional(),
   }),
 });
 

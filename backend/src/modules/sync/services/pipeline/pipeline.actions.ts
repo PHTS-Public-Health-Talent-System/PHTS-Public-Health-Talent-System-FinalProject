@@ -6,12 +6,12 @@ import type {
 } from '@/modules/sync/services/pipeline/pipeline.types.js';
 import type { SyncStats } from '@/modules/sync/services/shared/sync.types.js';
 
-export type PipelineUserContext = {
+type PipelineUserContext = {
   userId?: number;
   dbUser?: RowDataPacket;
 };
 
-export type PipelineActionDeps = {
+type PipelineActionDeps = {
   getUserIdMap: (conn: PipelineContext['conn']) => Promise<Map<string, number>>;
   syncEmployees: (
     conn: PipelineContext['conn'],

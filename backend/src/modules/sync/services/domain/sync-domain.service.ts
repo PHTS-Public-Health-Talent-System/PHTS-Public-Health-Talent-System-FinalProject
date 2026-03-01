@@ -1,6 +1,10 @@
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import type { SyncStats } from '@/modules/sync/services/shared/sync.types.js';
-import type { LeaveReclassificationMeta } from '@/modules/sync/services/domain/leave-normalizer.service.js';
+import type {
+  LeaveReclassificationMeta,
+  LeaveReviewMeta,
+  LeaveNormalizationIssueMeta,
+} from '@/modules/sync/services/domain/leave-normalizer.service.js';
 import { isValidCitizenId } from '@/modules/sync/services/domain/leave-normalizer.service.js';
 
 type LeaveRecordSqlOptions = {
@@ -71,6 +75,8 @@ type ExistingQuotaRow = {
   fiscal_year: number;
   quota_vacation: number | string;
 };
+
+const LEAVE_REF_ID_LOOKUP_CHUNK_SIZE = 1000;
 
 const normalizeDateOnly = (value: Date | string | null | undefined): string => {
   if (!value) return '';
@@ -382,6 +388,30 @@ const loadExistingQuotas = async (
     params,
   );
   return rows as ExistingQuotaRow[];
+};
+
+const loadExistingLeavesByRefIds = async (
+  conn: PoolConnection,
+  refIds: string[],
+  options: { hasStatusColumn: boolean },
+): Promise<RowDataPacket[]> => {
+  const uniqueRefIds = [...new Set(refIds.map((refId) => String(refId ?? '').trim()).filter(Boolean))];
+  if (uniqueRefIds.length === 0) return [];
+
+  const fields = ['ref_id', 'start_date', 'end_date', 'leave_type', 'duration_days', 'fiscal_year', 'remark'];
+  if (options.hasStatusColumn) fields.push('status');
+
+  const rows: RowDataPacket[] = [];
+  for (let i = 0; i < uniqueRefIds.length; i += LEAVE_REF_ID_LOOKUP_CHUNK_SIZE) {
+    const chunk = uniqueRefIds.slice(i, i + LEAVE_REF_ID_LOOKUP_CHUNK_SIZE);
+    const [chunkRows] = await conn.query<RowDataPacket[]>(
+      `SELECT ${fields.join(', ')} FROM leave_records WHERE ref_id IN (?)`,
+      [chunk],
+    );
+    rows.push(...chunkRows);
+  }
+
+  return rows;
 };
 
 const syncMovementRows = async (
@@ -775,16 +805,28 @@ export const syncLeaves = async (
     buildLeaveRecordValues: (vLeave: RowDataPacket, options: LeaveRecordSqlOptions) => unknown[];
     buildLeaveViewQuery: () => string;
     isChanged: (oldVal: unknown, newVal: unknown) => boolean;
-    normalizeLeaveRow?: (row: RowDataPacket) => RowDataPacket;
-    normalizeLeaveRowWithMeta?: (row: RowDataPacket) => {
+    normalizeLeaveRowWithMeta: (row: RowDataPacket) => {
       row: RowDataPacket;
       meta: LeaveReclassificationMeta | null;
+      reviewMeta: LeaveReviewMeta | null;
+      normalizationIssues: LeaveNormalizationIssueMeta[];
     };
     onLeaveReclassified?: (input: {
       sourceKey: string;
       citizenId: string;
       remark: string;
       meta: LeaveReclassificationMeta;
+    }) => Promise<void>;
+    onLeaveReviewFlagged?: (input: {
+      sourceKey: string;
+      citizenId: string;
+      remark: string;
+      meta: LeaveReviewMeta;
+    }) => Promise<void>;
+    onLeaveNormalizationIssue?: (input: {
+      sourceKey: string;
+      citizenId: string;
+      meta: LeaveNormalizationIssueMeta;
     }) => Promise<void>;
   },
 ): Promise<void> => {
@@ -793,25 +835,30 @@ export const syncLeaves = async (
 
   const sqlOptions: LeaveRecordSqlOptions = { hasStatusColumn };
   const { sql } = deps.buildLeaveRecordSql(sqlOptions);
-
-  const existingFields = ['ref_id', 'start_date', 'end_date'];
-  if (hasStatusColumn) existingFields.push('status');
-  const existingSelect = `SELECT ${existingFields.join(', ')} FROM leave_records WHERE ref_id IS NOT NULL`;
-
-  const [existingLeaves] = await conn.query<RowDataPacket[]>(existingSelect);
-  const leaveMap = new Map(existingLeaves.map((l) => [l.ref_id, l]));
-
   const [viewLeaves] = await conn.query<RowDataPacket[]>(deps.buildLeaveViewQuery());
+  const existingLeaves = await loadExistingLeavesByRefIds(
+    conn,
+    viewLeaves.map((leave) => String(leave.ref_id ?? '')),
+    { hasStatusColumn },
+  );
+  const leaveMap = new Map(existingLeaves.map((l) => [l.ref_id, l]));
 
   for (const sourceLeave of viewLeaves) {
     const leaveWithRawType = {
       ...sourceLeave,
       raw_hrms_leave_type: sourceLeave.hrms_leave_type ?? sourceLeave.leave_type ?? null,
     } as RowDataPacket;
-    const normalized = deps.normalizeLeaveRowWithMeta
-      ? deps.normalizeLeaveRowWithMeta(leaveWithRawType)
-      : { row: deps.normalizeLeaveRow ? deps.normalizeLeaveRow(leaveWithRawType) : leaveWithRawType, meta: null };
+    const normalized = deps.normalizeLeaveRowWithMeta(leaveWithRawType);
     const vLeave = normalized.row;
+    if (deps.onLeaveNormalizationIssue && vLeave.ref_id && vLeave.citizen_id) {
+      for (const issue of normalized.normalizationIssues) {
+        await deps.onLeaveNormalizationIssue({
+          sourceKey: String(vLeave.ref_id),
+          citizenId: String(vLeave.citizen_id),
+          meta: issue,
+        });
+      }
+    }
     if (!vLeave.ref_id || !isValidCitizenId(vLeave.citizen_id) || !vLeave.start_date || !vLeave.end_date) {
       stats.leaves.skipped++;
       continue;
@@ -828,14 +875,43 @@ export const syncLeaves = async (
         meta: normalized.meta,
       });
     }
+    if (
+      normalized.reviewMeta &&
+      deps.onLeaveReviewFlagged &&
+      vLeave.citizen_id
+    ) {
+      await deps.onLeaveReviewFlagged({
+        sourceKey: String(vLeave.ref_id),
+        citizenId: String(vLeave.citizen_id),
+        remark: String(vLeave.remark ?? ''),
+        meta: normalized.reviewMeta,
+      });
+    }
     const dbLeave = leaveMap.get(vLeave.ref_id);
 
     if (dbLeave) {
       const dateChanged =
         deps.isChanged(dbLeave.start_date, vLeave.start_date) ||
         deps.isChanged(dbLeave.end_date, vLeave.end_date);
+      const leaveTypeChanged = deps.isChanged(dbLeave.leave_type, vLeave.leave_type);
+      const durationChanged = deps.isChanged(
+        normalizeDecimal(dbLeave.duration_days),
+        normalizeDecimal(vLeave.duration_days),
+      );
+      const fiscalYearChanged = deps.isChanged(dbLeave.fiscal_year, vLeave.fiscal_year);
+      const remarkChanged = deps.isChanged(
+        normalizeRemark(dbLeave.remark),
+        normalizeRemark(vLeave.remark),
+      );
       const statusChanged = hasStatusColumn ? deps.isChanged(dbLeave.status, vLeave.status) : false;
-      if (!dateChanged && !statusChanged) {
+      if (
+        !dateChanged &&
+        !leaveTypeChanged &&
+        !durationChanged &&
+        !fiscalYearChanged &&
+        !remarkChanged &&
+        !statusChanged
+      ) {
         stats.leaves.skipped++;
         continue;
       }
@@ -941,11 +1017,13 @@ export const syncSingleLeaves = async (
     buildLeaveRecordSql: (options: LeaveRecordSqlOptions) => { sql: string; fields: string[] };
     buildLeaveRecordValues: (vLeave: RowDataPacket, options: LeaveRecordSqlOptions) => unknown[];
     buildLeaveViewQuery: () => string;
+    buildSingleLeaveViewQuery?: (citizenWhereExpr: string) => string;
     citizenIdWhereBinary: (alias: string, placeholder: string) => string;
-    normalizeLeaveRow?: (row: RowDataPacket) => RowDataPacket;
-    normalizeLeaveRowWithMeta?: (row: RowDataPacket) => {
+    normalizeLeaveRowWithMeta: (row: RowDataPacket) => {
       row: RowDataPacket;
       meta: LeaveReclassificationMeta | null;
+      reviewMeta: LeaveReviewMeta | null;
+      normalizationIssues: LeaveNormalizationIssueMeta[];
     };
     onLeaveReclassified?: (input: {
       sourceKey: string;
@@ -953,17 +1031,35 @@ export const syncSingleLeaves = async (
       remark: string;
       meta: LeaveReclassificationMeta;
     }) => Promise<void>;
+    onLeaveReviewFlagged?: (input: {
+      sourceKey: string;
+      citizenId: string;
+      remark: string;
+      meta: LeaveReviewMeta;
+    }) => Promise<void>;
+    onLeaveNormalizationIssue?: (input: {
+      sourceKey: string;
+      citizenId: string;
+      meta: LeaveNormalizationIssueMeta;
+    }) => Promise<void>;
   },
 ): Promise<void> => {
   const hasStatusColumn = await deps.hasLeaveStatusColumn(conn);
   const leaveSqlOptions: LeaveRecordSqlOptions = { hasStatusColumn };
   const { sql: leaveSql } = deps.buildLeaveRecordSql(leaveSqlOptions);
+  const citizenWhereExpr = deps.citizenIdWhereBinary('lr', '?');
+  const sourceSql = deps.buildSingleLeaveViewQuery
+    ? deps.buildSingleLeaveViewQuery(citizenWhereExpr)
+    : `SELECT lr.*
+       FROM (${deps.buildLeaveViewQuery()}) lr
+       WHERE ${citizenWhereExpr}`;
+  const sourceParams = deps.buildSingleLeaveViewQuery
+    ? [citizenId, citizenId, citizenId]
+    : [citizenId];
 
   const [viewLeaves] = await conn.query<RowDataPacket[]>(
-    `SELECT lr.*
-     FROM (${deps.buildLeaveViewQuery()}) lr
-     WHERE ${deps.citizenIdWhereBinary('lr', '?')}`,
-    [citizenId],
+    sourceSql,
+    sourceParams,
   );
 
   for (const sourceLeave of viewLeaves) {
@@ -971,10 +1067,17 @@ export const syncSingleLeaves = async (
       ...sourceLeave,
       raw_hrms_leave_type: sourceLeave.hrms_leave_type ?? sourceLeave.leave_type ?? null,
     } as RowDataPacket;
-    const normalized = deps.normalizeLeaveRowWithMeta
-      ? deps.normalizeLeaveRowWithMeta(leaveWithRawType)
-      : { row: deps.normalizeLeaveRow ? deps.normalizeLeaveRow(leaveWithRawType) : leaveWithRawType, meta: null };
+    const normalized = deps.normalizeLeaveRowWithMeta(leaveWithRawType);
     const vLeave = normalized.row;
+    if (deps.onLeaveNormalizationIssue && vLeave.ref_id && vLeave.citizen_id) {
+      for (const issue of normalized.normalizationIssues) {
+        await deps.onLeaveNormalizationIssue({
+          sourceKey: String(vLeave.ref_id),
+          citizenId: String(vLeave.citizen_id),
+          meta: issue,
+        });
+      }
+    }
     if (!vLeave.ref_id || !isValidCitizenId(vLeave.citizen_id) || !vLeave.start_date || !vLeave.end_date) {
       stats.leaves.skipped++;
       continue;
@@ -989,6 +1092,18 @@ export const syncSingleLeaves = async (
         citizenId: String(vLeave.citizen_id),
         remark: String(vLeave.remark ?? ''),
         meta: normalized.meta,
+      });
+    }
+    if (
+      normalized.reviewMeta &&
+      deps.onLeaveReviewFlagged &&
+      vLeave.citizen_id
+    ) {
+      await deps.onLeaveReviewFlagged({
+        sourceKey: String(vLeave.ref_id),
+        citizenId: String(vLeave.citizen_id),
+        remark: String(vLeave.remark ?? ''),
+        meta: normalized.reviewMeta,
       });
     }
     const leaveValues = deps.buildLeaveRecordValues(vLeave, leaveSqlOptions);

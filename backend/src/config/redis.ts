@@ -1,5 +1,5 @@
 import { Redis } from "ioredis";
-import { loadEnv } from '@config/env.js';
+import { loadEnv } from "@config/env.js";
 
 loadEnv();
 
@@ -15,6 +15,11 @@ interface RedisClient {
   lpush(key: string, ...values: string[]): Promise<number>;
   llen(key: string): Promise<number>;
   brpop(key: string, timeoutSeconds: number): Promise<[string, string] | null>;
+  eval(
+    script: string,
+    numKeys: number,
+    ...args: Array<string | number>
+  ): Promise<unknown>;
   duplicate(): RedisClient;
   on(event: string, listener: (...args: unknown[]) => void): RedisClient;
   quit(): Promise<"OK">;
@@ -35,7 +40,11 @@ const createTestRedisClient = (
       ...args: Array<string | number>
     ) => {
       const hasNx = args.some((arg) => String(arg).toUpperCase() === "NX");
+      const hasXx = args.some((arg) => String(arg).toUpperCase() === "XX");
       if (hasNx && store.has(key)) {
+        return null;
+      }
+      if (hasXx && !store.has(key)) {
         return null;
       }
       store.set(key, value);
@@ -73,6 +82,42 @@ const createTestRedisClient = (
       lists.set(key, list);
       return [key, value];
     },
+    eval: async (
+      script: string,
+      numKeys: number,
+      ...args: Array<string | number>
+    ) => {
+      const keyArgs = args.slice(0, numKeys).map((arg) => String(arg));
+      const argv = args.slice(numKeys).map((arg) => String(arg));
+
+      if (numKeys === 1 && keyArgs.length === 1) {
+        const key = keyArgs[0];
+        const current = store.get(key);
+        const hasGetCheck = script.includes('redis.call("GET", KEYS[1])');
+        const hasSetWithTtl = script.includes(
+          'redis.call("SET", KEYS[1], ARGV[1], "EX", ARGV[2], "XX")',
+        );
+        const hasDel = script.includes('redis.call("DEL", KEYS[1])');
+
+        if (hasGetCheck && hasSetWithTtl) {
+          if (current === argv[0]) {
+            store.set(key, argv[0]);
+            return "OK";
+          }
+          return null;
+        }
+
+        if (hasGetCheck && hasDel) {
+          if (current === argv[0]) {
+            store.delete(key);
+            return 1;
+          }
+          return 0;
+        }
+      }
+
+      throw new Error("Unsupported Redis eval script in test client");
+    },
     duplicate: () => createTestRedisClient(store, lists),
     on: () => client,
     quit: async () => "OK",
@@ -93,6 +138,12 @@ const createLiveRedisClient = (): RedisClient => {
     },
   });
 
+  const rawEval = client.eval.bind(client) as (
+    script: string,
+    numKeys: number,
+    ...args: Array<string | number>
+  ) => Promise<unknown>;
+
   client.on("connect", () => {
     console.log("[Redis] Connected successfully");
   });
@@ -102,8 +153,12 @@ const createLiveRedisClient = (): RedisClient => {
   });
 
   const typedClient = client as unknown as RedisClient;
-  typedClient.duplicate = () =>
-    createLiveRedisClient();
+  typedClient.duplicate = () => createLiveRedisClient();
+  typedClient.eval = (
+    script: string,
+    numKeys: number,
+    ...args: Array<string | number>
+  ) => rawEval(script, numKeys, ...args);
   return typedClient;
 };
 

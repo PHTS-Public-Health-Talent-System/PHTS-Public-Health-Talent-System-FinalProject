@@ -253,6 +253,130 @@ export const buildLeaveViewQuery = () => `
   LEFT JOIN hrms_databases.tb_ap_index_view h ON CAST(h.id AS BINARY) = CAST(nm.citizen_id AS BINARY)
 `;
 
+export const buildSingleLeaveViewQuery = (citizenWhereExpr: string) => `
+  WITH normalized_leave AS (
+    SELECT
+      dl.ID,
+      CAST(dl.EMPLOYEE_ID AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+      dl.TYPE_LEAVE AS hrms_leave_type,
+      dl.DETAIL AS remark,
+      dl.END_DATE_DETAIL AS end_date_detail,
+      dl.HALF_DAY AS half_day,
+      LEAST(
+        CASE
+          WHEN YEAR(CAST(dl.START_DATE AS DATE)) > 2400 THEN CAST(dl.START_DATE AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(dl.START_DATE AS DATE)
+        END,
+        CASE
+          WHEN YEAR(CAST(dl.END_DATE AS DATE)) > 2400 THEN CAST(dl.END_DATE AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(dl.END_DATE AS DATE)
+        END
+      ) AS start_date,
+      GREATEST(
+        CASE
+          WHEN YEAR(CAST(dl.START_DATE AS DATE)) > 2400 THEN CAST(dl.START_DATE AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(dl.START_DATE AS DATE)
+        END,
+        CASE
+          WHEN YEAR(CAST(dl.END_DATE AS DATE)) > 2400 THEN CAST(dl.END_DATE AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(dl.END_DATE AS DATE)
+        END
+      ) AS end_date
+    FROM hrms_databases.data_leave dl
+    WHERE dl.STATUS = 'Approve'
+      AND dl.USED = 1
+      AND CAST(dl.EMPLOYEE_ID AS BINARY) = CAST(? AS BINARY)
+  ),
+  calculated_leave AS (
+    SELECT
+      nl.*,
+      CASE
+        WHEN nl.half_day = 1 THEN 0.5
+        WHEN nl.start_date = nl.end_date
+             AND nl.end_date_detail IN ('ครึ่งวัน','ครึ่งวัน - เช้า','ครึ่งวัน - บ่าย') THEN 0.5
+        ELSE (TO_DAYS(nl.end_date) - TO_DAYS(nl.start_date)) + 1
+      END AS duration_days
+    FROM normalized_leave nl
+  ),
+  dedup_leave AS (
+    SELECT *
+    FROM (
+      SELECT
+        cl.*,
+        ROW_NUMBER() OVER (
+          PARTITION BY cl.citizen_id, cl.end_date
+          ORDER BY cl.duration_days DESC, cl.ID DESC
+        ) AS rn
+      FROM calculated_leave cl
+    ) ranked
+    WHERE ranked.rn = 1
+  ),
+  normalized_meeting AS (
+    SELECT
+      tm.meeting_id,
+      CAST(tm.id_card AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
+      tm.meeting_title AS remark,
+      LEAST(
+        CASE
+          WHEN YEAR(CAST(tm.date_start AS DATE)) > 2400 THEN CAST(tm.date_start AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(tm.date_start AS DATE)
+        END,
+        CASE
+          WHEN YEAR(CAST(tm.date_end AS DATE)) > 2400 THEN CAST(tm.date_end AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(tm.date_end AS DATE)
+        END
+      ) AS start_date,
+      GREATEST(
+        CASE
+          WHEN YEAR(CAST(tm.date_start AS DATE)) > 2400 THEN CAST(tm.date_start AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(tm.date_start AS DATE)
+        END,
+        CASE
+          WHEN YEAR(CAST(tm.date_end AS DATE)) > 2400 THEN CAST(tm.date_end AS DATE) - INTERVAL 543 YEAR
+          ELSE CAST(tm.date_end AS DATE)
+        END
+      ) AS end_date
+    FROM hrms_databases.tb_meeting tm
+    WHERE tm.header_approve_status = 1
+      AND CAST(tm.id_card AS BINARY) = CAST(? AS BINARY)
+  )
+  SELECT *
+  FROM (
+    SELECT
+      CAST(dl.ID AS CHAR) AS ref_id,
+      dl.citizen_id,
+      dl.hrms_leave_type,
+      dl.start_date,
+      dl.end_date,
+      dl.end_date_detail,
+      dl.half_day,
+      dl.remark,
+      'approved' AS status,
+      h.sex,
+      'LEAVE' AS source_type,
+      dl.duration_days
+    FROM dedup_leave dl
+    LEFT JOIN hrms_databases.tb_ap_index_view h ON CAST(h.id AS BINARY) = CAST(dl.citizen_id AS BINARY)
+    UNION ALL
+    SELECT
+      CONCAT('MT-', nm.meeting_id) AS ref_id,
+      nm.citizen_id,
+      'education' AS hrms_leave_type,
+      nm.start_date,
+      nm.end_date,
+      NULL AS end_date_detail,
+      0 AS half_day,
+      nm.remark,
+      'approved' AS status,
+      h.sex,
+      'MEETING' AS source_type,
+      (TO_DAYS(nm.end_date) - TO_DAYS(nm.start_date)) + 1 AS duration_days
+    FROM normalized_meeting nm
+    LEFT JOIN hrms_databases.tb_ap_index_view h ON CAST(h.id AS BINARY) = CAST(nm.citizen_id AS BINARY)
+  ) lr
+  WHERE ${citizenWhereExpr}
+`;
+
 export const buildSignaturesViewQuery = () => `
   SELECT DISTINCT
     CAST(s.emp_id AS CHAR CHARACTER SET utf8mb4) COLLATE utf8mb4_unicode_ci AS citizen_id,
@@ -292,9 +416,12 @@ export const buildLeaveRecordSql = (options: LeaveRecordSqlOptions): { sql: stri
   ];
   const fields = [...baseFields];
   const updateFields = [
+    'leave_type = VALUES(leave_type)',
     'start_date = VALUES(start_date)',
     'end_date = VALUES(end_date)',
     'duration_days = VALUES(duration_days)',
+    'fiscal_year = VALUES(fiscal_year)',
+    'remark = VALUES(remark)',
   ];
 
   if (hasStatusColumn) {

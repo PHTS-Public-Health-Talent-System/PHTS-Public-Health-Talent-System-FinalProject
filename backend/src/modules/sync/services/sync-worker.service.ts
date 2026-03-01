@@ -1,5 +1,4 @@
 import { SyncService } from '@/modules/sync/services/sync.service.js';
-import { shouldRunAutoSync } from '@/modules/sync/services/sync-auto-schedule.service.js';
 
 const DEFAULT_POLL_MS = 30000;
 
@@ -31,30 +30,20 @@ const workerLoop = async (): Promise<void> => {
   const pollMs = getPollMs();
   while (workerRunning) {
     try {
-      const shouldRun = await shouldRunAutoSync();
-      if (shouldRun) {
-        const startedAt = Date.now();
-        console.log('[SyncWorker] auto sync start');
-        try {
-          const result = await SyncService.performFullSync({ triggeredBy: null });
-          const batchId =
-            result && typeof result === 'object' && 'batch_id' in result
-              ? (result as { batch_id?: unknown }).batch_id
-              : null;
-          console.log(
-            `[SyncWorker] auto sync done duration_ms=${Date.now() - startedAt} batch_id=${batchId ?? '-'}`,
-          );
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (message.includes('already in progress')) {
-            console.warn('[SyncWorker] auto sync skipped: sync already in progress');
-          } else {
-            console.error('[SyncWorker] auto sync failed:', message);
-          }
-        }
+      const startedAt = Date.now();
+      const result = await SyncService.performScheduledFullSync({ triggeredBy: null });
+      if (result) {
+        console.log(
+          `[SyncWorker] auto sync done duration_ms=${Date.now() - startedAt} batch_id=${result.batch_id}`,
+        );
       }
     } catch (error) {
-      console.error('[SyncWorker] worker error:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('already in progress')) {
+        console.warn('[SyncWorker] auto sync skipped: sync already in progress');
+      } else {
+        console.error('[SyncWorker] auto sync failed:', message);
+      }
     }
 
     if (!workerRunning) break;
@@ -82,4 +71,3 @@ export const stopSyncWorker = async (): Promise<void> => {
   }
   console.log('[SyncWorker] stopped');
 };
-

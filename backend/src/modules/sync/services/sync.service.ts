@@ -8,10 +8,20 @@ import { TransformMonitorRepository } from '@/modules/sync/repositories/transfor
 import { getRoleMappingDiagnostics } from '@/modules/sync/repositories/role-mapping.repository.js';
 import { refreshReviewCycleFromSync } from '@/modules/access-review/services/access-review.service.js';
 import { getSyncRuntimeStatus } from '@/modules/sync/services/sync-status.service.js';
+import {
+  claimAutoSyncWindow,
+  getDueAutoSyncWindow,
+} from '@/modules/sync/services/sync-auto-schedule.service.js';
 import { clearScopeCache } from '@/modules/request/scope/application/scope.service.js';
 import { requestRepository } from '@/modules/request/data/repositories/request.repository.js';
 import { applyImmediateMovementEligibilityCutoff } from '@/modules/workforce-compliance/services/immediate-rules.service.js';
-import type { SyncRuntimeStatus, SyncStats } from '@/modules/sync/services/shared/sync.types.js';
+import type {
+  SyncCoreStatus,
+  SyncOverallStatus,
+  SyncPostStatus,
+  SyncRuntimeStatus,
+  SyncStats,
+} from '@/modules/sync/services/shared/sync.types.js';
 import { createSyncStats } from '@/modules/sync/services/shared/sync-stats.service.js';
 import {
   acquireSyncLock,
@@ -49,7 +59,6 @@ import {
   syncSingleMovements as runSingleMovementsSync,
 } from '@/modules/sync/services/domain/sync-domain.service.js';
 import {
-  normalizeLeaveRow,
   normalizeLeaveRowWithMeta,
 } from '@/modules/sync/services/domain/leave-normalizer.service.js';
 import {
@@ -78,6 +87,7 @@ import {
   buildLeaveRecordSql,
   buildLeaveRecordValues,
   buildLeaveViewQuery,
+  buildSingleLeaveViewQuery,
   buildQuotasViewQuery,
   buildSignaturesViewQuery,
   buildSupportEmployeeSql,
@@ -217,7 +227,6 @@ const syncLeaves = async (
     buildLeaveRecordValues,
     buildLeaveViewQuery,
     isChanged,
-    normalizeLeaveRow,
     normalizeLeaveRowWithMeta,
     onLeaveReclassified: async ({ sourceKey, citizenId, remark, meta }) => {
       await TransformMonitorRepository.createDataIssue({
@@ -233,6 +242,36 @@ const syncLeaves = async (
           remark,
         }),
         severity: 'MEDIUM',
+      });
+    },
+    onLeaveReviewFlagged: async ({ sourceKey, citizenId, remark, meta }) => {
+      await TransformMonitorRepository.createDataIssue({
+        batchId: batchId ?? null,
+        targetTable: 'leave_records',
+        sourceKey,
+        issueCode: meta.reason_code,
+        issueDetail: JSON.stringify({
+          citizen_id: citizenId,
+          source_type: meta.source_type,
+          suspected_type: meta.suspected_type,
+          reason_text: meta.reason_text,
+          remark,
+        }),
+        severity: 'LOW',
+      });
+    },
+    onLeaveNormalizationIssue: async ({ sourceKey, citizenId, meta }) => {
+      await TransformMonitorRepository.createDataIssue({
+        batchId: batchId ?? null,
+        targetTable: 'leave_records',
+        sourceKey,
+        issueCode: meta.issue_code,
+        issueDetail: JSON.stringify({
+          citizen_id: citizenId,
+          reason_text: meta.reason_text,
+          ...meta.detail,
+        }),
+        severity: meta.issue_code === 'LEAVE_DATE_INVALID' ? 'HIGH' : 'LOW',
       });
     },
   });
@@ -311,8 +350,8 @@ const syncSingleLeaves = async (
     buildLeaveRecordSql,
     buildLeaveRecordValues,
     buildLeaveViewQuery,
+    buildSingleLeaveViewQuery,
     citizenIdWhereBinary,
-    normalizeLeaveRow,
     normalizeLeaveRowWithMeta,
     onLeaveReclassified: async ({ sourceKey, citizenId: leaveCitizenId, remark, meta }) => {
       await TransformMonitorRepository.createDataIssue({
@@ -328,6 +367,36 @@ const syncSingleLeaves = async (
           remark,
         }),
         severity: 'MEDIUM',
+      });
+    },
+    onLeaveReviewFlagged: async ({ sourceKey, citizenId: leaveCitizenId, remark, meta }) => {
+      await TransformMonitorRepository.createDataIssue({
+        batchId: batchId ?? null,
+        targetTable: 'leave_records',
+        sourceKey,
+        issueCode: meta.reason_code,
+        issueDetail: JSON.stringify({
+          citizen_id: leaveCitizenId,
+          source_type: meta.source_type,
+          suspected_type: meta.suspected_type,
+          reason_text: meta.reason_text,
+          remark,
+        }),
+        severity: 'LOW',
+      });
+    },
+    onLeaveNormalizationIssue: async ({ sourceKey, citizenId: leaveCitizenId, meta }) => {
+      await TransformMonitorRepository.createDataIssue({
+        batchId: batchId ?? null,
+        targetTable: 'leave_records',
+        sourceKey,
+        issueCode: meta.issue_code,
+        issueDetail: JSON.stringify({
+          citizen_id: leaveCitizenId,
+          reason_text: meta.reason_text,
+          ...meta.detail,
+        }),
+        severity: meta.issue_code === 'LEAVE_DATE_INVALID' ? 'HIGH' : 'LOW',
       });
     },
   });
@@ -362,6 +431,28 @@ type PipelineExecOptions = {
   citizenId?: string;
 };
 
+type SyncExecutionResult = {
+  success: true;
+  batch_id: number;
+  duration: string;
+  stats: SyncStats;
+  reconciliation: Awaited<ReturnType<typeof buildSyncReconciliation>> | null;
+  timestamp: string;
+  core_status: SyncCoreStatus;
+  post_status: SyncPostStatus;
+  overall_status: SyncOverallStatus;
+  warnings_count: number;
+  warnings?: string[];
+  automation: {
+    auto_cleared_issues: number;
+    auto_resolved_issues: number;
+    monitor_retention:
+      | Awaited<ReturnType<typeof TransformMonitorRepository.cleanupOldMonitorData>>
+      | null;
+  };
+  stages: Awaited<ReturnType<typeof runPostStages>>['stages'];
+};
+
 export class SyncService {
   static async getRoleMappingDiagnostics() {
     const conn = await db.getConnection();
@@ -388,10 +479,148 @@ export class SyncService {
     return getSyncStatusFromCache();
   }
 
+  private static async executeWithSyncLock<T>(operation: () => Promise<T>): Promise<T> {
+    const lockValue = createSyncLockValue();
+    const locked = await acquireSyncLock(lockValue);
+    if (!locked) {
+      console.warn('[SyncService] Synchronization aborted: already in progress.');
+      throw new Error('Synchronization is already in progress. Please wait.');
+    }
+
+    const lockHeartbeat = startSyncLockHeartbeat(lockValue);
+    try {
+      return await operation();
+    } finally {
+      clearInterval(lockHeartbeat);
+      await releaseSyncLock(lockValue);
+    }
+  }
+
+  private static async finalizeCommittedSync(input: {
+    pipelineContext: PipelineContext;
+    batchId: number;
+    startTotal: number;
+    coreStages: Awaited<ReturnType<typeof runCoreStages>>;
+  }): Promise<SyncExecutionResult> {
+    const { pipelineContext, batchId, startTotal, coreStages } = input;
+    const { conn, stats, mode } = pipelineContext;
+    const summary = await runPostStages({
+      context: pipelineContext,
+      postStages: POST_PIPELINE_STAGES,
+      previousStages: coreStages,
+    });
+
+    const warnings: string[] = [];
+    let autoClearedIssues = 0;
+    let monitorRetention: Awaited<
+      ReturnType<typeof TransformMonitorRepository.cleanupOldMonitorData>
+    > | null = null;
+    let reconciliation: Awaited<ReturnType<typeof buildSyncReconciliation>> | null = null;
+
+    if (mode === 'FULL') {
+      try {
+        autoClearedIssues = await TransformMonitorRepository.deleteStaleIssuesForBatch({
+          batchId,
+          issueCode: 'LEAVE_TYPE_RECLASSIFIED',
+          targetTable: 'leave_records',
+        });
+        autoClearedIssues += await TransformMonitorRepository.deleteStaleIssuesForBatch({
+          batchId,
+          issueCode: 'SICK_LEAVE_FAMILY_CARE_REVIEW',
+          targetTable: 'leave_records',
+        });
+        autoClearedIssues += await TransformMonitorRepository.deleteStaleIssuesForBatch({
+          batchId,
+          issueCode: 'LEAVE_DATE_INVALID',
+          targetTable: 'leave_records',
+        });
+        autoClearedIssues += await TransformMonitorRepository.deleteStaleIssuesForBatch({
+          batchId,
+          issueCode: 'LEAVE_DATE_NORMALIZED',
+          targetTable: 'leave_records',
+        });
+      } catch (error) {
+        warnings.push(
+          `deleteStaleIssuesForBatch failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+
+      try {
+        monitorRetention = await TransformMonitorRepository.cleanupOldMonitorData(
+          getMonitorRetentionPolicy(),
+        );
+      } catch (error) {
+        warnings.push(
+          `cleanupOldMonitorData failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
+    try {
+      reconciliation = await buildSyncReconciliation(conn);
+    } catch (error) {
+      warnings.push(
+        `buildSyncReconciliation failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    const durationMs = Date.now() - startTotal;
+    let warningsCount = summary.warnings_count + warnings.length;
+    let overallStatus = summary.overall_status;
+    if (warnings.length > 0 && overallStatus === 'SUCCESS') {
+      overallStatus = 'SUCCESS_WITH_WARNINGS';
+    }
+
+    const resultData: SyncExecutionResult = {
+      success: true,
+      batch_id: batchId,
+      duration: (durationMs / 1000).toFixed(2),
+      stats,
+      reconciliation,
+      timestamp: new Date().toISOString(),
+      core_status: summary.core_status,
+      post_status: summary.post_status,
+      overall_status: overallStatus,
+      warnings_count: warningsCount,
+      ...(warnings.length > 0 ? { warnings } : {}),
+      automation: {
+        auto_cleared_issues: autoClearedIssues,
+        auto_resolved_issues: autoClearedIssues,
+        monitor_retention: monitorRetention,
+      },
+      stages: summary.stages,
+    };
+
+    try {
+      await setLastSyncResult(resultData);
+    } catch (error) {
+      warnings.push(`setLastSyncResult failed: ${error instanceof Error ? error.message : String(error)}`);
+      warningsCount = summary.warnings_count + warnings.length;
+      overallStatus = 'SUCCESS_WITH_WARNINGS';
+      resultData.overall_status = overallStatus;
+      resultData.warnings_count = warningsCount;
+      resultData.warnings = warnings;
+    }
+
+    await TransformMonitorRepository.finishSyncBatchSuccess(batchId, stats, durationMs, {
+      status: 'SUCCESS',
+      coreStatus: resultData.core_status,
+      postStatus: resultData.post_status,
+      overallStatus: resultData.overall_status,
+      warningsCount: resultData.warnings_count,
+    });
+
+    return resultData;
+  }
+
   /**
    * Execute one pipeline run for FULL or USER mode.
    */
-  private static async executePipelineSync(options: PipelineExecOptions) {
+  private static async executePipelineSync(
+    options: PipelineExecOptions,
+  ): Promise<SyncExecutionResult> {
     const startTotal = Date.now();
     const stats = createSyncStats();
     const conn = await db.getConnection();
@@ -414,6 +643,72 @@ export class SyncService {
             )[0][0]
           : undefined;
 
+      const pipelineActions = createSyncPipelineActions(
+        options.mode,
+        {
+          getUserIdMap,
+          syncEmployees: (cx, stageStats, userIdMap, deps) =>
+            syncEmployees(cx, stageStats, userIdMap, deps as Parameters<typeof syncEmployees>[3]),
+          syncSupportEmployees: (cx, stageStats, userIdMap, deps) =>
+            syncSupportEmployees(
+              cx,
+              stageStats,
+              userIdMap,
+              deps as Parameters<typeof syncSupportEmployees>[3],
+            ),
+          upsertSingleEmployeeProfile: (cx, citizenId, userIdMap, stageStats, deps) =>
+            upsertSingleEmployeeProfile(
+              cx,
+              citizenId,
+              userIdMap,
+              stageStats,
+              deps as Parameters<typeof upsertSingleEmployeeProfile>[4],
+            ),
+          upsertSingleSupportEmployee: (cx, citizenId, stageStats, deps) =>
+            upsertSingleSupportEmployee(
+              cx,
+              citizenId,
+              stageStats,
+              deps as Parameters<typeof upsertSingleSupportEmployee>[3],
+            ),
+          syncUsersFromProfilesAndSupport,
+          syncSingleSignature,
+          syncSignatures,
+          syncSingleLicenses,
+          syncSingleQuotas,
+          syncLicensesAndQuotas,
+          syncSingleLeaves,
+          syncLeaves,
+          syncSingleMovements,
+          syncMovements,
+          syncSpecialPositionScopesForCitizen,
+          syncSpecialPositionScopes,
+          assignRoleForSingleUser,
+          assignRoles,
+          refreshReviewCycleFromSync,
+          deriveUserIsActive,
+          protectedRoles: IdentityRolePolicyService.PROTECTED_ROLES,
+          VIEW_EMPLOYEE_COLUMNS,
+          buildEmployeeViewQuery,
+          citizenIdWhereBinary,
+          isChanged,
+          upsertEmployeeProfile,
+          persistEmployeeProfileSyncArtifacts,
+          clearScopeCache,
+          VIEW_SUPPORT_COLUMNS,
+          buildSupportViewQuery,
+          resolveSupportStaffColumnFlags,
+          hasSupportProfileFingerprintColumn,
+          buildSupportEmployeeSql,
+          buildSupportEmployeeValues,
+          persistSupportProfileSyncArtifacts,
+        },
+        {
+          userId: dbUser?.id ? Number(dbUser.id) : undefined,
+          dbUser,
+        },
+      );
+
       const pipelineContext: PipelineContext = {
         mode: options.mode,
         batchId,
@@ -421,137 +716,79 @@ export class SyncService {
         citizenId: options.citizenId,
         conn,
         stats,
-        actions: createSyncPipelineActions(
-          options.mode,
-          {
-            getUserIdMap,
-            syncEmployees: (cx, stageStats, userIdMap, deps) =>
-              syncEmployees(cx, stageStats, userIdMap, deps as Parameters<typeof syncEmployees>[3]),
-            syncSupportEmployees: (cx, stageStats, userIdMap, deps) =>
-              syncSupportEmployees(
-                cx,
-                stageStats,
-                userIdMap,
-                deps as Parameters<typeof syncSupportEmployees>[3],
-              ),
-            upsertSingleEmployeeProfile: (cx, citizenId, userIdMap, stageStats, deps) =>
-              upsertSingleEmployeeProfile(
-                cx,
-                citizenId,
-                userIdMap,
-                stageStats,
-                deps as Parameters<typeof upsertSingleEmployeeProfile>[4],
-              ),
-            upsertSingleSupportEmployee: (cx, citizenId, stageStats, deps) =>
-              upsertSingleSupportEmployee(
-                cx,
-                citizenId,
-                stageStats,
-                deps as Parameters<typeof upsertSingleSupportEmployee>[3],
-              ),
-            syncUsersFromProfilesAndSupport,
-            syncSingleSignature,
-            syncSignatures,
-            syncSingleLicenses,
-            syncSingleQuotas,
-            syncLicensesAndQuotas,
-            syncSingleLeaves,
-            syncLeaves,
-            syncSingleMovements,
-            syncMovements,
-            syncSpecialPositionScopesForCitizen,
-            syncSpecialPositionScopes,
-            assignRoleForSingleUser,
-            assignRoles,
-            refreshReviewCycleFromSync,
-            deriveUserIsActive,
-            protectedRoles: IdentityRolePolicyService.PROTECTED_ROLES,
-            VIEW_EMPLOYEE_COLUMNS,
-            buildEmployeeViewQuery,
-            citizenIdWhereBinary,
-            isChanged,
-            upsertEmployeeProfile,
-            persistEmployeeProfileSyncArtifacts,
-            clearScopeCache,
-            VIEW_SUPPORT_COLUMNS,
-            buildSupportViewQuery,
-            resolveSupportStaffColumnFlags,
-            hasSupportProfileFingerprintColumn,
-            buildSupportEmployeeSql,
-            buildSupportEmployeeValues,
-            persistSupportProfileSyncArtifacts,
-          },
-          {
-            userId: dbUser?.id ? Number(dbUser.id) : undefined,
-            dbUser,
-          },
-        ),
+        actions: pipelineActions,
       };
+
       const coreStages = await runCoreStages({
         context: pipelineContext,
         coreStages: CORE_PIPELINE_STAGES,
       });
       await conn.commit();
       committed = true;
-      const summary = await runPostStages({
-        context: pipelineContext,
-        postStages: POST_PIPELINE_STAGES,
-        previousStages: coreStages,
+      return await this.finalizeCommittedSync({
+        batchId,
+        startTotal,
+        pipelineContext,
+        coreStages,
       });
-      const autoClearedIssues =
-        options.mode === 'FULL'
-          ? await TransformMonitorRepository.deleteStaleIssuesForBatch({
-              batchId,
-              issueCode: 'LEAVE_TYPE_RECLASSIFIED',
-              targetTable: 'leave_records',
-            })
-          : 0;
-      const monitorRetention =
-        options.mode === 'FULL'
-          ? await TransformMonitorRepository.cleanupOldMonitorData(getMonitorRetentionPolicy())
-          : null;
-
-      const durationMs = Date.now() - startTotal;
-      await TransformMonitorRepository.finishSyncBatchSuccess(batchId, stats, durationMs, {
-        status: 'SUCCESS',
-        coreStatus: summary.core_status,
-        postStatus: summary.post_status,
-        overallStatus: summary.overall_status,
-        warningsCount: summary.warnings_count,
-      });
-
-      const timestamp = new Date().toISOString();
-      const reconciliation = await buildSyncReconciliation(conn);
-      const resultData = {
-        success: true,
-        duration: (durationMs / 1000).toFixed(2),
-        stats,
-        reconciliation,
-        timestamp,
-        core_status: summary.core_status,
-        post_status: summary.post_status,
-        overall_status: summary.overall_status,
-        warnings_count: summary.warnings_count,
-        automation: {
-          auto_cleared_issues: autoClearedIssues,
-          auto_resolved_issues: autoClearedIssues,
-          monitor_retention: monitorRetention,
-        },
-        stages: summary.stages,
-      };
-      await setLastSyncResult(resultData);
-      return resultData;
     } catch (error) {
       if (!committed) {
         await conn.rollback();
+        await TransformMonitorRepository.finishSyncBatchFailed(
+          batchId,
+          error instanceof Error ? error.message : String(error),
+          Date.now() - startTotal,
+          { coreStatus: 'FAILED', postStatus: 'PENDING', overallStatus: 'FAILED' },
+        );
+        throw error;
       }
-      await TransformMonitorRepository.finishSyncBatchFailed(
-        batchId,
-        error instanceof Error ? error.message : String(error),
-        Date.now() - startTotal,
-        { coreStatus: 'FAILED', postStatus: 'PENDING', overallStatus: 'FAILED' },
+
+      console.error(
+        '[SyncService] Post-commit sync finalization failed:',
+        error instanceof Error ? error.message : error,
       );
-      throw error;
+
+      const durationMs = Date.now() - startTotal;
+      const fallbackResult: SyncExecutionResult = {
+        success: true,
+        batch_id: batchId,
+        duration: (durationMs / 1000).toFixed(2),
+        stats,
+        reconciliation: null,
+        timestamp: new Date().toISOString(),
+        core_status: 'SUCCESS',
+        post_status: 'FAILED',
+        overall_status: 'SUCCESS_WITH_WARNINGS',
+        warnings_count: 1,
+        warnings: [
+          `post_commit_finalization_failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        ],
+        automation: {
+          auto_cleared_issues: 0,
+          auto_resolved_issues: 0,
+          monitor_retention: null,
+        },
+        stages: [],
+      };
+
+      try {
+        await TransformMonitorRepository.finishSyncBatchSuccess(batchId, stats, durationMs, {
+          status: 'SUCCESS',
+          coreStatus: fallbackResult.core_status,
+          postStatus: fallbackResult.post_status,
+          overallStatus: fallbackResult.overall_status,
+          warningsCount: fallbackResult.warnings_count,
+        });
+      } catch (finishError) {
+        console.error(
+          '[SyncService] Failed to persist fallback sync status:',
+          finishError instanceof Error ? finishError.message : finishError,
+        );
+      }
+
+      return fallbackResult;
     } finally {
       conn.release();
     }
@@ -562,25 +799,29 @@ export class SyncService {
    */
   static async performFullSync(options?: { triggeredBy?: number | null }) {
     console.log('[SyncService] Requesting synchronization...');
+    return this.executeWithSyncLock(async () =>
+      this.executePipelineSync({
+        mode: 'FULL',
+        triggeredBy: options?.triggeredBy ?? null,
+      }),
+    );
+  }
 
-    const lockValue = createSyncLockValue();
-    const locked = await acquireSyncLock(lockValue);
-    if (!locked) {
-      console.warn('[SyncService] Synchronization aborted: already in progress.');
-      throw new Error('Synchronization is already in progress. Please wait.');
-    }
-    const lockHeartbeat = startSyncLockHeartbeat(lockValue);
+  static async performScheduledFullSync(options?: {
+    triggeredBy?: number | null;
+    at?: Date;
+  }): Promise<SyncExecutionResult | null> {
+    const dueWindow = await getDueAutoSyncWindow(options?.at);
+    if (!dueWindow) return null;
 
-    try {
-      const result = await this.executePipelineSync({
+    return this.executeWithSyncLock(async () => {
+      const claimed = await claimAutoSyncWindow(dueWindow);
+      if (!claimed) return null;
+      return this.executePipelineSync({
         mode: 'FULL',
         triggeredBy: options?.triggeredBy ?? null,
       });
-      return result;
-    } finally {
-      clearInterval(lockHeartbeat);
-      await releaseSyncLock(lockValue);
-    }
+    });
   }
 
   /**
@@ -598,11 +839,13 @@ export class SyncService {
         throw new Error('User not found for sync');
       }
       const citizenId = String(dbUser.citizen_id);
-      const result = await this.executePipelineSync({
-        mode: 'USER',
-        triggeredBy: options?.triggeredBy ?? null,
-        citizenId,
-      });
+      const result = await this.executeWithSyncLock(async () =>
+        this.executePipelineSync({
+          mode: 'USER',
+          triggeredBy: options?.triggeredBy ?? null,
+          citizenId,
+        }),
+      );
       return {
         ...result,
         citizenId,

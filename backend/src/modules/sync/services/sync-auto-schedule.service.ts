@@ -4,14 +4,19 @@ import { OPS_JOB_TIMEZONE } from '@/modules/workforce-compliance/constants/workf
 const SYNC_SCHEDULE_KEY = 'system:sync:auto-schedule';
 const SYNC_LAST_RUN_PREFIX = 'system:sync:auto-last-run:';
 
-export type SyncAutoMode = 'DAILY' | 'INTERVAL';
+type SyncAutoMode = 'DAILY' | 'INTERVAL';
 
-export type SyncAutoScheduleConfig = {
+type SyncAutoScheduleConfig = {
   mode: SyncAutoMode;
   hour: number;
   minute: number;
   interval_minutes: number;
   timezone: string;
+};
+
+type DueAutoSyncWindow = {
+  runKey: string;
+  ttlSeconds: number;
 };
 
 const DEFAULT_MODE: SyncAutoMode =
@@ -30,12 +35,31 @@ const toSafeInt = (
   return Math.max(min, Math.min(max, Math.floor(value)));
 };
 
+const isValidTimeZone = (value: string): boolean => {
+  try {
+    new Intl.DateTimeFormat('en-GB', { timeZone: value });
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const normalizeTimezone = (raw: unknown, fallback: string): string => {
+  if (typeof raw !== 'string') return fallback;
+  const timezone = raw.trim();
+  if (timezone.length === 0) return fallback;
+  return isValidTimeZone(timezone) ? timezone : fallback;
+};
+
 const getDefaultSchedule = (): SyncAutoScheduleConfig => ({
   mode: DEFAULT_MODE,
   hour: toSafeInt(process.env.SYNC_AUTO_DAILY_HOUR, 2, 0, 23),
   minute: toSafeInt(process.env.SYNC_AUTO_DAILY_MINUTE, 0, 0, 59),
   interval_minutes: toSafeInt(process.env.SYNC_AUTO_INTERVAL_MINUTES, 60, 1, 1440),
-  timezone: process.env.SYNC_AUTO_TIMEZONE || OPS_JOB_TIMEZONE || 'Asia/Bangkok',
+  timezone: normalizeTimezone(
+    process.env.SYNC_AUTO_TIMEZONE || OPS_JOB_TIMEZONE || 'Asia/Bangkok',
+    'Asia/Bangkok',
+  ),
 });
 
 const normalizeMode = (raw: unknown): SyncAutoMode => {
@@ -50,10 +74,7 @@ const normalizeConfig = (input: Partial<SyncAutoScheduleConfig>): SyncAutoSchedu
     hour: toSafeInt(input.hour, defaults.hour, 0, 23),
     minute: toSafeInt(input.minute, defaults.minute, 0, 59),
     interval_minutes: toSafeInt(input.interval_minutes, defaults.interval_minutes, 1, 1440),
-    timezone:
-      typeof input.timezone === 'string' && input.timezone.trim().length > 0
-        ? input.timezone.trim()
-        : defaults.timezone,
+    timezone: normalizeTimezone(input.timezone, defaults.timezone),
   };
 };
 
@@ -103,7 +124,9 @@ export const setSyncAutoScheduleConfig = async (
   return normalized;
 };
 
-export const shouldRunAutoSync = async (at: Date = new Date()): Promise<boolean> => {
+export const getDueAutoSyncWindow = async (
+  at: Date = new Date(),
+): Promise<DueAutoSyncWindow | null> => {
   const schedule = await getSyncAutoScheduleConfig();
 
   if (schedule.mode === 'DAILY') {
@@ -111,20 +134,31 @@ export const shouldRunAutoSync = async (at: Date = new Date()): Promise<boolean>
     const currentMinuteOfDay = parts.hour * 60 + parts.minute;
     const scheduleMinuteOfDay = schedule.hour * 60 + schedule.minute;
     if (currentMinuteOfDay < scheduleMinuteOfDay) {
-      return false;
+      return null;
     }
 
     const dateKey = buildDateKey(parts);
-    const lockKey = `${SYNC_LAST_RUN_PREFIX}daily:${dateKey}`;
-    const marked = await redis.set(lockKey, '1', 'EX', 60 * 60 * 48, 'NX');
-    return Boolean(marked);
+    return {
+      runKey: `${SYNC_LAST_RUN_PREFIX}daily:${dateKey}`,
+      ttlSeconds: 60 * 60 * 48,
+    };
   }
 
   const intervalMinutes = Math.max(1, schedule.interval_minutes);
   const bucket = Math.floor(at.getTime() / (intervalMinutes * 60 * 1000));
-  const lockKey = `${SYNC_LAST_RUN_PREFIX}interval:${intervalMinutes}:${bucket}`;
-  const ttlSeconds = Math.max(60, intervalMinutes * 60 * 3);
-  const marked = await redis.set(lockKey, '1', 'EX', ttlSeconds, 'NX');
+  return {
+    runKey: `${SYNC_LAST_RUN_PREFIX}interval:${intervalMinutes}:${bucket}`,
+    ttlSeconds: Math.max(60, intervalMinutes * 60 * 3),
+  };
+};
+
+export const claimAutoSyncWindow = async (window: DueAutoSyncWindow): Promise<boolean> => {
+  const marked = await redis.set(window.runKey, '1', 'EX', window.ttlSeconds, 'NX');
   return Boolean(marked);
 };
 
+export const shouldRunAutoSync = async (at: Date = new Date()): Promise<boolean> => {
+  const dueWindow = await getDueAutoSyncWindow(at);
+  if (!dueWindow) return false;
+  return claimAutoSyncWindow(dueWindow);
+};

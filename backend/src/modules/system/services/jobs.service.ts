@@ -47,7 +47,7 @@ type JobSummary = {
     };
   };
   sync: {
-    status: 'RUNNING' | 'IDLE' | 'FAILED' | 'UNKNOWN';
+    status: 'RUNNING' | 'IDLE' | 'FAILED' | 'DEGRADED' | 'UNKNOWN';
     isSyncing: boolean;
     lastResult: unknown | null;
   };
@@ -293,12 +293,19 @@ const fetchPayrollOpenPeriods = async () => {
 const buildSyncStatus = (syncStatus: {
   isSyncing: boolean;
   lastResult: Record<string, unknown> | null;
-}): 'RUNNING' | 'IDLE' | 'FAILED' | 'UNKNOWN' => {
+}): 'RUNNING' | 'IDLE' | 'FAILED' | 'DEGRADED' | 'UNKNOWN' => {
+  const lastResult = syncStatus.lastResult;
   if (syncStatus.isSyncing) return 'RUNNING';
-  if (syncStatus.lastResult?.success === false) {
+  if (lastResult?.success === false) {
     return 'FAILED';
   }
-  if (syncStatus.lastResult) return 'IDLE';
+  const overallStatus = String(lastResult?.overall_status ?? '').toUpperCase();
+  const warningsCount = Number(lastResult?.warnings_count ?? 0);
+  const warnings = Array.isArray(lastResult?.warnings) ? lastResult.warnings.length : 0;
+  if (overallStatus === 'SUCCESS_WITH_WARNINGS' || warningsCount > 0 || warnings > 0) {
+    return 'DEGRADED';
+  }
+  if (lastResult) return 'IDLE';
   return 'UNKNOWN';
 };
 
@@ -382,7 +389,7 @@ export const getJobStatus = async (): Promise<JobStatusPayload> => {
   };
   const notificationMaxAttempts = getNotificationMaxAttempts();
   const snapshotMaxAttempts = getSnapshotMaxAttempts();
-  let dependencies: JobSummary['dependencies'] = {
+  const dependencies: JobSummary['dependencies'] = {
     mysql: {
       status: 'IDLE',
       latency_ms: 0,

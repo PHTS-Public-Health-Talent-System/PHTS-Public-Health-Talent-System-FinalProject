@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RequestWithDetails } from '@/types/request.types';
-import type { Announcement } from '@/features/announcement/api';
+import type { Announcement } from '@/features/announcement/shared';
 import {
   buildAnnouncements,
   buildGreeting,

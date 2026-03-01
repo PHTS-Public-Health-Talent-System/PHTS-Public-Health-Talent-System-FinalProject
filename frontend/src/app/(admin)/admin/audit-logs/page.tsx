@@ -42,40 +42,16 @@ import {
 import {
   useAuditEventTypes,
   useAuditEvents,
-  useAuditSummary,
   useExportAuditEvents,
-} from '@/features/audit/hooks';
+  type AuditSearchResult,
+  type AuditEventRow,
+  type AuditEventTypeOption,
+} from '@/features/audit/logs';
+import { useAuditSummary, type AuditSummaryRow } from '@/features/audit/summary';
 import { toast } from 'sonner';
 import { formatThaiDateTime, formatThaiNumber } from '@/shared/utils/thai-locale';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-
-// --- Types ---
-type AuditEventRow = {
-  audit_id: number;
-  event_type: string;
-  entity_type: string;
-  entity_id: number | null;
-  actor_id: number | null;
-  actor_role: string | null;
-  actor_name?: string | null;
-  ip_address: string | null;
-  user_agent?: string | null;
-  details?: Record<string, unknown> | null;
-  created_at: string;
-};
-
-type AuditSearchResult = {
-  events: AuditEventRow[];
-  total: number;
-  page: number;
-  limit: number;
-};
-
-type AuditSummaryRow = {
-  event_type: string;
-  count: number;
-};
 
 export default function AuditLogsPage() {
   // --- State ---
@@ -103,9 +79,7 @@ export default function AuditLogsPage() {
     page: 1,
     limit: 50,
   }) as AuditSearchResult;
-  const eventTypes = ((eventTypesQuery.data ?? []) as Array<{ value: string; label: string }>).map(
-    (x) => x.value,
-  );
+  const eventTypes = ((eventTypesQuery.data ?? []) as AuditEventTypeOption[]).map((x) => x.value);
   const totalPages = Math.max(1, Math.ceil((result.total || 0) / (result.limit || limit)));
   const fromItem = result.total === 0 ? 0 : (result.page - 1) * result.limit + 1;
   const toItem = Math.min(result.page * result.limit, result.total);

@@ -1,4 +1,4 @@
-import { SignaturePage } from "@/components/pages/signature-page"
+import { SignaturePage } from "@/features/signature/page"
 export const dynamic = 'force-dynamic'
 
 

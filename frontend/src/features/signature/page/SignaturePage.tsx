@@ -19,7 +19,7 @@ import {
 import { useEffect, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { useMySignature, useRefreshSignature } from '@/features/signature/hooks';
+import { useMySignature, useRefreshSignature } from '@/features/signature/queries';
 
 export function SignaturePage() {
   const { data: signature, isLoading, error } = useMySignature();

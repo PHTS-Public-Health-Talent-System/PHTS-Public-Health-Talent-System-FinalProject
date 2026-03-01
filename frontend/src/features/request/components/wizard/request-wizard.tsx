@@ -13,7 +13,7 @@ import { Step2WorkInfo } from './steps/step-2-work-info';
 import { Step3Attachments } from './steps/step-3-attachments';
 import { Step4RateMapping } from './steps/step-4-rate-mapping';
 import { Step5Review } from './steps/step-5-review';
-import { useCheckSignature } from '@/features/signature/hooks';
+import { useCheckSignature } from '@/features/signature/queries';
 import type { RequestWithDetails } from '@/types/request.types';
 import { cn } from '@/lib/utils';
 

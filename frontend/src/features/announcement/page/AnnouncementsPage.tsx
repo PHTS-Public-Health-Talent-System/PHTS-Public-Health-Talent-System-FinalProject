@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Megaphone, Calendar, AlertCircle, Info, Pin } from 'lucide-react';
-import { useActiveAnnouncements } from '@/features/announcement/hooks';
+import { useActiveAnnouncements } from '@/features/announcement/listing';
 import { formatThaiDate } from '@/shared/utils/thai-locale';
 
 function mapPriorityToDisplay(priority: string): string {

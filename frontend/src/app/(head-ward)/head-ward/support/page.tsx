@@ -1,4 +1,4 @@
-import { SupportPage } from "@/components/pages/support-page"
+import { SupportPage } from "@/features/support/page"
 export const dynamic = 'force-dynamic'
 
 

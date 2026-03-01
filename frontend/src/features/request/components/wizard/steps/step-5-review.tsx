@@ -13,7 +13,7 @@ import Image from 'next/image';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { useCheckSignature, useMySignature } from '@/features/signature/hooks';
+import { useCheckSignature, useMySignature } from '@/features/signature/queries';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EntitySummaryCard, SignaturePad } from '@/components/common';
 import { RequestFormData, PERSONNEL_TYPE_LABELS } from '@/types/request.types';

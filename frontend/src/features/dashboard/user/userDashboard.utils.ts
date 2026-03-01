@@ -1,5 +1,5 @@
 import type { RequestWithDetails, RequestStatus } from '@/types/request.types';
-import type { Announcement } from '@/features/announcement/api';
+import type { Announcement } from '@/features/announcement/shared';
 import type { StatusType } from '@/components/status-badge';
 import { toRequestDisplayId } from '@/shared/utils/public-id';
 import {

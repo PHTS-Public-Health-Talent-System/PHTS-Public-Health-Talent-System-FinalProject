@@ -24,10 +24,10 @@ import { useCurrentUser, useUpdateCurrentUserProfile } from '@/features/auth/hoo
 import {
   useNotificationSettings,
   useUpdateNotificationSettings,
-} from '@/features/notification/hooks';
+} from '@/features/notification/preferences';
 import type { ApiResponse } from '@/shared/api/types';
 import type { User as AuthUser } from '@/types/auth';
-import type { NotificationSettings } from '@/features/notification/api';
+import type { NotificationSettings } from '@/features/notification/shared';
 
 type UserProfile = AuthUser & {
   first_name?: string;

@@ -55,12 +55,12 @@ import {
 import { toast } from 'sonner';
 import {
   useActivateAnnouncement,
-  useAllAnnouncements,
   useCreateAnnouncement,
   useDeactivateAnnouncement,
   useUpdateAnnouncement,
-} from '@/features/announcement/hooks';
-import type { AnnouncementPriority } from '@/features/announcement/api';
+} from '@/features/announcement/management';
+import { useAllAnnouncements } from '@/features/announcement/listing';
+import type { AnnouncementPriority } from '@/features/announcement/shared';
 import { Switch } from '@/components/ui/switch';
 import { formatThaiDate as formatThaiDateValue } from '@/shared/utils/thai-locale';
 import { ROLE_OPTIONS } from '@/shared/utils/role-label';

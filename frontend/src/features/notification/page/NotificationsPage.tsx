@@ -29,10 +29,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  useNotifications,
-  useMarkNotificationRead,
   useDeleteReadNotifications,
-} from '@/features/notification/hooks';
+  useMarkNotificationRead,
+  useNotifications,
+} from '@/features/notification/listing';
 import { formatThaiDateTime, formatThaiTime } from '@/shared/utils/thai-locale';
 
 type NotificationType = 'approval' | 'reminder' | 'system' | 'payment' | 'license' | 'leave';

@@ -1,4 +1,4 @@
-import { AnnouncementsPage } from "@/components/pages/announcements-page"
+import { AnnouncementsPage } from "@/features/announcement/page"
 export const dynamic = 'force-dynamic'
 
 

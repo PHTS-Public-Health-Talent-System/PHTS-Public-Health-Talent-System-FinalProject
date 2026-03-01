@@ -61,15 +61,17 @@ import { toast } from 'sonner';
 import {
   useCloseSupportTicket,
   useCreateSupportTicket,
-  useCreateSupportTicketMessage,
   useDeleteSupportTicket,
   useMySupportTickets,
   useReopenSupportTicket,
   useSupportTickets,
-  useSupportTicketMessages,
   useUpdateSupportTicketStatus,
-} from '@/features/support/hooks';
-import type { SupportTicketStatus } from '@/features/support/api';
+} from '@/features/support/tickets';
+import {
+  useCreateSupportTicketMessage,
+  useSupportTicketMessages,
+} from '@/features/support/messages';
+import type { SupportTicketStatus } from '@/features/support/shared';
 import {
   buildAttachmentUrl,
   decodeAttachmentFileName,

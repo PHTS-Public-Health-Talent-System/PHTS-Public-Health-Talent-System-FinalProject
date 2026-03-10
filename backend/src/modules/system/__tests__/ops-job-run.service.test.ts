@@ -1,3 +1,5 @@
+import { resetSystemModuleMocks } from './test-helpers.js';
+
 jest.mock('@/modules/system/repositories/ops-job-runs.repository.js', () => ({
   OpsJobRunsRepository: {
     createRun: jest.fn().mockResolvedValue(101),
@@ -7,8 +9,7 @@ jest.mock('@/modules/system/repositories/ops-job-runs.repository.js', () => ({
 
 describe('OpsJobRunService', () => {
   beforeEach(() => {
-    jest.resetModules();
-    jest.clearAllMocks();
+    resetSystemModuleMocks();
   });
 
   test('records successful run with summary', async () => {

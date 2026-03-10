@@ -1,3 +1,5 @@
+import { resetSystemModuleMocks } from './test-helpers.js';
+
 const mockRedisGet = jest.fn();
 const mockRedisLlen = jest.fn();
 const mockDbQuery = jest.fn();
@@ -79,8 +81,7 @@ jest.mock('@/modules/system/repositories/ops-status.repository.js', () => ({
 
 describe('jobs service', () => {
   beforeEach(() => {
-    jest.resetModules();
-    jest.clearAllMocks();
+    resetSystemModuleMocks();
 
     mockRedisGet.mockResolvedValue(null);
     mockRedisLlen.mockResolvedValue(0);

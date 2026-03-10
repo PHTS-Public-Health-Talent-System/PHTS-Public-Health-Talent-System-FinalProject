@@ -3,6 +3,8 @@ describe('OcrHttpProvider', () => {
   const originalTimeout = process.env.OCR_FILE_TIMEOUT_MS;
   const originalRetry = process.env.OCR_FILE_RETRY_COUNT;
   const originalService = process.env.OCR_SERVICE_URL;
+  const originalPaddleService = process.env.OCR_PADDLE_SERVICE_URL;
+  const originalPaddleLocalEnabled = process.env.OCR_PADDLE_LOCAL_ENABLED;
   const originalTyphoonService = process.env.OCR_TYPHOON_SERVICE_URL;
 
   beforeEach(() => {
@@ -10,6 +12,8 @@ describe('OcrHttpProvider', () => {
     process.env.OCR_FILE_TIMEOUT_MS = '1000';
     process.env.OCR_FILE_RETRY_COUNT = '1';
     process.env.OCR_SERVICE_URL = 'http://ocr.test';
+    process.env.OCR_PADDLE_SERVICE_URL = 'http://paddle.test';
+    process.env.OCR_PADDLE_LOCAL_ENABLED = 'false';
     process.env.OCR_TYPHOON_SERVICE_URL = 'http://typhoon.test';
   });
 
@@ -21,6 +25,10 @@ describe('OcrHttpProvider', () => {
     else process.env.OCR_FILE_RETRY_COUNT = originalRetry;
     if (originalService === undefined) delete process.env.OCR_SERVICE_URL;
     else process.env.OCR_SERVICE_URL = originalService;
+    if (originalPaddleService === undefined) delete process.env.OCR_PADDLE_SERVICE_URL;
+    else process.env.OCR_PADDLE_SERVICE_URL = originalPaddleService;
+    if (originalPaddleLocalEnabled === undefined) delete process.env.OCR_PADDLE_LOCAL_ENABLED;
+    else process.env.OCR_PADDLE_LOCAL_ENABLED = originalPaddleLocalEnabled;
     if (originalTyphoonService === undefined) delete process.env.OCR_TYPHOON_SERVICE_URL;
     else process.env.OCR_TYPHOON_SERVICE_URL = originalTyphoonService;
   });
@@ -221,6 +229,7 @@ describe('OcrHttpProvider', () => {
   });
 
   test('falls back to Typhoon OCR when Tesseract quality does not pass', async () => {
+    process.env.OCR_PADDLE_SERVICE_URL = '';
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce({
@@ -293,6 +302,7 @@ describe('OcrHttpProvider', () => {
   });
 
   test('does not fall back to Typhoon OCR when Tesseract already passes', async () => {
+    process.env.OCR_PADDLE_SERVICE_URL = '';
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -326,6 +336,7 @@ describe('OcrHttpProvider', () => {
   });
 
   test('returns Tesseract result when Typhoon OCR is unavailable', async () => {
+    process.env.OCR_PADDLE_SERVICE_URL = '';
     const fetchMock = jest
       .fn()
       .mockResolvedValueOnce({
@@ -355,8 +366,9 @@ describe('OcrHttpProvider', () => {
       'http://ocr.test',
     );
 
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[1]?.[0]).toBe('http://typhoon.test/ocr-batch');
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('http://typhoon.test/ocr-batch');
     expect(result).toEqual(
       expect.objectContaining({
         ok: true,
@@ -366,6 +378,176 @@ describe('OcrHttpProvider', () => {
         quality: expect.objectContaining({
           passed: false,
         }),
+      }),
+    );
+  });
+
+  test('falls back to Paddle OCR when primary OCR endpoint is unavailable', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('connect ECONNREFUSED primary'))
+      .mockRejectedValueOnce(new Error('connect ECONNREFUSED primary'))
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [
+            {
+              ok: true,
+              name: 'memo.pdf',
+              markdown: 'paddle ocr text',
+              engine_used: 'paddle',
+            },
+          ],
+        }),
+      });
+    global.fetch = fetchMock as unknown as typeof global.fetch;
+
+    const { OcrHttpProvider } = await import('@/modules/ocr/providers/ocr-http.provider.js');
+    const result = await OcrHttpProvider.processSingleFile(
+      'memo.pdf',
+      Buffer.from('file'),
+      'http://ocr.test',
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('http://paddle.test/ocr-batch');
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        engine_used: 'paddle',
+        fallback_used: true,
+      }),
+    );
+  });
+
+  test('uses Paddle as second step then Typhoon as third step when quality is still not enough', async () => {
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [
+            {
+              ok: true,
+              name: 'order.pdf',
+              markdown: 'primary low quality',
+              engine_used: 'tesseract',
+              document_kind: 'assignment_order',
+              fields: {
+                subject: 'low',
+              },
+              missing_fields: ['order_no', 'person_name', 'section_title'],
+              quality: {
+                required_fields: 4,
+                captured_fields: 1,
+                passed: false,
+              },
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [
+            {
+              ok: true,
+              name: 'order.pdf',
+              markdown: 'paddle low quality',
+              engine_used: 'paddle',
+              document_kind: 'assignment_order',
+              fields: {
+                subject: 'still low',
+                person_name: 'ทดสอบ',
+              },
+              missing_fields: ['order_no', 'section_title'],
+              quality: {
+                required_fields: 4,
+                captured_fields: 2,
+                passed: false,
+              },
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          results: [
+            {
+              ok: true,
+              name: 'order.pdf',
+              markdown: 'typhoon final quality',
+              engine_used: 'typhoon',
+              document_kind: 'assignment_order',
+              fields: {
+                order_no: '1/2569',
+                subject: 'final',
+                person_name: 'ทดสอบ',
+                section_title: 'งานทดสอบ',
+              },
+              missing_fields: [],
+              quality: {
+                required_fields: 4,
+                captured_fields: 4,
+                passed: true,
+              },
+            },
+          ],
+        }),
+      });
+    global.fetch = fetchMock as unknown as typeof global.fetch;
+
+    const { OcrHttpProvider } = await import('@/modules/ocr/providers/ocr-http.provider.js');
+    const result = await OcrHttpProvider.processSingleFile(
+      'order.pdf',
+      Buffer.from('file'),
+      'http://ocr.test',
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://ocr.test/ocr-batch');
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('http://paddle.test/ocr-batch');
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('http://typhoon.test/ocr-batch');
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        engine_used: 'typhoon',
+        fallback_used: true,
+      }),
+    );
+  });
+
+  test('uses local Paddle when paddle URL is not configured and local mode is enabled', async () => {
+    process.env.OCR_PADDLE_SERVICE_URL = '';
+    process.env.OCR_PADDLE_LOCAL_ENABLED = 'true';
+    const localPaddleService = await import('@/modules/ocr/services/ocr-local-paddle.service.js');
+    jest.spyOn(localPaddleService, 'runLocalPaddle').mockResolvedValue({
+      name: 'memo.pdf',
+      ok: true,
+      markdown: 'local paddle text',
+      engine_used: 'paddle',
+      quality: { required_fields: 3, captured_fields: 3, passed: true },
+    });
+
+    const fetchMock = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('connect ECONNREFUSED primary'))
+      .mockRejectedValueOnce(new Error('connect ECONNREFUSED primary'));
+    global.fetch = fetchMock as unknown as typeof global.fetch;
+
+    const { OcrHttpProvider } = await import('@/modules/ocr/providers/ocr-http.provider.js');
+    const result = await OcrHttpProvider.processSingleFile(
+      'memo.pdf',
+      Buffer.from('file'),
+      'http://ocr.test',
+    );
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: true,
+        engine_used: 'paddle',
+        fallback_used: true,
       }),
     );
   });

@@ -49,7 +49,7 @@ describe('runLocalTesseract', () => {
         '--oem',
         '1',
         '--psm',
-        '4',
+        '11',
         '-c',
         'preserve_interword_spaces=1',
       ],

@@ -34,8 +34,8 @@ export const classifyOcrDocument = (item: OcrBatchResultItem): OcrDocumentKind =
       lines.some((line) => /(ใบอนุญาต|ไบอนุญาต|บอนญาต)/.test(line)),
       lines.some((line) => /(ประกอบวิชา|วิชาจีพ|วิชาชีพ)/.test(line) && /(พยาบาล|ผยาบาล|แยายาล|เภสัช)/.test(line)),
       lines.some((line) => /(ต่ออายุครั้งที่|ตออายุตรงท|ตอยอายุตรงท)/.test(line)),
-      lines.some((line) => /(หมดอายุ|หผดอายุ)/.test(line)),
-      lines.some((line) => /(ออกใบอนุญาตนี้ให้แก่|จอกใบอนุญาต|ลอกใบอนญาต)/.test(line)),
+      lines.some((line) => /(หมดอายุ|หผดอายุ|ทมดอาย|มดอายุ|หผดอาย)/.test(line)),
+      lines.some((line) => /(ออกใบอนุญาตนี้ให้แก่|ออกใบอนุญาตนี้ให้แก|จอกใบอนุญาต|ลอกใบอนญาต)/.test(line)),
     ].filter(Boolean).length >= 2 ||
     /ใบอนุญาตประกอบวิชาชีพ/.test(markdown) ||
     fileName.includes('license') ||

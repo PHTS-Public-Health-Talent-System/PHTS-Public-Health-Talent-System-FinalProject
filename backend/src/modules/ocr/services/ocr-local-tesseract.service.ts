@@ -7,38 +7,136 @@ import type { OcrBatchResultItem } from '@/modules/ocr/entities/ocr-precheck.ent
 import { enrichOcrBatchResult } from '@/modules/ocr/services/ocr-gateway-analysis.service.js';
 
 const execFile = promisify(execFileCallback);
-const TESSERACT_LANG = 'tha+eng';
-const TESSERACT_OEM = '1';
-const TESSERACT_PSM = '4';
-const PDF_RENDER_DPI = '200';
-const TESSERACT_THREAD_LIMIT = '1';
+const DEFAULT_TESSERACT_LANG = 'tha+eng';
+const DEFAULT_TESSERACT_OEM = '1';
+const DEFAULT_TESSERACT_PSM = '11';
+const DEFAULT_PDF_RENDER_DPI = '200';
+const DEFAULT_TESSERACT_THREAD_LIMIT = '1';
+const DEFAULT_TESSERACT_PREPROCESS = 'none';
 const LOCAL_ENGINE_NAME = 'tesseract';
 
 const isPdf = (fileName: string): boolean => fileName.toLowerCase().endsWith('.pdf');
 
-const runTesseractOnImage = async (imagePath: string): Promise<string> => {
-  const { stdout } = await execFile('tesseract', [
+const getEnvNumberString = (
+  value: string | undefined,
+  fallback: string,
+  min: number,
+  max: number,
+): string => {
+  if (!value) return fallback;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < min || parsed > max) return fallback;
+  return String(Math.floor(parsed));
+};
+
+const getTesseractLang = (): string =>
+  (process.env.OCR_TESSERACT_LANG || DEFAULT_TESSERACT_LANG).trim() || DEFAULT_TESSERACT_LANG;
+
+const getTesseractOem = (): string =>
+  getEnvNumberString(process.env.OCR_TESSERACT_OEM, DEFAULT_TESSERACT_OEM, 0, 3);
+
+const getTesseractPsm = (): string =>
+  getEnvNumberString(process.env.OCR_TESSERACT_PSM, DEFAULT_TESSERACT_PSM, 0, 13);
+
+const getPdfRenderDpi = (): string =>
+  getEnvNumberString(process.env.OCR_TESSERACT_PDF_DPI, DEFAULT_PDF_RENDER_DPI, 72, 600);
+
+const getThreadLimit = (): string =>
+  getEnvNumberString(process.env.OCR_TESSERACT_THREAD_LIMIT, DEFAULT_TESSERACT_THREAD_LIMIT, 1, 16);
+
+const getThresholdingMethod = (): string | null => {
+  const raw = process.env.OCR_TESSERACT_THRESHOLDING_METHOD;
+  if (raw === undefined || raw === '') return null;
+  return getEnvNumberString(raw, '0', 0, 2);
+};
+
+const getThresholdingWindowSize = (): string | null => {
+  const raw = process.env.OCR_TESSERACT_THRESHOLDING_WINDOW_SIZE;
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 5) return null;
+  return String(parsed);
+};
+
+const getThresholdingKFactor = (): string | null => {
+  const raw = process.env.OCR_TESSERACT_THRESHOLDING_KFACTOR;
+  if (!raw) return null;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 2) return null;
+  return String(parsed);
+};
+
+const getPreprocessMode = (): string =>
+  (process.env.OCR_TESSERACT_PREPROCESS || DEFAULT_TESSERACT_PREPROCESS).trim().toLowerCase();
+
+const preprocessWithImageMagick = async (imagePath: string, outputPath: string): Promise<string> => {
+  await execFile('convert', [
     imagePath,
+    '-colorspace',
+    'Gray',
+    '-deskew',
+    '40%',
+    '-normalize',
+    '-contrast-stretch',
+    '1%x1%',
+    '-sharpen',
+    '0x1.0',
+    outputPath,
+  ]);
+  return outputPath;
+};
+
+const runTesseractOnImage = async (imagePath: string): Promise<string> => {
+  const preprocessMode = getPreprocessMode();
+  let inputPath = imagePath;
+  if (preprocessMode === 'gray-deskew') {
+    const preprocessedPath = `${imagePath}.pre.png`;
+    try {
+      inputPath = await preprocessWithImageMagick(imagePath, preprocessedPath);
+    } catch {
+      inputPath = imagePath;
+    }
+  }
+
+  const tesseractLang = getTesseractLang();
+  const tesseractOem = getTesseractOem();
+  const tesseractPsm = getTesseractPsm();
+  const args: string[] = [
+    inputPath,
     'stdout',
     '-l',
-    TESSERACT_LANG,
+    tesseractLang,
     '--oem',
-    TESSERACT_OEM,
+    tesseractOem,
     '--psm',
-    TESSERACT_PSM,
+    tesseractPsm,
     '-c',
     'preserve_interword_spaces=1',
-  ], {
+  ];
+  const thresholdingMethod = getThresholdingMethod();
+  if (thresholdingMethod !== null) {
+    args.push('-c', `thresholding_method=${thresholdingMethod}`);
+  }
+  const thresholdingWindowSize = getThresholdingWindowSize();
+  if (thresholdingWindowSize !== null) {
+    args.push('-c', `thresholding_window_size=${thresholdingWindowSize}`);
+  }
+  const thresholdingKFactor = getThresholdingKFactor();
+  if (thresholdingKFactor !== null) {
+    args.push('-c', `thresholding_kfactor=${thresholdingKFactor}`);
+  }
+
+  const { stdout } = await execFile('tesseract', args, {
     env: {
       ...process.env,
-      OMP_THREAD_LIMIT: TESSERACT_THREAD_LIMIT,
+      OMP_THREAD_LIMIT: getThreadLimit(),
     },
   });
   return stdout.trim();
 };
 
 const renderPdfPages = async (pdfPath: string, outputPrefix: string): Promise<string[]> => {
-  await execFile('pdftoppm', ['-r', PDF_RENDER_DPI, '-png', pdfPath, outputPrefix]);
+  await execFile('pdftoppm', ['-r', getPdfRenderDpi(), '-png', pdfPath, outputPrefix]);
   const dir = path.dirname(outputPrefix);
   const base = path.basename(outputPrefix);
   const files = await readdir(dir);

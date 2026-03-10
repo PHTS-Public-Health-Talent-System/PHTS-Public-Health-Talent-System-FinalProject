@@ -68,6 +68,36 @@ const findLineAfterAnchor = (lines: string[], patterns: RegExp[]): string | null
   return null;
 };
 
+const findLinesAfterAnchor = (
+  lines: string[],
+  patterns: RegExp[],
+  maxLines = 3,
+): string[] => {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!line) continue;
+    if (!patterns.some((pattern) => pattern.test(line))) continue;
+    const candidates: string[] = [];
+    for (let next = index + 1; next < lines.length; next += 1) {
+      const candidate = normalizeWhitespace(lines[next] || '');
+      if (!candidate) continue;
+      candidates.push(candidate);
+      if (candidates.length >= maxLines) break;
+    }
+    if (candidates.length > 0) return candidates;
+  }
+  return [];
+};
+
+const extractFallbackThaiName = (value: string): string | null => {
+  const match = value.match(/([ก-๙]{2,})\s+([ก-๙]{2,})/);
+  if (!match) return null;
+  const firstName = normalizeWhitespace(match[1] || '');
+  const lastName = normalizeWhitespace(match[2] || '');
+  if (!firstName || !lastName) return null;
+  return `${firstName} ${lastName}`;
+};
+
 const parseMemoFields = (markdown: string, lines: string[]): Record<string, unknown> => {
   const documentNoLine = findLine(lines, [
     /(?:^|\s)(?:ที่|อต)\s*[0-9๐-๙./]+\/[0-9๐-๙a-zA-Z]+/i,
@@ -87,13 +117,34 @@ const parseMemoFields = (markdown: string, lines: string[]): Record<string, unkn
 };
 
 const parseLicenseFields = (_markdown: string, lines: string[]): Record<string, unknown> => {
+  const personAnchorPattern =
+    /(ออกใบอนุญาตนี้ให้แก่|ออกใบอนุญาตนี้ให้แก|ออกไบอนุญาตนีให้แก่|จอกใบอนุญาต|ลอกใบอนญาต)/;
   const licenseNoLine = findLine(lines, [
-    /(ใบอนุญาตที่|ใบอนุญาตปี|ไบอนุญาต|บอนญาต)/,
+    /(ใบอนุญาตที่|ใบอนุญาตปี|ไบอนุญาต|โบอนุญาต|บอนญาต)/,
+  ]);
+  const personAnchorLines = findLinesAfterAnchor(lines, [
+    personAnchorPattern,
   ]);
   const personNameLine =
-    findLineAfterAnchor(lines, [/(ออกใบอนุญาตนี้ให้แก่|จอกใบอนุญาต|ลอกใบอนญาต)/]) ??
-    findLine(lines, [/(นาย|นางสาว|นาง|แพทย์หญิง|แพทย์ชาย)\s*\S+\s+\S+/]);
-  const validUntilLine = findLine(lines, [/(หมดอายุ|หผดอายุ)/]);
+    personAnchorLines.find((line) =>
+      /(นาย|นางสาว|นาง|แพทย์หญิง|แพทย์ชาย)\s*\S+\s+\S+/.test(line),
+    ) ??
+    personAnchorLines.find((line) =>
+      /(นาย|นางสาว|นาง|แพทย์หญิง|แพทย์ชาย)\s*\S+/.test(line),
+    ) ??
+    personAnchorLines[0] ??
+    findLineAfterAnchor(lines, [personAnchorPattern]) ??
+    findLine(lines, [/(นาย|นางสาว|นาง|แพทย์หญิง|แพทย์ชาย)\s*\S+\s+\S+/]) ??
+    findLine(lines, [/(นาย|นางสาว|นาง|แพทย์หญิง|แพทย์ชาย)\s*\S+/]);
+  const validUntilLine = findLine(lines, [/(หมดอายุ|หผดอายุ|ทมดอาย|มดอายุ|หผดอาย)/]);
+  const fallbackValidUntilLine =
+    validUntilLine ??
+    findLine(lines, [
+      /(?:เดือน|เดียน)\s*(มกราคม|กุมภาพันธ์|มีนาคม|เมษายน|พฤษภาคม|มิถุนายน|กรกฎาคม|สิงหาคม|กันยายน|ตุลาคม|พฤศจิกายน|ธันวาคม)/,
+    ]);
+  const fallbackThaiName = extractFallbackThaiName(
+    personAnchorLines.join(' ') || personNameLine || '',
+  );
 
   return {
     license_no: extractFromLine(licenseNoLine, [
@@ -101,9 +152,11 @@ const parseLicenseFields = (_markdown: string, lines: string[]): Record<string, 
     ]),
     person_name: extractFromLine(personNameLine, [
       /((?:นาย|นางสาว|นาง|แพทย์หญิง|แพทย์ชาย)\s*[^\s\d/]{1,80}\s+[^\s\d/]{1,80})/,
-    ]),
-    license_valid_until: extractFromLine(validUntilLine, [
+    ]) ?? fallbackThaiName,
+    license_valid_until: extractFromLine(fallbackValidUntilLine, [
       /(?:หมดอายุ(?: วันที่)?|หผดอายุ(?: วันที่)?|วันหมดอายุ)\s*([^\n]+)/,
+      /(?:ทมดอาย(?: วันที่)?|มดอายุ(?: วันที่)?|หผดอาย(?: วันที่)?)\s*([^\n]+)/,
+      /(?:วันที่|วันที)\s*([0-9๐-๙]+\s*(?:เดือน|เดียน)?\s*[^\n]+)/,
     ]),
   };
 };

@@ -105,6 +105,34 @@ describe('ocr gateway analysis', () => {
     });
   });
 
+  test('extracts license fields from split-name noisy OCR lines', () => {
+    const enriched = enrichOcrBatchResult({
+      name: 'page-3.pdf',
+      ok: true,
+      markdown: `
+ใบอนุญาตที่ 4๙๑1๑9๔๔๓๖
+ออกใบอนุญาตนี้ให้แกก่
+ธรรมสุทธิ์
+นางนิสยา
+ทมดอาย วันที่: 19 เดือน มีนาคม พุทธศักราช์ 2574
+      `,
+    });
+
+    expect(enriched.document_kind).toBe('license');
+    expect(enriched.fields).toEqual(
+      expect.objectContaining({
+        license_no: '4911194436',
+        person_name: 'ธรรมสุทธิ์ นางนิสยา',
+        license_valid_until: expect.stringContaining('19 เดือน มีนาคม'),
+      }),
+    );
+    expect(enriched.quality).toEqual({
+      required_fields: 3,
+      captured_fields: 3,
+      passed: true,
+    });
+  });
+
   test('classifies noisy memo OCR before license keywords and extracts key fields', () => {
     const enriched = enrichOcrBatchResult({
       name: '20260213-004 3.pdf',

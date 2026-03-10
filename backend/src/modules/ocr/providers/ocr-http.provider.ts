@@ -4,10 +4,22 @@ import type {
 } from '@/modules/ocr/entities/ocr-precheck.entity.js';
 import { enrichOcrBatchResult } from '@/modules/ocr/services/ocr-gateway-analysis.service.js';
 import * as localTesseractService from '@/modules/ocr/services/ocr-local-tesseract.service.js';
+import * as localPaddleService from '@/modules/ocr/services/ocr-local-paddle.service.js';
 
 const DEFAULT_TIMEOUT_MS = 120000;
 const DEFAULT_RETRY_COUNT = 2;
 const LOCAL_TESSERACT_SERVICE_BASE = 'local-tesseract';
+const LOCAL_PADDLE_SERVICE_BASE = 'local-paddle';
+const PADDLE_ENGINE_NAME = 'paddle';
+const TYPHOON_ENGINE_NAME = 'typhoon';
+
+const normalizeServiceBase = (value: string): string => {
+  let normalized = value.trim();
+  while (normalized.endsWith('/')) {
+    normalized = normalized.slice(0, -1);
+  }
+  return normalized;
+};
 
 const toReadableOcrErrorMessage = (error: unknown): string => {
   const raw = error instanceof Error ? error.message : 'Unknown OCR error';
@@ -18,6 +30,9 @@ const toReadableOcrErrorMessage = (error: unknown): string => {
   ) {
     return 'ยังไม่ได้เปิดบริการ OCR หลัก';
   }
+  if (raw === 'OCR_PADDLE_UNAVAILABLE') {
+    return 'ยังไม่ได้เปิดบริการ OCR Paddle';
+  }
   return raw;
 };
 
@@ -26,20 +41,23 @@ const getOcrServiceBase = (): string => {
   if (!base) {
     return LOCAL_TESSERACT_SERVICE_BASE;
   }
-  let normalized = base;
-  while (normalized.endsWith('/')) {
-    normalized = normalized.slice(0, -1);
+  return normalizeServiceBase(base);
+};
+
+const getPaddleServiceBase = (): string => {
+  const base = (process.env.OCR_PADDLE_SERVICE_URL || '').trim();
+  if (!base) {
+    return process.env.OCR_PADDLE_LOCAL_ENABLED === 'false'
+      ? ''
+      : LOCAL_PADDLE_SERVICE_BASE;
   }
-  return normalized;
+  return normalizeServiceBase(base);
 };
 
 const getTyphoonServiceBase = (): string => {
   const base = (process.env.OCR_TYPHOON_SERVICE_URL || '').trim();
-  let normalized = base;
-  while (normalized.endsWith('/')) {
-    normalized = normalized.slice(0, -1);
-  }
-  return normalized;
+  if (!base) return '';
+  return normalizeServiceBase(base);
 };
 
 const getPerFileTimeoutMs = (): number => {
@@ -93,6 +111,9 @@ const callOcrOnce = async (
   if (ocrBase === LOCAL_TESSERACT_SERVICE_BASE) {
     return localTesseractService.runLocalTesseract(fileName, fileBuffer);
   }
+  if (ocrBase === LOCAL_PADDLE_SERVICE_BASE) {
+    return localPaddleService.runLocalPaddle(fileName, fileBuffer);
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -111,8 +132,33 @@ const callOcrOnce = async (
 
 const shouldFallbackToTyphoon = (result: OcrBatchResultItem): boolean =>
   result.ok === true &&
-  result.engine_used !== 'typhoon' &&
+  result.engine_used !== TYPHOON_ENGINE_NAME &&
   result.quality?.passed === false;
+
+const shouldFallbackToPaddle = (result: OcrBatchResultItem): boolean =>
+  result.ok === true &&
+  result.engine_used !== PADDLE_ENGINE_NAME &&
+  result.quality?.passed === false;
+
+const callOcrWithRetry = async (
+  fileName: string,
+  fileBuffer: Buffer,
+  ocrBase: string,
+  timeoutMs: number,
+  retryCount: number,
+): Promise<OcrBatchResultItem> => {
+  let lastError: unknown = null;
+
+  for (let attempt = 0; attempt <= retryCount; attempt += 1) {
+    try {
+      return await callOcrOnce(fileName, fileBuffer, ocrBase, timeoutMs);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError;
+};
 
 export class OcrHttpProvider {
   static getServiceBase(): string {
@@ -127,44 +173,86 @@ export class OcrHttpProvider {
     const effectiveOcrBase = ocrBase?.trim() ? ocrBase.trim() : getOcrServiceBase();
     const timeoutMs = getPerFileTimeoutMs();
     const retryCount = getRetryCount();
+    const paddleBase = getPaddleServiceBase();
+    const typhoonBase = getTyphoonServiceBase();
+    const normalizedPrimaryBase = normalizeServiceBase(effectiveOcrBase);
 
-    for (let attempt = 0; attempt <= retryCount; attempt += 1) {
-      try {
-        const primaryResult = await callOcrOnce(fileName, fileBuffer, effectiveOcrBase, timeoutMs);
-        const typhoonBase = getTyphoonServiceBase();
-        if (!shouldFallbackToTyphoon(primaryResult) || !typhoonBase) {
-          return primaryResult;
-        }
+    const fallbackBases = [paddleBase, typhoonBase].filter(
+      (base): base is string => Boolean(base) && base !== normalizedPrimaryBase,
+    );
 
+    try {
+      const primaryResult = await callOcrWithRetry(
+        fileName,
+        fileBuffer,
+        normalizedPrimaryBase,
+        timeoutMs,
+        retryCount,
+      );
+
+      let currentResult = primaryResult;
+      let fallbackUsed = false;
+
+      if (paddleBase && shouldFallbackToPaddle(currentResult)) {
         try {
-          const typhoonResult = await callOcrOnce(fileName, fileBuffer, typhoonBase, timeoutMs);
+          currentResult = await callOcrWithRetry(
+            fileName,
+            fileBuffer,
+            paddleBase,
+            timeoutMs,
+            retryCount,
+          );
+          fallbackUsed = true;
+        } catch {
+          // Keep current result when Paddle fallback is unavailable.
+        }
+      }
+
+      if (typhoonBase && shouldFallbackToTyphoon(currentResult)) {
+        try {
+          const typhoonResult = await callOcrWithRetry(
+            fileName,
+            fileBuffer,
+            typhoonBase,
+            timeoutMs,
+            retryCount,
+          );
           return {
             ...typhoonResult,
             fallback_used: true,
           };
         } catch {
-          // Typhoon is an optional fallback layer. If it is unavailable, keep the
-          // primary Tesseract result instead of failing the whole OCR run.
-          return {
-            ...primaryResult,
-            fallback_used: false,
-          };
-        }
-      } catch (error) {
-        if (attempt === retryCount) {
-          return {
-            name: fileName,
-            ok: false,
-            error: toReadableOcrErrorMessage(error),
-          };
+          // Keep current result when Typhoon fallback is unavailable.
         }
       }
-    }
 
-    return {
-      name: fileName,
-      ok: false,
-      error: 'Unexpected OCR retry flow',
-    };
+      return fallbackUsed
+        ? { ...currentResult, fallback_used: true }
+        : { ...currentResult, fallback_used: currentResult.fallback_used ?? false };
+    } catch (primaryError) {
+      for (const fallbackBase of fallbackBases) {
+        try {
+          const fallbackResult = await callOcrWithRetry(
+            fileName,
+            fileBuffer,
+            fallbackBase,
+            timeoutMs,
+            retryCount,
+          );
+          return {
+            ...fallbackResult,
+            fallback_used: true,
+          };
+        } catch {
+          // Continue trying the next fallback base.
+        }
+      }
+
+      return {
+        name: fileName,
+        ok: false,
+        error: toReadableOcrErrorMessage(primaryError),
+      };
+    }
   }
 }

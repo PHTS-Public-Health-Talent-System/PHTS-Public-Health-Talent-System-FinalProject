@@ -42,7 +42,7 @@ describe("OfficerCreatedRequestTimelineCard", () => {
     expect(screen.getByText("บันทึกคำขอแทนบุคลากร")).toBeInTheDocument()
     expect(screen.getByText("ส่งคำขอโดยเจ้าหน้าที่ พ.ต.ส.")).toBeInTheDocument()
     expect(screen.getByText("อนุมัติแล้ว")).toBeInTheDocument()
-    expect(screen.getByText("อยู่ในขั้นตอนที่ 3 จาก 3")).toBeInTheDocument()
+    expect(screen.getByText("ดำเนินการเสร็จสิ้น")).toBeInTheDocument()
   })
 
   it("keeps the last step pending for officer-created drafts", () => {

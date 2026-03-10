@@ -17,8 +17,6 @@ lerna-debug.log*
 # Dependencies
 node_modules/
 **/node_modules/
-backend/node_modules/
-frontend/node_modules/
 .pnp
 .pnp.js
 .npm/
@@ -38,16 +36,14 @@ coverage/
 .turbo/
 .swc/
 *.tsbuildinfo
-next-env.d.ts
 *.sarif
 codeql-db/
 .eslintcache
 
 # Next.js
 .next/
-frontend/.next/
 out/
-frontend/out/
+next-env.d.ts
 
 # Environment files
 .env
@@ -59,9 +55,6 @@ frontend/out/
 .env.perf
 .env.production.local
 .envrc
-backend/.env
-frontend/.env.local
-frontend/.env
 backend/src/scripts/ops/backup/autobackup.env
 
 # Keep env templates
@@ -117,4 +110,10 @@ infra/ocr/ocr-models/
 
 # Skills / local agent state
 .agent/
+/.agents/
 .gemini/
+/skills-lock.json
+
+# Local OCR experimentation artifacts
+/backend/.venv-ocr/
+/ocr/

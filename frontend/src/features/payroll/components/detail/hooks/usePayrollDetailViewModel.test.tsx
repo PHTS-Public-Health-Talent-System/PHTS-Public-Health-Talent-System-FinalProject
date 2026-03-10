@@ -1,67 +1,7 @@
 import { act, renderHook } from "@testing-library/react"
 import { describe, expect, it, vi } from "vitest"
-import type { PeriodDetail, PeriodPayoutRow } from "@/features/payroll/api"
 import { usePayrollDetailViewModel } from "./usePayrollDetailViewModel"
-
-const periodDetailFixture: PeriodDetail = {
-  period: {
-    period_id: 1,
-    period_month: 2,
-    period_year: 2569,
-    status: "OPEN",
-    total_amount: 7000,
-    total_headcount: 2,
-  },
-  items: [
-    {
-      period_item_id: 1,
-      period_id: 1,
-      request_id: 100,
-      citizen_id: "1111111111111",
-      snapshot_id: null,
-      first_name: "Alice",
-      last_name: "A",
-      current_department: "Dept A",
-    },
-  ],
-}
-
-const payoutsFixture: PeriodPayoutRow[] = [
-  {
-    payout_id: 10,
-    citizen_id: "1111111111111",
-    profession_code: "NURSE",
-    first_name: "Alice",
-    last_name: "A",
-    department: "Dept A",
-    group_no: 2,
-    item_no: "1",
-    rate: 3000,
-    total_payable: 3000,
-    check_count: 1,
-    blocker_count: 1,
-    warning_count: 0,
-    leave_count_in_period: 2,
-    education_leave_count_in_period: 1,
-  },
-  {
-    payout_id: 11,
-    citizen_id: "2222222222222",
-    profession_code: "DOCTOR",
-    first_name: "Bob",
-    last_name: "B",
-    department: "Dept B",
-    group_no: 1,
-    item_no: "2",
-    rate: 4000,
-    total_payable: 4000,
-    check_count: 0,
-    blocker_count: 0,
-    warning_count: 0,
-    leave_count_in_period: 0,
-    education_leave_count_in_period: 0,
-  },
-]
+import { payoutsFixture, periodDetailFixture } from "./test-fixtures"
 
 describe("usePayrollDetailViewModel", () => {
   it("derives and filters rows with default sort and issue filter", () => {

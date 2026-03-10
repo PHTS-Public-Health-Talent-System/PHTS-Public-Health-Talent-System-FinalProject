@@ -1,22 +1,11 @@
 import { buildApproverDashboard } from '@/modules/dashboard/services/approver-dashboard.service.js';
+import { makePendingRequestRow } from './dashboard.fixtures.js';
 
 describe('buildApproverDashboard', () => {
   it('maps stats and pending items with SLA status', () => {
     const result = buildApproverDashboard({
       pendingRequests: [
-        {
-          request_id: 10,
-          request_no: 'REQ-2569-010',
-          requested_amount: 1500,
-          created_at: '2026-02-01T00:00:00.000Z',
-          submission_data: JSON.stringify({
-            first_name: 'อารยา',
-            last_name: 'ชมบ้านแพ้ว',
-            position_name: 'เภสัชกร',
-            department: 'กลุ่มงานเภสัชกรรม',
-            sub_department: 'ห้องจ่ายยาผู้ป่วยใน',
-          }),
-        } as any,
+        makePendingRequestRow(),
       ],
       slaInfoByRequest: new Map([
         [10, { status: 'overdue' }],

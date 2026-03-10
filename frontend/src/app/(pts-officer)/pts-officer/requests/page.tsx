@@ -63,7 +63,6 @@ import {
   useReassignRequest,
 } from '@/features/request';
 import type { RequestWithDetails } from '@/types/request.types';
-import { toRequestDisplayId } from '@/shared/utils/public-id';
 import { formatThaiNumber } from '@/shared/utils/thai-locale';
 
 type RequestStatus = 'pending' | 'approved' | 'rejected' | 'returned';
@@ -248,7 +247,7 @@ export default function RequestsPage() {
 
       return {
         id: req.request_id,
-        requestNo: req.request_no ?? toRequestDisplayId(req.request_id, req.created_at),
+        requestNo: req.request_no ?? '-',
         name,
         position:
           (pickSubmissionValue(submission, 'position_name', 'positionName') as

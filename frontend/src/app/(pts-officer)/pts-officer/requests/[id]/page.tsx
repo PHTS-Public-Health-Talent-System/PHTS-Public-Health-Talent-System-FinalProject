@@ -54,7 +54,6 @@ import {
 import { useRateHierarchy } from "@/features/master-data/hooks";
 import { AttachmentPreviewDialog } from "@/components/common/attachment-preview-dialog";
 import { AttachmentListCard, AttachmentListItemCard } from "@/components/common";
-import { toRequestDisplayId } from "@/shared/utils/public-id";
 import type { RequestWithDetails } from "@/types/request.types";
 import {
   formatThaiDate,
@@ -655,10 +654,7 @@ export default function RequestDetailPage({
     }
     return findMemoSummary(ocrDocuments, requesterName);
   }, [ocrDocuments, requesterName]);
-  const displayId = request
-    ? (request.request_no ??
-      toRequestDisplayId(request.request_id, request.created_at))
-    : id;
+  const displayId = request ? (request.request_no ?? "-") : id;
 
   const rateMapping = useMemo(
     () => normalizeRateMapping(request?.submission_data ?? null),

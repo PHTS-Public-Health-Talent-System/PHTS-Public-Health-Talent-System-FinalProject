@@ -32,7 +32,6 @@ import { toast } from 'sonner';
 import { useRequestDetail, useCancelRequest } from '@/features/request';
 import { useRateHierarchy } from '@/features/master-data/hooks';
 import type { RequestWithDetails } from '@/types/request.types';
-import { toRequestDisplayId } from '@/shared/utils/public-id';
 import {
   isEmptyRateMapping,
   normalizeRateMapping,
@@ -131,9 +130,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const positionName = submissionPositionName ?? request?.requester?.position ?? '-';
   const department = submissionDepartment ?? request?.current_department ?? '-';
   const subDepartment = submissionSubDepartment ?? '-';
-  const displayId = request
-    ? (request.request_no ?? toRequestDisplayId(request.request_id, request.created_at))
-    : id;
+  const displayId = request ? (request.request_no ?? '-') : id;
   const canEdit = request?.status === 'DRAFT';
   const canCancel = request?.status === 'PENDING' || request?.status === 'RETURNED';
   const submitAction = (request?.actions ?? []).find((a) => a.action === 'SUBMIT');

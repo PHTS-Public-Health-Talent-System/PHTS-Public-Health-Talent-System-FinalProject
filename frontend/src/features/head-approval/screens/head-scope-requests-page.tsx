@@ -212,7 +212,7 @@ export function HeadScopeRequestsPage({
       const itemNo = sanitizeRatePart(itemId);
       const subItemNo = sanitizeRatePart(subItemId);
       const mappingDisplay = subItemNo !== '-' ? `${groupNo}/${itemNo}/${subItemNo}` : `${groupNo}/${itemNo}`;
-      const requestNo = request.request_no ?? String(request.request_id);
+      const requestNo = request.request_no ?? '-';
       const sla = slaMap.get(request.request_id);
       let slaStatus: RequestRow['slaStatus'] = 'unknown';
       let slaRemaining: number | null = null;

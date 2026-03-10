@@ -1,7 +1,6 @@
 import type { RequestWithDetails, RequestStatus } from '@/types/request.types';
 import type { Announcement } from '@/features/announcement/shared';
 import type { StatusType } from '@/components/status-badge';
-import { toRequestDisplayId } from '@/shared/utils/public-id';
 import {
   formatThaiDate,
   formatThaiMonthYear,
@@ -155,7 +154,7 @@ export const buildRecentRequests = (requests: RequestWithDetails[]): RecentReque
     .sort((a, b) => new Date(getPrimaryDate(b)).getTime() - new Date(getPrimaryDate(a)).getTime())
     .slice(0, 3)
     .map((request) => ({
-      id: request.request_no ?? toRequestDisplayId(request.request_id, request.created_at),
+      id: request.request_no ?? '-',
       requestId: request.request_id,
       month: formatThaiMonthYearByDate(request.effective_date),
       amount: request.requested_amount

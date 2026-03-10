@@ -2,6 +2,8 @@ export function getOcrEngineLabel(value?: string | null): string {
   switch (String(value ?? "").trim().toLowerCase()) {
     case "tesseract":
       return "Tesseract";
+    case "paddle":
+      return "Paddle OCR";
     case "typhoon":
       return "Typhoon OCR";
     case "auto":

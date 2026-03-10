@@ -142,7 +142,7 @@ export default function DirectorDashboardPage() {
             : 'normal';
         return {
           id: request.request_id,
-          displayId: request.request_no ?? `REQ-${request.request_id}`,
+          displayId: request.request_no ?? '-',
           name,
           position,
           department,

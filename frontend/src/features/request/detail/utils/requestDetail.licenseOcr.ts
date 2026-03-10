@@ -1,5 +1,8 @@
 import { formatThaiDate } from './requestDetail.format';
-import { detectOcrDocumentKind } from './requestDetail.ocrDocuments';
+import {
+  detectOcrDocumentKind,
+  normalizeOcrAnalysisText,
+} from './requestDetail.ocrDocuments';
 
 type OcrResultLike = {
   name?: string;
@@ -55,7 +58,7 @@ function normalizeDigits(value: string): string {
 }
 
 function normalizePersonName(value: string): string {
-  return toArabicDigits(value)
+  return toArabicDigits(normalizeOcrAnalysisText(value))
     .replace(/(นางสาว|นาง|นาย|แพทย์หญิง|แพทย์ชาย)/g, ' ')
     .replace(/[^\u0E00-\u0E7Fa-zA-Z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -173,7 +176,7 @@ function extractThaiDateParts(value: string): {
 }
 
 function detectThaiMonthFromNoisyText(value: string): string | null {
-  const normalized = toArabicDigits(value).replace(/\s+/g, ' ');
+  const normalized = toArabicDigits(normalizeOcrAnalysisText(value)).replace(/\s+/g, ' ');
   const monthMatchers: Array<[string, RegExp]> = [
     ['มกราคม', /มกร|มกรา/],
     ['กุมภาพันธ์', /กุมภ|กมภ/],
@@ -196,12 +199,13 @@ function detectThaiMonthFromNoisyText(value: string): string | null {
 }
 
 function normalizeExtractedThaiDateDisplay(value: string): string {
-  const direct = extractThaiDateParts(value);
+  const analyzedValue = normalizeOcrAnalysisText(value);
+  const direct = extractThaiDateParts(analyzedValue);
   if (direct) {
     return `${direct.day} ${direct.month} ${direct.year}`;
   }
 
-  const normalized = toArabicDigits(value).replace(/\s+/g, ' ').trim();
+  const normalized = toArabicDigits(analyzedValue).replace(/\s+/g, ' ').trim();
   const month = detectThaiMonthFromNoisyText(normalized);
   const numbers = Array.from(normalized.matchAll(/\d{1,4}/g)).map((match) => match[0]);
   const day = numbers.find((item) => item.length <= 2) ?? '';
@@ -211,7 +215,7 @@ function normalizeExtractedThaiDateDisplay(value: string): string {
     return `${day} ${month} ${year}`;
   }
 
-  return value.trim() || '-';
+  return analyzedValue.trim() || '-';
 }
 
 function getDigitSimilarity(leftRaw: string, rightRaw: string): number {

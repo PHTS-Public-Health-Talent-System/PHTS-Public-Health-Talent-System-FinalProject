@@ -97,7 +97,7 @@ describe("mergeAllowanceAttachments", () => {
     });
   });
 
-  test("hides OCR summary preview when first line is too noisy to be useful", () => {
+  test("skips noisy first line and shows first readable OCR line", () => {
     expect(
       getAllowanceAttachmentOcrSummary({
         name: "page-2.pdf",
@@ -105,8 +105,8 @@ describe("mergeAllowanceAttachments", () => {
         markdown: "ง 1 เร\nใบอนุญาตปี ๒๕๑๑๓๑๕๐๕๑",
       }),
     ).toEqual({
-      tone: "muted",
-      text: "ตรวจ OCR แล้ว แต่ยังไม่พบข้อความที่นำมาใช้ได้",
+      tone: "success",
+      text: "OCR พบข้อความ: ใบอนุญาตปี ๒๕๑๑๓๑๕๐๕๑",
     });
   });
 

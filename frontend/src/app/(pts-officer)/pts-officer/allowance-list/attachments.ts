@@ -1,6 +1,8 @@
 import {
   detectOcrDocumentKind,
   getOcrDocumentTypeLabel,
+  isLikelyOcrNoiseLine,
+  normalizeOcrAnalysisText,
 } from "@/features/request/detail/utils";
 import { shouldSuppressAssignmentOrderOcrUi } from "@/features/request/detail/utils";
 import {
@@ -65,22 +67,17 @@ const normalizeVisibleFileNameSet = (
 };
 
 const getReadableOcrFirstLine = (markdown?: string | null): string | null => {
-  const firstLine = String(markdown ?? "")
+  const lines = String(markdown ?? "")
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean);
+    .map((line) => normalizeOcrAnalysisText(line))
+    .filter(Boolean)
+    .slice(0, 8);
 
-  if (!firstLine) return null;
-
-  const normalized = firstLine.replace(/\s+/g, " ").trim();
-  const readableChars = (normalized.match(/[\u0E00-\u0E7Fa-zA-Z0-9]/g) ?? [])
-    .length;
-
-  if (normalized.length < 8 || readableChars < 5) {
-    return null;
+  for (const line of lines) {
+    if (isLikelyOcrNoiseLine(line)) continue;
+    return line;
   }
-
-  return normalized;
+  return null;
 };
 
 export function buildAllowanceOcrDocuments(params: {

@@ -126,7 +126,7 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
         request.citizen_id;
       const department =
         formData.subDepartment || formData.department || request.current_department || '-';
-      const requestNo = request.request_no ?? String(request.request_id);
+      const requestNo = request.request_no ?? '-';
       const sortedActions = [...(request.actions ?? [])]
         .filter((action) => (actionMode === 'all' ? true : ['APPROVE', 'REJECT', 'RETURN'].includes(action.action)))
         .sort((a, b) =>

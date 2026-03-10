@@ -40,7 +40,6 @@ import { toast } from 'sonner';
 import { TableRowViewAction } from '@/components/common';
 import { useMyRequests, useSubmitRequest, useCancelRequest } from '@/features/request/core/hooks';
 import type { RequestWithDetails } from '@/types/request.types';
-import { toRequestDisplayId } from '@/shared/utils/public-id';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -178,7 +177,7 @@ export function HeadScopeMyRequestsPage({ basePath }: HeadScopeMyRequestsPagePro
   const requests = useMemo(() => {
     return (data ?? []).map((request: RequestWithDetails) => ({
       id: String(request.request_id),
-      displayId: request.request_no ?? toRequestDisplayId(request.request_id, request.created_at),
+      displayId: request.request_no ?? '-',
       amount: request.requested_amount,
       status: request.status,
       current_step: request.current_step,

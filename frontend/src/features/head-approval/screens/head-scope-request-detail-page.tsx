@@ -21,7 +21,6 @@ import {
   XCircle,
 } from 'lucide-react';
 import type { RequestWithDetails } from '@/types/request.types';
-import { toRequestDisplayId } from '@/shared/utils/public-id';
 import { useMyScopes, useRequestDetail, useProcessAction } from '@/features/request/core/hooks';
 import { useRateHierarchy } from '@/features/master-data/hooks';
 import { RequestDetailPageShell } from '@/features/request/detail/shell/RequestDetailPageShell';
@@ -171,9 +170,7 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
   const subDepartment = submissionSubDepartment ?? '-';
   const requestDepartmentValue = submissionDepartment ?? request?.current_department ?? null;
   const requestSubDepartmentValue = submissionSubDepartment ?? null;
-  const displayId = request
-    ? (request.request_no ?? toRequestDisplayId(request.request_id, request.created_at))
-    : id;
+  const displayId = request ? (request.request_no ?? '-') : id;
 
   const rateMapping = useMemo(
     () => normalizeRateMapping(request?.submission_data ?? null),

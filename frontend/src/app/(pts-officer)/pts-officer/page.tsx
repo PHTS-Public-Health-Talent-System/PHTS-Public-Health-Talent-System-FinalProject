@@ -185,7 +185,7 @@ export default function DashboardPage() {
     if (approvals.length === 0) return [];
     return approvals.slice(0, 5).map((req) => ({
       id: req.request_id,
-      displayNo: req.request_no || String(req.request_id),
+      displayNo: req.request_no || '-',
       name: (() => {
         const submission = parseSubmissionData(req.submission_data);
         const title = pickString(submission, ['title']);

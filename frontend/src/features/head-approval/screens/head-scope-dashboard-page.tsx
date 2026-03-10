@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMyRequests, useMyScopes, usePendingApprovals } from '@/features/request/core/hooks';
 import type { RequestWithDetails } from '@/types/request.types';
-import { toRequestDisplayId } from '@/shared/utils/public-id';
 import { formatThaiDate, formatThaiNumber } from '@/shared/utils/thai-locale';
 
 const getPendingStepLabel = (step?: number | null) => {
@@ -150,7 +149,7 @@ export function HeadScopeDashboardPage({ basePath, roleTitle }: HeadScopeDashboa
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <p className="text-sm font-medium">{row.request_no ?? toRequestDisplayId(row.request_id, row.created_at)}</p>
+                      <p className="text-sm font-medium">{row.request_no ?? '-'}</p>
                       <p className="text-xs text-muted-foreground">{formatThaiDate(row.created_at)}</p>
                     </div>
                     <Badge variant="outline">รออนุมัติ</Badge>
@@ -180,7 +179,7 @@ export function HeadScopeDashboardPage({ basePath, roleTitle }: HeadScopeDashboa
                 >
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <p className="text-sm font-medium">{row.request_no ?? toRequestDisplayId(row.request_id, row.created_at)}</p>
+                      <p className="text-sm font-medium">{row.request_no ?? '-'}</p>
                       <p className="text-xs text-muted-foreground">{getPendingStepLabel(row.current_step)}</p>
                     </div>
                     <p className="text-sm font-semibold">{formatThaiNumber(row.requested_amount ?? 0)} บาท</p>

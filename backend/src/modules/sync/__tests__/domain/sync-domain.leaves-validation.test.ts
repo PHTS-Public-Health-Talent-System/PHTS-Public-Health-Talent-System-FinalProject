@@ -1,10 +1,6 @@
 import type { PoolConnection, RowDataPacket } from 'mysql2/promise';
 import { syncLeaves, syncSingleLeaves } from '@/modules/sync/services/domain/sync-domain.service.js';
-
-const createStats = () =>
-  ({
-    leaves: { upserted: 0, skipped: 0 },
-  }) as any;
+import { createLeaveSyncDeps, createLeaveSyncStats } from './sync-domain.leaves-validation.test-helpers.js';
 
 describe('sync-domain leave validation guards', () => {
   test('syncLeaves looks up existing rows only for incoming ref_id values', async () => {
@@ -26,15 +22,8 @@ describe('sync-domain leave validation guards', () => {
       execute: jest.fn(),
     } as unknown as PoolConnection;
 
-    const stats = createStats();
-    await syncLeaves(conn, stats, {
-      hasLeaveStatusColumn: async () => true,
-      buildLeaveRecordSql: () => ({ sql: 'INSERT INTO leave_records VALUES (?)', fields: [] }),
-      buildLeaveRecordValues: () => [],
-      buildLeaveViewQuery: () => 'SELECT 1',
-      isChanged: () => true,
-      normalizeLeaveRowWithMeta: (row: RowDataPacket) => ({ row, meta: null, reviewMeta: null, normalizationIssues: [] }),
-    });
+    const stats = createLeaveSyncStats();
+    await syncLeaves(conn, stats, createLeaveSyncDeps());
 
     expect((conn.query as jest.Mock).mock.calls[0]?.[0]).toBe('SELECT 1');
     expect((conn.query as jest.Mock).mock.calls[1]?.[0]).toContain('WHERE ref_id IN (?)');
@@ -66,20 +55,14 @@ describe('sync-domain leave validation guards', () => {
       execute: jest.fn(),
     } as unknown as PoolConnection;
 
-    const stats = createStats();
-    await syncLeaves(conn, stats, {
-      hasLeaveStatusColumn: async () => true,
-      buildLeaveRecordSql: () => ({ sql: 'INSERT INTO leave_records VALUES (?)', fields: [] }),
-      buildLeaveRecordValues: () => [],
-      buildLeaveViewQuery: () => 'SELECT 1',
-      isChanged: (oldVal: unknown, newVal: unknown) => oldVal !== newVal,
-      normalizeLeaveRowWithMeta: (row: RowDataPacket) => ({
-        row,
-        meta: null,
-        reviewMeta: null,
-        normalizationIssues: [],
+    const stats = createLeaveSyncStats();
+    await syncLeaves(
+      conn,
+      stats,
+      createLeaveSyncDeps({
+        isChanged: (oldVal: unknown, newVal: unknown) => oldVal !== newVal,
       }),
-    });
+    );
 
     expect((conn.execute as jest.Mock).mock.calls).toEqual(
       expect.arrayContaining([
@@ -109,15 +92,8 @@ describe('sync-domain leave validation guards', () => {
       execute: jest.fn(),
     } as unknown as PoolConnection;
 
-    const stats = createStats();
-    await syncLeaves(conn, stats, {
-      hasLeaveStatusColumn: async () => true,
-      buildLeaveRecordSql: () => ({ sql: 'INSERT INTO leave_records VALUES (?)', fields: [] }),
-      buildLeaveRecordValues: () => [],
-      buildLeaveViewQuery: () => 'SELECT 1',
-      isChanged: () => true,
-      normalizeLeaveRowWithMeta: (row: RowDataPacket) => ({ row, meta: null, reviewMeta: null, normalizationIssues: [] }),
-    });
+    const stats = createLeaveSyncStats();
+    await syncLeaves(conn, stats, createLeaveSyncDeps());
 
     expect((conn.execute as jest.Mock).mock.calls).toEqual(
       expect.arrayContaining([
@@ -144,15 +120,13 @@ describe('sync-domain leave validation guards', () => {
       execute: jest.fn(),
     } as unknown as PoolConnection;
 
-    const stats = createStats();
-    await syncSingleLeaves(conn, '1539900084717', stats, {
-      hasLeaveStatusColumn: async () => true,
-      buildLeaveRecordSql: () => ({ sql: 'INSERT INTO leave_records VALUES (?)', fields: [] }),
-      buildLeaveRecordValues: () => [],
-      buildLeaveViewQuery: () => 'SELECT 1',
-      citizenIdWhereBinary: () => '1=1',
-      normalizeLeaveRowWithMeta: (row: RowDataPacket) => ({ row, meta: null, reviewMeta: null, normalizationIssues: [] }),
-    });
+    const stats = createLeaveSyncStats();
+    await syncSingleLeaves(
+      conn,
+      '1539900084717',
+      stats,
+      createLeaveSyncDeps({ citizenIdWhereBinary: () => '1=1' }),
+    );
 
     expect((conn.execute as jest.Mock).mock.calls.length).toBe(0);
     expect(stats.leaves.upserted).toBe(0);
@@ -165,16 +139,18 @@ describe('sync-domain leave validation guards', () => {
       execute: jest.fn(),
     } as unknown as PoolConnection;
 
-    const stats = createStats();
-    await syncSingleLeaves(conn, '1539900084717', stats, {
-      hasLeaveStatusColumn: async () => true,
-      buildLeaveRecordSql: () => ({ sql: 'INSERT INTO leave_records VALUES (?)', fields: [] }),
-      buildLeaveRecordValues: () => [],
-      buildLeaveViewQuery: () => 'SELECT full_view',
-      buildSingleLeaveViewQuery: (citizenWhere) => `SELECT single_view WHERE ${citizenWhere}`,
-      citizenIdWhereBinary: () => 'citizen_predicate',
-      normalizeLeaveRowWithMeta: (row: RowDataPacket) => ({ row, meta: null, reviewMeta: null, normalizationIssues: [] }),
-    });
+    const stats = createLeaveSyncStats();
+    await syncSingleLeaves(
+      conn,
+      '1539900084717',
+      stats,
+      createLeaveSyncDeps({
+        buildLeaveViewQuery: () => 'SELECT full_view',
+        buildSingleLeaveViewQuery: (citizenWhere: string) =>
+          `SELECT single_view WHERE ${citizenWhere}`,
+        citizenIdWhereBinary: () => 'citizen_predicate',
+      }),
+    );
 
     expect((conn.query as jest.Mock).mock.calls[0]?.[0]).toBe(
       'SELECT single_view WHERE citizen_predicate',
@@ -219,15 +195,15 @@ describe('sync-domain leave validation guards', () => {
       execute: jest.fn(),
     } as unknown as PoolConnection;
 
-    const stats = createStats();
-    await syncLeaves(conn, stats, {
-      hasLeaveStatusColumn: async () => true,
-      buildLeaveRecordSql: () => ({ sql: 'INSERT INTO leave_records VALUES (?)', fields: [] }),
-      buildLeaveRecordValues: (row: RowDataPacket) => [row.leave_type],
-      buildLeaveViewQuery: () => 'SELECT 1',
-      isChanged: (oldVal: unknown, newVal: unknown) => oldVal !== newVal,
-      normalizeLeaveRowWithMeta: (row: RowDataPacket) => ({ row, meta: null, reviewMeta: null, normalizationIssues: [] }),
-    });
+    const stats = createLeaveSyncStats();
+    await syncLeaves(
+      conn,
+      stats,
+      createLeaveSyncDeps({
+        buildLeaveRecordValues: (row: RowDataPacket) => [row.leave_type],
+        isChanged: (oldVal: unknown, newVal: unknown) => oldVal !== newVal,
+      }),
+    );
 
     expect((conn.execute as jest.Mock).mock.calls).toEqual(
       expect.arrayContaining([
@@ -261,26 +237,25 @@ describe('sync-domain leave validation guards', () => {
       execute: jest.fn(),
     } as unknown as PoolConnection;
 
-    const stats = createStats();
-    await syncLeaves(conn, stats, {
-      hasLeaveStatusColumn: async () => true,
-      buildLeaveRecordSql: () => ({ sql: 'INSERT INTO leave_records VALUES (?)', fields: [] }),
-      buildLeaveRecordValues: () => [],
-      buildLeaveViewQuery: () => 'SELECT 1',
-      isChanged: () => true,
-      normalizeLeaveRowWithMeta: (row: RowDataPacket) => ({
-        row,
-        meta: null,
-        reviewMeta: {
-          source_type: 'sick',
-          suspected_type: 'personal',
-          reason_code: 'SICK_LEAVE_FAMILY_CARE_REVIEW',
-          reason_text: 'ข้อความการลามีบริบทเป็นการดูแลบุคคลอื่น แม้ประเภทการลาจาก HRMS จะเป็นลาป่วย',
-        },
-        normalizationIssues: [],
+    const stats = createLeaveSyncStats();
+    await syncLeaves(
+      conn,
+      stats,
+      createLeaveSyncDeps({
+        normalizeLeaveRowWithMeta: (row: RowDataPacket) => ({
+          row,
+          meta: null,
+          reviewMeta: {
+            source_type: 'sick',
+            suspected_type: 'personal',
+            reason_code: 'SICK_LEAVE_FAMILY_CARE_REVIEW',
+            reason_text: 'ข้อความการลามีบริบทเป็นการดูแลบุคคลอื่น แม้ประเภทการลาจาก HRMS จะเป็นลาป่วย',
+          },
+          normalizationIssues: [],
+        }),
+        onLeaveReviewFlagged,
       }),
-      onLeaveReviewFlagged,
-    });
+    );
 
     expect(onLeaveReviewFlagged).toHaveBeenCalledWith({
       sourceKey: '67272',
@@ -317,30 +292,29 @@ describe('sync-domain leave validation guards', () => {
       execute: jest.fn(),
     } as unknown as PoolConnection;
 
-    const stats = createStats();
-    await syncLeaves(conn, stats, {
-      hasLeaveStatusColumn: async () => true,
-      buildLeaveRecordSql: () => ({ sql: 'INSERT INTO leave_records VALUES (?)', fields: [] }),
-      buildLeaveRecordValues: () => [],
-      buildLeaveViewQuery: () => 'SELECT 1',
-      isChanged: () => true,
-      normalizeLeaveRowWithMeta: (row: RowDataPacket) => ({
-        row,
-        meta: null,
-        reviewMeta: null,
-        normalizationIssues: [
-          {
-            issue_code: 'LEAVE_DATE_INVALID',
-            reason_text: 'ไม่สามารถแปลงวันที่ลาได้จากข้อมูลต้นทาง',
-            detail: {
-              start_date: '31/13/2025',
-              end_date: '31/13/2025',
+    const stats = createLeaveSyncStats();
+    await syncLeaves(
+      conn,
+      stats,
+      createLeaveSyncDeps({
+        normalizeLeaveRowWithMeta: (row: RowDataPacket) => ({
+          row,
+          meta: null,
+          reviewMeta: null,
+          normalizationIssues: [
+            {
+              issue_code: 'LEAVE_DATE_INVALID',
+              reason_text: 'ไม่สามารถแปลงวันที่ลาได้จากข้อมูลต้นทาง',
+              detail: {
+                start_date: '31/13/2025',
+                end_date: '31/13/2025',
+              },
             },
-          },
-        ],
+          ],
+        }),
+        onLeaveNormalizationIssue,
       }),
-      onLeaveNormalizationIssue,
-    });
+    );
 
     expect(onLeaveNormalizationIssue).toHaveBeenCalledWith({
       sourceKey: 'LM-BAD-DATE',
@@ -378,20 +352,8 @@ describe('sync-domain leave validation guards', () => {
       execute: jest.fn(),
     } as unknown as PoolConnection;
 
-    const stats = createStats();
-    await syncLeaves(conn, stats, {
-      hasLeaveStatusColumn: async () => true,
-      buildLeaveRecordSql: () => ({ sql: 'INSERT INTO leave_records VALUES (?)', fields: [] }),
-      buildLeaveRecordValues: () => [],
-      buildLeaveViewQuery: () => 'SELECT 1',
-      isChanged: () => false,
-      normalizeLeaveRowWithMeta: (row: RowDataPacket) => ({
-        row,
-        meta: null,
-        reviewMeta: null,
-        normalizationIssues: [],
-      }),
-    });
+    const stats = createLeaveSyncStats();
+    await syncLeaves(conn, stats, createLeaveSyncDeps({ isChanged: () => false }));
 
     expect((conn.execute as jest.Mock).mock.calls).toEqual(
       expect.arrayContaining([

@@ -62,6 +62,7 @@ frontend/out/
 backend/.env
 frontend/.env.local
 frontend/.env
+backend/src/scripts/ops/backup/autobackup.env
 
 # Keep env templates
 !*.env.example

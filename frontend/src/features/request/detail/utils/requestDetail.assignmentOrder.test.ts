@@ -591,6 +591,36 @@ describe('parseAssignmentOrderSummary', () => {
     expect(summary?.personLine).toContain('พิชสินี')
   })
 
+  test('fills missing surname in person line and removes standalone "ประเมิน" artifact duty', () => {
+    const summary = parseAssignmentOrderSummary(
+      {
+        fileName: 'page-5-6.pdf',
+        engineUsed: 'tesseract',
+        markdown: [
+          'คำสั่งกลุ่มงานเภสัชกรรม',
+          'ที่ 1/2568',
+          'เรื่อง ยกเลิกและมอบหมายเจ้าหน้าที่รับผิดชอบในการปฏิบัติงาน',
+          '๒. งานบริบาลเภสัชกรรมผู้ป่วย HIV ในคลินิกเฉพาะโรค',
+          '๒.๓ นางสาวพิชญ์สินี',
+          'โดยมีหน้าที่ ดังนี้',
+          '๑. ให้บริบาลเภสัชกรรมแก่ผู้ป่วย โดยทบทวนข้อมูลการใช้ยา ประสานรายการยา ค้น ปัญหาการใช้ยาและร่วมแก้ไข ให้ความรู้ คําแนะนําเกี่ยวกับโรคและยาแก่ผู้ป่วยและญาติ',
+          '๒. ให้คําแนะนําการใช้ยาเทคนิคพิเศษต่างๆ แก่ผู้ป่วย HIV ในคลินิกเฉพาะ',
+          '๓. ประเมิน',
+          '๔. ประเมินติดตามและเฝ้าระวังอาการไม่พึงประสงค์จากการใช้ยา HIV',
+          '๕. ตรวจสอบและจ่ายยา ให้แก่ผู้ป่วย HIV ในคลินิก',
+          '๖. ดูแลประสานการเบิกจ่ายยาต้านไวรัส จาก สปสช. เพื่อให้ผู้ป่วยมียาที่เพียงพอ',
+        ].join('\n'),
+      },
+      'นางสาวพิชญ์สินี ฝั้นจักรสาย',
+    )
+
+    expect(summary).not.toBeNull()
+    expect(summary?.personMatched).toBe(true)
+    expect(summary?.personLine).toContain('ฝั้นจักรสาย')
+    expect(summary?.dutyHighlights.some((line) => line === '๓. ประเมิน')).toBe(false)
+    expect(summary?.dutyHighlights[2]).toContain('ประเมินติดตามและเฝ้าระวังอาการไม่พึงประสงค์')
+  })
+
   test('removes short OCR noise tokens inside duty text', () => {
     const summary = parseAssignmentOrderSummary(
       {

@@ -657,7 +657,16 @@ const lineMatchesPerson = (line: string, personName: string): boolean => {
         break;
       }
     }
-    if (matchedIndex < 0) return false;
+    if (matchedIndex < 0) {
+      const firstToken = tokens[0] || '';
+      const hasFirstToken = lineTokens.some((lineToken) => isFuzzyNameTokenMatch(firstToken, lineToken || ''));
+      const looksLikePersonRow =
+        /^[0-9๑๒๓๔๕๖๗๘๙]+(?:\.[0-9๑๒๓๔๕๖๗๘๙]+)*\s+/.test(
+          normalizeAssignmentOrderWhitespace(line),
+        ) &&
+        PERSON_TITLES.some((title) => normalizeAssignmentOrderWhitespace(line).includes(title));
+      return hasFirstToken && looksLikePersonRow;
+    }
     cursor = matchedIndex + 1;
   }
   return true;
@@ -686,7 +695,15 @@ const finalizePersonLine = (
     .filter(Boolean);
 
   const hasNearbyLastName = nearLines.some((line) => normalizeNameForMatch(line).includes(compactLast));
-  if (!hasNearbyLastName) return base;
+  if (!hasNearbyLastName) {
+    if (
+      /^[0-9๑๒๓๔๕๖๗๘๙]+(?:\.[0-9๑๒๓๔๕๖๗๘๙]+)*\s+(?:นาย|นางสาว|นาง)/.test(base) &&
+      compactBase.includes(compactFirst)
+    ) {
+      return `${base} ${lastName}`.trim();
+    }
+    return base;
+  }
 
   return `${base} ${lastName}`.trim();
 };
@@ -1021,6 +1038,20 @@ const extractDutyHighlights = (
   return highlights;
 };
 
+const isStandaloneDutyArtifact = (line: string): boolean =>
+  /^[0-9๑๒๓๔๕๖๗๘๙]+\.\s*ประเมิน$/.test(normalizeAssignmentOrderWhitespace(line));
+
+const renumberDutyHighlightsSequentially = (lines: string[]): string[] => {
+  let expected = 1;
+  return lines.map((line) => {
+    const normalized = normalizeAssignmentOrderWhitespace(line);
+    if (!/^[0-9๑๒๓๔๕๖๗๘๙]+\.\s+/.test(normalized)) return normalized;
+    const rewritten = rewriteDutyOrdinal(normalized, expected);
+    expected += 1;
+    return rewritten;
+  });
+};
+
 export const parseCanonicalAssignmentOrderSummary = (
   document: OcrAssignmentCanonicalDocument,
   personName: string,
@@ -1062,9 +1093,12 @@ export const parseCanonicalAssignmentOrderSummary = (
       ? normalizeSectionTitle(lines[personMajorSectionIndex] || '')
       : findNearestSectionTitle(lines, personIndex),
   );
-  const dutyHighlights = extractDutyHighlights(lines, personIndex, personMajorSectionIndex)
+  const rawDutyHighlights = extractDutyHighlights(lines, personIndex, personMajorSectionIndex)
     .map((item) => normalizeSummaryText(sanitizeDutyNoise(item)))
     .filter((item): item is string => Boolean(item));
+  const dutyHighlights = renumberDutyHighlightsSequentially(
+    rawDutyHighlights.filter((line) => !isStandaloneDutyArtifact(line)),
+  );
 
   const warnings: string[] = [];
   if (!personLine) warnings.push('ไม่พบชื่อบุคลากรครบถ้วนในเอกสาร');

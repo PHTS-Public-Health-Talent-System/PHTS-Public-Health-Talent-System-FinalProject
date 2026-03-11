@@ -3,6 +3,7 @@ import path from "node:path";
 import type { PoolConnection, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { getConnection, closePool } from "@config/database.js";
 import { normalizeImportedName, resolveClosestImportedCandidate } from "@/modules/payroll/services/import/payroll-import-match.js";
+import { parseImportPayrollConfig, type ImportPayrollConfig } from "@/scripts/archive/manual/import-payroll-csv-config.js";
 
 type ParsedPayrollRow = {
   sourceLineNo: number;
@@ -46,11 +47,6 @@ type MatchResult =
       professionCode: null;
       note: string | null;
     };
-
-const SOURCE_FILE = "/home/krtn/project/phts-workspace/data_import/data1-Jan-26.csv";
-const PERIOD_MONTH = 1;
-const PERIOD_YEAR = 2026;
-const PERSONNEL_SCOPE = "NURSE";
 
 const THAI_MONTHS: Record<string, number> = {
   "ม.ค.": 1,
@@ -150,6 +146,39 @@ const parsePayrollRows = (csvPath: string): ParsedPayrollRow[] => {
     .map(({ row, lineNo }) => {
       const padded = [...row];
       while (padded.length < 14) padded.push("");
+      const isCompactNoItemFormat =
+        parseMoney(padded[5]) !== null &&
+        parseMoney(padded[7]) !== null &&
+        parseMoney(padded[10]) !== null;
+
+      if (isCompactNoItemFormat) {
+        return {
+          sourceLineNo: lineNo,
+          sourceIndex: toNullableString(padded[0]),
+          title: toNullableString(padded[1]),
+          firstName: trimValue(padded[2]),
+          lastName: trimValue(padded[3]),
+          sourcePositionName: trimValue(padded[4]),
+          licenseExpiryRaw: null,
+          licenseExpiryDate: null,
+          monthlyAmount: parseMoney(padded[5]),
+          retroactiveAmount: parseMoney(padded[6]),
+          totalAmount: parseMoney(padded[7]),
+          sourceGroupNo: toNullableString(padded[8]),
+          sourceClause: toNullableString(padded[9]),
+          sourceItemNo: null,
+          announcedRate: parseMoney(padded[10]),
+          note: toNullableString(padded[11]),
+          rawPayload: {
+            row,
+            isCompactNoItemFormat,
+          },
+        } satisfies ParsedPayrollRow;
+      }
+
+      const hasLicenseColumn = parseMoney(padded[5]) === null;
+      const amountStartIndex = hasLicenseColumn ? 6 : 5;
+      const groupStartIndex = hasLicenseColumn ? 9 : 8;
       return {
         sourceLineNo: lineNo,
         sourceIndex: toNullableString(padded[0]),
@@ -157,24 +186,33 @@ const parsePayrollRows = (csvPath: string): ParsedPayrollRow[] => {
         firstName: trimValue(padded[2]),
         lastName: trimValue(padded[3]),
         sourcePositionName: trimValue(padded[4]),
-        licenseExpiryRaw: toNullableString(padded[5]),
-        licenseExpiryDate: parseDate(padded[5]),
-        monthlyAmount: parseMoney(padded[6]),
-        retroactiveAmount: parseMoney(padded[7]),
-        totalAmount: parseMoney(padded[8]),
-        sourceGroupNo: toNullableString(padded[9]),
-        sourceClause: toNullableString(padded[10]),
-        sourceItemNo: toNullableString(padded[11]),
-        announcedRate: parseMoney(padded[12]),
-        note: toNullableString(padded[13]),
+        licenseExpiryRaw: hasLicenseColumn ? toNullableString(padded[5]) : null,
+        licenseExpiryDate: hasLicenseColumn ? parseDate(padded[5]) : null,
+        monthlyAmount: parseMoney(padded[amountStartIndex]),
+        retroactiveAmount: parseMoney(padded[amountStartIndex + 1]),
+        totalAmount: parseMoney(padded[amountStartIndex + 2]),
+        sourceGroupNo: toNullableString(padded[groupStartIndex]),
+        sourceClause: toNullableString(padded[groupStartIndex + 1]),
+        sourceItemNo: toNullableString(padded[groupStartIndex + 2]),
+        announcedRate: parseMoney(padded[groupStartIndex + 3]),
+        note: toNullableString(padded[groupStartIndex + 4]),
         rawPayload: {
           row,
+          hasLicenseColumn,
         },
       } satisfies ParsedPayrollRow;
     });
 };
 
-const loadNurseCandidates = async (conn: PoolConnection): Promise<MatchCandidate[]> => {
+const getPositionLikeByScope = (scope: ImportPayrollConfig["personnelScope"]): string => {
+  if (scope === "PHARMACIST") return "เภสัชกร%";
+  return "พยาบาลวิชาชีพ%";
+};
+
+const loadCandidates = async (
+  conn: PoolConnection,
+  scope: ImportPayrollConfig["personnelScope"],
+): Promise<MatchCandidate[]> => {
   const [rows] = await conn.query<RowDataPacket[]>(
     `
       SELECT
@@ -186,9 +224,10 @@ const loadNurseCandidates = async (conn: PoolConnection): Promise<MatchCandidate
         ep.department
       FROM emp_profiles ep
       LEFT JOIN users u ON u.citizen_id = ep.citizen_id
-      WHERE ep.position_name LIKE 'พยาบาลวิชาชีพ%'
+      WHERE ep.position_name LIKE ?
       ORDER BY ep.citizen_id ASC
-    `
+    `,
+    [getPositionLikeByScope(scope)],
   );
 
   return rows.map((candidate: any) => ({
@@ -202,17 +241,18 @@ const loadNurseCandidates = async (conn: PoolConnection): Promise<MatchCandidate
 };
 
 const resolveProfessionCode = (positionName: string): string | null => {
+  if (positionName.startsWith("เภสัชกร")) return "PHARMACIST";
   if (positionName.startsWith("พยาบาลวิชาชีพ")) return "NURSE";
   return null;
 };
 
 const matchRow = async (
-  nurseCandidates: MatchCandidate[],
+  candidatesInScope: MatchCandidate[],
   row: ParsedPayrollRow,
 ): Promise<MatchResult> => {
   const normalizedFirst = normalizeImportedName(row.firstName);
   const normalizedLast = normalizeImportedName(row.lastName);
-  const candidates = nurseCandidates.filter(
+  const candidates = candidatesInScope.filter(
     (candidate) =>
       normalizeImportedName(candidate.first_name) === normalizedFirst &&
       normalizeImportedName(candidate.last_name) === normalizedLast,
@@ -254,7 +294,7 @@ const matchRow = async (
       firstName: row.firstName,
       lastName: row.lastName,
     },
-    nurseCandidates,
+    candidatesInScope,
   );
 
   if (closestCandidate) {
@@ -274,7 +314,14 @@ const matchRow = async (
   };
 };
 
-async function createBatch(conn: PoolConnection, totalRows: number): Promise<number> {
+async function createBatch(
+  conn: PoolConnection,
+  totalRows: number,
+  sourceFile: string,
+  periodMonth: number,
+  periodYear: number,
+  personnelScope: string,
+): Promise<number> {
   const [result] = await conn.execute<ResultSetHeader>(
     `
       INSERT INTO pay_import_batches (
@@ -286,7 +333,7 @@ async function createBatch(conn: PoolConnection, totalRows: number): Promise<num
         total_rows
       ) VALUES (?, 'PAYROLL_CSV', ?, ?, ?, ?)
     `,
-    [path.basename(SOURCE_FILE), PERIOD_MONTH, PERIOD_YEAR, PERSONNEL_SCOPE, totalRows],
+    [path.basename(sourceFile), periodMonth, periodYear, personnelScope, totalRows],
   );
   return result.insertId;
 }
@@ -390,7 +437,8 @@ async function finalizeBatch(conn: PoolConnection, batchId: number): Promise<voi
 }
 
 async function main(): Promise<void> {
-  const rows = parsePayrollRows(SOURCE_FILE);
+  const config = parseImportPayrollConfig(process.argv.slice(2));
+  const rows = parsePayrollRows(config.sourceFile);
   if (!rows.length) {
     throw new Error("ไม่พบข้อมูล payroll ที่ parse ได้จากไฟล์");
   }
@@ -398,11 +446,18 @@ async function main(): Promise<void> {
   const conn = await getConnection();
   try {
     await conn.beginTransaction();
-    const nurseCandidates = await loadNurseCandidates(conn);
-    const batchId = await createBatch(conn, rows.length);
+    const candidatesInScope = await loadCandidates(conn, config.personnelScope);
+    const batchId = await createBatch(
+      conn,
+      rows.length,
+      config.sourceFile,
+      config.periodMonth,
+      config.periodYear,
+      config.personnelScope,
+    );
 
     for (const row of rows) {
-      const match = await matchRow(nurseCandidates, row);
+      const match = await matchRow(candidatesInScope, row);
       await saveImportRow(conn, batchId, row, match);
     }
 

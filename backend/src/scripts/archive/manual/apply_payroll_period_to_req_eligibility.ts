@@ -1,5 +1,6 @@
 import type { PoolConnection, RowDataPacket } from "mysql2/promise";
 import { closePool, getConnection } from "@config/database.js";
+import { chooseImportRequestId } from "@/scripts/archive/manual/req-eligibility-import-schema.js";
 
 type PeriodRow = {
   period_id: number;
@@ -34,10 +35,11 @@ async function insertEligibilityFromPeriod(
   period: PeriodRow,
 ): Promise<{
   inserted: number;
-  skippedExisting: number;
+  replacedExisting: number;
   unresolvedRate: number;
 }> {
   const effectiveDate = `${period.period_year}-${String(period.period_month).padStart(2, "0")}-01`;
+  const importRequestId = await resolveImportRequestId(conn);
 
   const [unresolvedRows] = await conn.query<RowDataPacket[]>(
     `
@@ -53,17 +55,27 @@ async function insertEligibilityFromPeriod(
   const [existingRows] = await conn.query<RowDataPacket[]>(
     `
       SELECT COUNT(*) AS total
-      FROM pay_results pr
-      INNER JOIN req_eligibility re
-        ON re.citizen_id = pr.citizen_id
-       AND re.master_rate_id = pr.master_rate_id
-       AND re.effective_date = ?
+      FROM req_eligibility re
+      INNER JOIN pay_results pr
+        ON pr.citizen_id = re.citizen_id
       WHERE pr.period_id = ?
         AND pr.master_rate_id IS NOT NULL
     `,
-    [effectiveDate, period.period_id],
+    [period.period_id],
   );
-  const skippedExisting = Number((existingRows[0] as any)?.total ?? 0);
+  const replacedExisting = Number((existingRows[0] as any)?.total ?? 0);
+
+  await conn.execute(
+    `
+      DELETE re
+      FROM req_eligibility re
+      INNER JOIN pay_results pr
+        ON pr.citizen_id = re.citizen_id
+      WHERE pr.period_id = ?
+        AND pr.master_rate_id IS NOT NULL
+    `,
+    [period.period_id],
+  );
 
   const [insertResult] = await conn.execute<any>(
     `
@@ -80,32 +92,42 @@ async function insertEligibilityFromPeriod(
         pr.user_id,
         pr.citizen_id,
         pr.master_rate_id,
-        NULL,
+        ?,
         ?,
         ?,
         1
       FROM pay_results pr
-      LEFT JOIN req_eligibility re
-        ON re.citizen_id = pr.citizen_id
-       AND re.master_rate_id = pr.master_rate_id
-       AND re.effective_date = ?
       WHERE pr.period_id = ?
         AND pr.master_rate_id IS NOT NULL
-        AND re.eligibility_id IS NULL
     `,
     [
+      importRequestId,
       effectiveDate,
       `PAYROLL_IMPORT_PERIOD_${period.period_id}`,
-      effectiveDate,
       period.period_id,
     ],
   );
 
   return {
     inserted: Number(insertResult?.affectedRows ?? 0),
-    skippedExisting,
+    replacedExisting,
     unresolvedRate,
   };
+}
+
+async function resolveImportRequestId(conn: PoolConnection): Promise<number | null> {
+  const [rows] = await conn.query<RowDataPacket[]>(
+    `
+      SELECT IS_NULLABLE
+      FROM information_schema.columns
+      WHERE table_schema = DATABASE()
+        AND table_name = 'req_eligibility'
+        AND column_name = 'request_id'
+      LIMIT 1
+    `,
+  );
+  const nullableFlag = String((rows[0] as any)?.IS_NULLABLE ?? "NO").toUpperCase() === "YES";
+  return chooseImportRequestId(nullableFlag);
 }
 
 async function main(): Promise<void> {
@@ -129,7 +151,7 @@ async function main(): Promise<void> {
           period_year: period.period_year,
           effective_date: `${period.period_year}-${String(period.period_month).padStart(2, "0")}-01`,
           inserted_rows: result.inserted,
-          skipped_existing_rows: result.skippedExisting,
+          replaced_existing_rows: result.replacedExisting,
           unresolved_master_rate_rows: result.unresolvedRate,
         },
         null,

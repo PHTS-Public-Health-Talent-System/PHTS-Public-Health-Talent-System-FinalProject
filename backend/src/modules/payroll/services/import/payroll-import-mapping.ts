@@ -29,6 +29,16 @@ const normalizeText = (value: string | null | undefined): string | null => {
 
 const round2 = (value: number): number => Math.round(value * 100) / 100;
 
+const deriveShortSubItem = (value: string | null | undefined): string | null => {
+  const normalized = normalizeText(value);
+  if (!normalized) return null;
+  const segments = normalized.split(".");
+  if (segments.length < 3) return null;
+  const last = normalizeText(segments[segments.length - 1]);
+  if (!last) return null;
+  return /^\d+$/.test(last) ? String(Number(last)) : null;
+};
+
 export const deriveImportedRateSelectors = ({
   sourceGroupNo,
   sourceClause,
@@ -126,10 +136,19 @@ export const resolveImportedRateId = (
       (row.announcedRate === null || round2(rate.amount) === round2(row.announcedRate)),
   );
 
-  const exactSubItem = selectors.subItemNo
-    ? scopedRates.find((rate) => rate.subItemNo === selectors.subItemNo)
-    : null;
-  if (exactSubItem) return exactSubItem.rateId;
+  const subItemCandidates = [
+    selectors.subItemNo,
+    deriveShortSubItem(selectors.subItemNo),
+    normalizeText(row.sourceItemNo),
+    deriveShortSubItem(normalizedClause),
+  ].filter((value): value is string => Boolean(value));
+
+  for (const candidate of subItemCandidates) {
+    const exactSubItem = scopedRates.find(
+      (rate) => normalizeText(rate.subItemNo) === candidate,
+    );
+    if (exactSubItem) return exactSubItem.rateId;
+  }
 
   if (
     professionCode === "NURSE" &&

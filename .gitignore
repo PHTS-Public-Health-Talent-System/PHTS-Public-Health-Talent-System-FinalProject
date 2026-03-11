@@ -68,6 +68,7 @@ backend/src/scripts/ops/backup/autobackup.env
 tmp/
 temp/
 docs/
+import_data/
 *.tmp
 
 # Certificates and secrets

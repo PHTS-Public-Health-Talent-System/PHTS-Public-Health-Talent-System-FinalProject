@@ -50,11 +50,18 @@ const buildUnresolvedRateReason = (row: ImportRow): string => {
   return "ข้อมูลจากไฟล์นำเข้าระบุกลุ่ม/ข้อไม่ละเอียดพอสำหรับผูกกับ cfg_payment_rates";
 };
 
-const parseBatchIdArg = (): number | null => {
-  const raw = process.argv[2];
-  if (!raw) return null;
-  const parsed = Number.parseInt(raw, 10);
-  return Number.isFinite(parsed) ? parsed : null;
+const parseApplyArgs = (): { batchId: number | null; mergeMode: boolean } => {
+  const args = process.argv.slice(2);
+  const first = args[0];
+  const mergeMode = args.includes("--merge");
+  if (!first || first === "--merge") {
+    return { batchId: null, mergeMode };
+  }
+  const parsed = Number.parseInt(first, 10);
+  return {
+    batchId: Number.isFinite(parsed) ? parsed : null,
+    mergeMode,
+  };
 };
 
 const getDaysInMonth = (year: number, month: number): number => new Date(year, month, 0).getDate();
@@ -132,6 +139,59 @@ async function clearPeriodData(conn: PoolConnection, periodId: number): Promise<
   await conn.execute("DELETE FROM pay_results WHERE period_id = ?", [periodId]);
   await conn.execute("DELETE FROM pay_period_profession_reviews WHERE period_id = ?", [periodId]);
   await conn.execute("DELETE FROM pay_period_items WHERE period_id = ?", [periodId]);
+}
+
+async function clearPeriodDataForBatchCitizens(
+  conn: PoolConnection,
+  periodId: number,
+  batchId: number,
+): Promise<void> {
+  await conn.execute(
+    `
+      DELETE c
+      FROM pay_result_checks c
+      INNER JOIN pay_results p ON p.payout_id = c.payout_id
+      WHERE p.period_id = ?
+        AND p.citizen_id IN (
+          SELECT pir.matched_citizen_id COLLATE utf8mb4_unicode_ci
+          FROM pay_import_rows pir
+          WHERE pir.batch_id = ?
+            AND pir.match_status = 'MATCHED'
+            AND pir.matched_citizen_id IS NOT NULL
+        )
+    `,
+    [periodId, batchId],
+  );
+  await conn.execute(
+    `
+      DELETE i
+      FROM pay_result_items i
+      INNER JOIN pay_results p ON p.payout_id = i.payout_id
+      WHERE p.period_id = ?
+        AND p.citizen_id IN (
+          SELECT pir.matched_citizen_id COLLATE utf8mb4_unicode_ci
+          FROM pay_import_rows pir
+          WHERE pir.batch_id = ?
+            AND pir.match_status = 'MATCHED'
+            AND pir.matched_citizen_id IS NOT NULL
+        )
+    `,
+    [periodId, batchId],
+  );
+  await conn.execute(
+    `
+      DELETE FROM pay_results
+      WHERE period_id = ?
+        AND citizen_id IN (
+          SELECT pir.matched_citizen_id COLLATE utf8mb4_unicode_ci
+          FROM pay_import_rows pir
+          WHERE pir.batch_id = ?
+            AND pir.match_status = 'MATCHED'
+            AND pir.matched_citizen_id IS NOT NULL
+        )
+    `,
+    [periodId, batchId],
+  );
 }
 
 async function loadMatchedRows(conn: PoolConnection, batchId: number): Promise<ImportRow[]> {
@@ -388,13 +448,17 @@ async function markBatchApplied(
 }
 
 async function main(): Promise<void> {
-  const batchIdArg = parseBatchIdArg();
+  const { batchId: batchIdArg, mergeMode } = parseApplyArgs();
   const conn = await getConnection();
   try {
     await conn.beginTransaction();
     const batch = await findBatch(conn, batchIdArg);
     const periodId = await findOrCreatePeriod(conn, batch.period_month, batch.period_year);
-    await clearPeriodData(conn, periodId);
+    if (mergeMode) {
+      await clearPeriodDataForBatchCitizens(conn, periodId, batch.batch_id);
+    } else {
+      await clearPeriodData(conn, periodId);
+    }
 
     const rows = await loadMatchedRows(conn, batch.batch_id);
     const rates = await loadRates(conn);
@@ -424,6 +488,7 @@ async function main(): Promise<void> {
       JSON.stringify(
         {
           batch_id: batch.batch_id,
+          merge_mode: mergeMode,
           period_id: periodId,
           period_month: batch.period_month,
           period_year: batch.period_year,

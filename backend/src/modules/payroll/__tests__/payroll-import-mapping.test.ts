@@ -151,6 +151,42 @@ describe("payroll import mapping", () => {
         ),
       ).toBe(111);
     });
+
+    it("resolves when cfg sub_item_no uses short numeric value", () => {
+      expect(
+        resolveImportedRateId(
+          {
+            sourceGroupNo: "3",
+            sourceClause: "3.1",
+            sourceItemNo: "3",
+            announcedRate: 2000,
+          },
+          [
+            { rateId: 210, professionCode: "NURSE", groupNo: 3, itemNo: "3.1", subItemNo: "1", amount: 2000 },
+            { rateId: 211, professionCode: "NURSE", groupNo: 3, itemNo: "3.1", subItemNo: "2", amount: 2000 },
+            { rateId: 212, professionCode: "NURSE", groupNo: 3, itemNo: "3.1", subItemNo: "3", amount: 2000 },
+          ],
+          "NURSE",
+        ),
+      ).toBe(212);
+    });
+
+    it("resolves short numeric sub item when source clause already includes sub item", () => {
+      expect(
+        resolveImportedRateId(
+          {
+            sourceGroupNo: "3",
+            sourceClause: "3.1.3",
+            sourceItemNo: null,
+            announcedRate: 2000,
+          },
+          [
+            { rateId: 312, professionCode: "NURSE", groupNo: 3, itemNo: "3.1", subItemNo: "3", amount: 2000 },
+          ],
+          "NURSE",
+        ),
+      ).toBe(312);
+    });
   });
 
   describe("deriveImportedPayoutMetrics", () => {

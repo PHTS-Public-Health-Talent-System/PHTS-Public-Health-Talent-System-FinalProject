@@ -47,7 +47,6 @@ import {
   approveBatch,
   reassignRequest,
   getReassignHistory,
-  adjustLeaveRequest,
 } from "./api";
 import type {
   EligibilityRecord,
@@ -67,9 +66,11 @@ const invalidateNavigation = (qc: ReturnType<typeof useQueryClient>) =>
   qc.invalidateQueries({ queryKey: ["navigation"] });
 
 export function useMyRequests() {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ["my-requests"],
+    queryKey: ["my-requests", user?.id ?? "anonymous", user?.role ?? "unknown"],
     queryFn: getMyRequests,
+    enabled: Boolean(user),
   });
 }
 
@@ -271,9 +272,16 @@ export function useReactivateEligibility() {
 }
 
 export function usePendingApprovals(scope?: string) {
+  const { user } = useAuth();
   return useQuery({
-    queryKey: ["pending-approvals", scope ?? "all"],
+    queryKey: [
+      "pending-approvals",
+      scope ?? "all",
+      user?.id ?? "anonymous",
+      user?.role ?? "unknown",
+    ],
     queryFn: () => getPendingApprovals(scope),
+    enabled: Boolean(user),
   });
 }
 
@@ -281,13 +289,17 @@ export function useApprovalHistory(params?: {
   view?: "mine" | "team";
   actions?: "important" | "all";
 }) {
+  const { user } = useAuth();
   return useQuery({
     queryKey: [
       "approval-history",
       params?.view ?? "team",
       params?.actions ?? "important",
+      user?.id ?? "anonymous",
+      user?.role ?? "unknown",
     ],
     queryFn: () => getApprovalHistory(params),
+    enabled: Boolean(user),
     select: (data) => data as unknown as RequestWithDetails[],
   });
 }
@@ -641,24 +653,5 @@ export function useReassignHistory(id: number | string | undefined) {
     queryFn: () => getReassignHistory(id!),
     enabled: !!id,
     select: (data) => data as ReassignHistoryItem[],
-  });
-}
-
-export function useAdjustLeaveRequest() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      id,
-      payload,
-    }: {
-      id: number | string;
-      payload: {
-        manual_start_date: string;
-        manual_end_date: string;
-        manual_duration_days: number;
-        remark?: string;
-      };
-    }) => adjustLeaveRequest(id, payload),
-    onSuccess: () => invalidateNavigation(qc),
   });
 }

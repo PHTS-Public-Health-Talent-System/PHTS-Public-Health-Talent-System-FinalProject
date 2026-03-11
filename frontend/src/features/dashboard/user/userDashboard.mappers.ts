@@ -23,10 +23,53 @@ export type DashboardIcons = {
   Bell: StatItem['icon'];
 };
 
+const getPendingStepLabel = (step: number): string => {
+  switch (step) {
+    case 1:
+      return 'รอหัวหน้าตึก/หัวหน้างาน';
+    case 2:
+      return 'รอหัวหน้ากลุ่มงาน';
+    case 3:
+      return 'รอเจ้าหน้าที่ พ.ต.ส.';
+    case 4:
+      return 'รอหัวหน้ากลุ่มงานทรัพยากรบุคคล';
+    case 5:
+      return 'รอหัวหน้าการเงิน';
+    case 6:
+      return 'รอผู้อำนวยการ';
+    default:
+      return `รอขั้นตอนที่ ${step}`;
+  }
+};
+
+const formatPendingStepsTrend = (steps: number[]): string | undefined => {
+  if (steps.length === 0) return undefined;
+  const labels = steps.map((step) => getPendingStepLabel(step));
+  if (labels.length <= 2) return labels.join(', ');
+  return `${labels.slice(0, 2).join(', ')} และอีก ${labels.length - 2} ขั้นตอน`;
+};
+
+const normalizePendingTrend = (
+  pendingTrend: string | undefined,
+  pendingSteps: number[],
+): string | undefined => {
+  const raw = pendingTrend?.trim();
+  if (!raw) return formatPendingStepsTrend(pendingSteps);
+
+  // Convert legacy backend format like "Step 1, Step 3, Step 4" to Thai labels.
+  const matched = [...raw.matchAll(/Step\s*(\d+)/gi)];
+  if (matched.length > 0) {
+    const parsedSteps = matched
+      .map((m) => Number(m[1]))
+      .filter((s) => Number.isFinite(s) && s > 0);
+    if (parsedSteps.length > 0) return formatPendingStepsTrend(parsedSteps);
+  }
+
+  return raw;
+};
+
 export const buildStatItems = (stats: DashboardStatsPayload, icons: DashboardIcons): StatItem[] => {
-  const pendingTrend = stats.pending_trend ?? (stats.pending_steps.length > 0
-    ? stats.pending_steps.map((step) => `Step ${step}`).join(', ')
-    : undefined);
+  const pendingTrend = normalizePendingTrend(stats.pending_trend, stats.pending_steps);
 
   return [
     {

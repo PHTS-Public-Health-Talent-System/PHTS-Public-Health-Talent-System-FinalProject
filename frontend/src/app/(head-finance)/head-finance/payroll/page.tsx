@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,7 +27,6 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Download,
   Users,
   Banknote,
   TrendingUp,
@@ -37,7 +37,6 @@ import { TableRowViewAction } from '@/components/common';
 import { toast } from 'sonner';
 import {
   useApproveByHeadFinance,
-  useDownloadPeriodReport,
   usePeriods,
   useRejectPeriod,
 } from '@/features/payroll/hooks';
@@ -139,7 +138,6 @@ export default function HeadFinancePayrollPage() {
   const periodsQuery = usePeriods();
   const approveByHeadFinance = useApproveByHeadFinance();
   const rejectPeriod = useRejectPeriod();
-  const downloadReport = useDownloadPeriodReport();
 
   const [selectedPayroll, setSelectedPayroll] = useState<PayrollRow | null>(null);
   const [actionType, setActionType] = useState<'approve' | 'reject' | null>(null);
@@ -225,26 +223,7 @@ export default function HeadFinancePayrollPage() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">รอบจ่ายเงิน</h1>
           <p className="text-muted-foreground mt-1">ตรวจสอบและอนุมัติรอบจ่ายเงิน พ.ต.ส. ในขั้นการเงิน</p>
         </div>
-        <div>
-          <Button
-            variant="outline"
-            className="bg-background shadow-sm"
-            disabled={!latestPeriodId || downloadReport.isPending}
-            onClick={async () => {
-              if (!latestPeriodId) return;
-              const blob = await downloadReport.mutateAsync(latestPeriodId);
-              const url = window.URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = `payroll_${latestPeriodId}.pdf`;
-              link.click();
-              window.URL.revokeObjectURL(url);
-            }}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            ดาวน์โหลดรายงานล่าสุด
-          </Button>
-        </div>
+        <div />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -264,7 +243,7 @@ export default function HeadFinancePayrollPage() {
         />
         <StatCard
           title="ยอดรวมรออนุมัติ"
-          value={`${(pendingTotalAmount / 1_000_000).toFixed(2)}M`}
+          value={`${formatThaiNumber(pendingTotalAmount)} บาท`}
           icon={Banknote}
           colorClass="text-emerald-600"
           bgClass="bg-emerald-500/10"
@@ -294,7 +273,7 @@ export default function HeadFinancePayrollPage() {
                   <TableHead className="font-semibold">เดือนงวด</TableHead>
                   <TableHead className="font-semibold text-right">จำนวนคน</TableHead>
                   <TableHead className="font-semibold text-right">ยอดรวม</TableHead>
-                  <TableHead className="font-semibold">ผู้อนุมัติก่อนหน้า</TableHead>
+                  <TableHead className="font-semibold">ผู้ส่งรอบ</TableHead>
                   <TableHead className="font-semibold">วันที่ส่ง</TableHead>
                   <TableHead className="font-semibold text-right w-[170px]">การดำเนินการ</TableHead>
                 </TableRow>
@@ -315,7 +294,14 @@ export default function HeadFinancePayrollPage() {
                 ) : (
                   pendingRows.map((row) => (
                     <TableRow key={row.periodId} className="group hover:bg-muted/30 border-border">
-                      <TableCell className="font-mono text-sm">PAY-{row.periodCode}</TableCell>
+                      <TableCell className="font-mono text-sm">
+                        <Link
+                          href={`/head-finance/payroll/${row.periodId}`}
+                          className="text-primary hover:underline"
+                        >
+                          {row.periodCode}
+                        </Link>
+                      </TableCell>
                       <TableCell className="font-medium">{row.periodLabel}</TableCell>
                       <TableCell className="text-right">
                         {formatThaiNumber(row.totalRecords)} คน
@@ -324,7 +310,7 @@ export default function HeadFinancePayrollPage() {
                         {formatThaiNumber(row.totalAmount)} บาท
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm">PTS Officer: {row.submittedBy}</div>
+                        <div className="text-sm">{row.submittedBy}</div>
                       </TableCell>
                       <TableCell>{row.submittedDate}</TableCell>
                       <TableCell>
@@ -402,7 +388,14 @@ export default function HeadFinancePayrollPage() {
                 ) : (
                   processedRows.map((row) => (
                     <TableRow key={row.periodId} className="group hover:bg-muted/30 border-border">
-                      <TableCell className="font-mono text-sm">PAY-{row.periodCode}</TableCell>
+                      <TableCell className="font-mono text-sm">
+                        <Link
+                          href={`/head-finance/payroll/${row.periodId}`}
+                          className="text-primary hover:underline"
+                        >
+                          {row.periodCode}
+                        </Link>
+                      </TableCell>
                       <TableCell className="font-medium">{row.periodLabel}</TableCell>
                       <TableCell className="text-right">
                         {formatThaiNumber(row.totalRecords)} คน
@@ -415,22 +408,6 @@ export default function HeadFinancePayrollPage() {
                       <TableCell>
                         <div className="flex items-center justify-end gap-2">
                           <TableRowViewAction href={`/head-finance/payroll/${row.periodId}`} />
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            className="h-8 w-8"
-                            onClick={async () => {
-                              const blob = await downloadReport.mutateAsync(row.periodId);
-                              const url = window.URL.createObjectURL(blob);
-                              const link = document.createElement('a');
-                              link.href = url;
-                              link.download = `payroll_${row.periodId}.pdf`;
-                              link.click();
-                              window.URL.revokeObjectURL(url);
-                            }}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>

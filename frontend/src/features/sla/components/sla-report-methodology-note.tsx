@@ -12,12 +12,8 @@ export function SlaReportMethodologyNote() {
               ที่มาของข้อมูล / สูตรคำนวณ / เกณฑ์ประเมิน
             </p>
             <p className="text-xs text-muted-foreground">
-              ที่มาของข้อมูล: ดึงจาก `req_submissions`, `req_actions`
-              และการตั้งค่า `sla_configs` ตามช่วงวันที่ที่เลือก
-            </p>
-            <p className="text-xs text-muted-foreground">
-              สูตรหลัก: On-time Rate = (จำนวนที่ปิดภายใน SLA /
-              จำนวนที่ปิดทั้งหมด) x 100, Median/P90 = ค่ากลางและเปอร์เซ็นไทล์ 90
+              สูตรหลัก: อัตราปิดงานตรงเวลา = (จำนวนที่ปิดภายใน SLA /
+              จำนวนที่ปิดทั้งหมด) x 100, มัธยฐาน/P90 = ค่ากลางและเปอร์เซ็นไทล์ 90
               ของระยะเวลาดำเนินการ (วันทำการ)
             </p>
             <p className="text-xs text-muted-foreground">

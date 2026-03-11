@@ -4,7 +4,6 @@ export {
   useDeletePeriod,
   useAddPeriodItems,
   useRemovePeriodItem,
-  useDownloadPeriodReport,
   useCalculateOnDemand,
   useCalculatePeriod,
   useSubmitToHR,

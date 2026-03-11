@@ -44,6 +44,6 @@ export const buildHeadFinanceStatItems = (
     value: String(stats.sla_overdue),
     description: 'ต้องเร่งดำเนินการ',
     icon: icons.AlertTriangle,
-    href: '/head-finance/sla-report',
+    href: '/head-finance/requests?status=overdue',
   },
 ];

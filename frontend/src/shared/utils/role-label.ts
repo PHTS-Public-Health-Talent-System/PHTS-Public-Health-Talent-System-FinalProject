@@ -11,7 +11,7 @@ export const ROLE_OPTIONS: Role[] = [
   'ADMIN',
 ];
 
-export const FRONTEND_HEAD_SCOPE_LABEL = 'หัวหน้าหน่วยงาน';
+export const FRONTEND_HEAD_SCOPE_LABEL = 'หัวหน้างาน';
 
 const ROLE_LABELS: Record<Role, string> = {
   ADMIN: 'ผู้ดูแลระบบ',
@@ -31,8 +31,7 @@ export const getRoleLabel = (roleCode: string): string => {
   return roleCode;
 };
 
-export const isHeadScopeRole = (
-  roleCode: string,
-): roleCode is 'HEAD_SCOPE' => roleCode === 'HEAD_SCOPE';
+export const isHeadScopeRole = (roleCode: string): roleCode is 'HEAD_SCOPE' =>
+  roleCode === 'HEAD_SCOPE';
 
 export const FRONTEND_HEAD_SCOPE_BASE_PATH = '/head-scope';

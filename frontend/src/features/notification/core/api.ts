@@ -26,6 +26,10 @@ export async function markNotificationRead(id: number | string) {
   await api.put(`/notifications/${id}/read`);
 }
 
+export async function markAllNotificationsRead() {
+  await api.put("/notifications/all/read");
+}
+
 export async function getNotificationSettings() {
   const res = await api.get<ApiResponse<NotificationSettings>>(
     "/notifications/settings",

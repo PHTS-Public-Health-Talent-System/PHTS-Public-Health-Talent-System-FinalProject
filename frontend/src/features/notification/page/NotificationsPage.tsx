@@ -3,6 +3,8 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useMemo } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -30,6 +32,7 @@ import {
 } from '@/components/ui/select';
 import {
   useDeleteReadNotifications,
+  useMarkAllNotificationsRead,
   useMarkNotificationRead,
   useNotifications,
 } from '@/features/notification/listing';
@@ -37,7 +40,22 @@ import { formatThaiDateTime, formatThaiTime } from '@/shared/utils/thai-locale';
 
 type NotificationType = 'approval' | 'reminder' | 'system' | 'payment' | 'license' | 'leave';
 
-const getNotificationIcon = (type: NotificationType) => {
+const normalizeNotificationType = (raw: unknown): NotificationType | 'other' => {
+  const value = String(raw ?? '').trim().toLowerCase();
+  if (value === 'approval') return 'approval';
+  if (value === 'reminder') return 'reminder';
+  if (value === 'system') return 'system';
+  if (value === 'payment') return 'payment';
+  if (value === 'license') return 'license';
+  if (value === 'leave') return 'leave';
+  if (value === 'info') return 'system';
+  if (value === 'success') return 'payment';
+  if (value === 'warning') return 'reminder';
+  if (value === 'sla_reminder') return 'reminder';
+  return 'other';
+};
+
+const getNotificationIcon = (type: NotificationType | 'other') => {
   switch (type) {
     case 'approval':
       return <CheckCircle2 className="h-5 w-5 text-emerald-500" />;
@@ -56,7 +74,7 @@ const getNotificationIcon = (type: NotificationType) => {
   }
 };
 
-const getTypeLabel = (type: NotificationType) => {
+const getTypeLabel = (type: NotificationType | 'other') => {
   switch (type) {
     case 'approval':
       return 'การอนุมัติ';
@@ -123,9 +141,37 @@ const formatNotificationMessage = (title: string, message: string): string => {
   return text;
 };
 
+const resolveNotificationHref = (rawLink: string | undefined, pathname: string): string | null => {
+  const link = String(rawLink ?? '').trim();
+  if (!link || link === '#') return null;
+  if (link.startsWith('http://') || link.startsWith('https://')) return link;
+
+  const roleBase = `/${pathname.split('/').filter(Boolean)[0] ?? ''}`.replace(/\/$/, '');
+  if (link.startsWith('/dashboard/user/requests/')) {
+    return link.replace('/dashboard/user/requests/', '/user/my-requests/');
+  }
+  if (link === '/dashboard/user/requests') return '/user/my-requests';
+  if (link.startsWith('/dashboard/user/settings')) return '/user/settings';
+  if (link.startsWith('/dashboard/approver/requests/')) {
+    const requestId = link.replace('/dashboard/approver/requests/', '').split('/')[0];
+    return `${roleBase}/requests/${requestId}`;
+  }
+  if (link === '/dashboard/head-hr/payroll-check') return '/head-hr/payroll';
+  if (link === '/dashboard/head-finance/budget-check') return '/head-finance/payroll';
+  if (link === '/dashboard/director/approvals') return '/director/payroll';
+  if (link === '/dashboard' && roleBase !== '/') return roleBase;
+  if (link.startsWith('/dashboard/officer/')) {
+    return link.replace('/dashboard/officer/', '/pts-officer/');
+  }
+  if (link === '/dashboard/officer') return '/pts-officer';
+  return link;
+};
+
 export function NotificationsPage() {
+  const pathname = usePathname();
   const { data: notifData, isLoading, error } = useNotifications();
   const markRead = useMarkNotificationRead();
+  const markAllRead = useMarkAllNotificationsRead();
   const deleteRead = useDeleteReadNotifications();
 
   const [filterType, setFilterType] = useState<string>('all');
@@ -136,7 +182,8 @@ export function NotificationsPage() {
 
   const filteredNotifications = useMemo(() => {
     return notifications.filter((n) => {
-      const matchesType = filterType === 'all' || n.type === filterType;
+      const normalizedType = normalizeNotificationType(n.type);
+      const matchesType = filterType === 'all' || normalizedType === filterType;
       const matchesRead =
         filterReadStatus === 'all' || (filterReadStatus === 'unread' ? !n.is_read : n.is_read);
       return matchesType && matchesRead;
@@ -165,9 +212,16 @@ export function NotificationsPage() {
     });
   };
 
+  const handleOpenNotification = (notificationId: number, isRead: boolean) => {
+    if (isRead) return;
+    markRead.mutate(notificationId);
+  };
+
   const handleMarkAllAsRead = () => {
-    notifications.filter((n) => !n.is_read).forEach((n) => markRead.mutate(n.id));
-    toast.success('อ่านทั้งหมดแล้ว');
+    markAllRead.mutate(undefined, {
+      onSuccess: () => toast.success('อ่านทั้งหมดแล้ว'),
+      onError: () => toast.error('เกิดข้อผิดพลาด'),
+    });
   };
 
   const handleDeleteRead = () => {
@@ -219,7 +273,12 @@ export function NotificationsPage() {
         </div>
         <div className="flex gap-2">
           {unreadCount > 0 && (
-            <Button variant="outline" size="sm" onClick={handleMarkAllAsRead}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleMarkAllAsRead}
+              disabled={markAllRead.isPending}
+            >
               <CheckCheck className="mr-2 h-4 w-4" /> อ่านทั้งหมด
             </Button>
           )}
@@ -312,6 +371,9 @@ export function NotificationsPage() {
                     {label}
                   </h3>
                   {items.map((notification) => (
+                    (() => {
+                      const href = resolveNotificationHref(notification.link, pathname);
+                      return (
                     <div
                       key={notification.id}
                       className={`relative flex gap-4 p-4 rounded-xl border transition-all hover:shadow-sm ${
@@ -323,30 +385,50 @@ export function NotificationsPage() {
                       <div
                         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${!notification.is_read ? 'bg-primary/10' : 'bg-muted'}`}
                       >
-                        {getNotificationIcon(notification.type as NotificationType)}
+                        {getNotificationIcon(normalizeNotificationType(notification.type))}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-start gap-2">
-                          <p
-                            className={`text-sm font-medium ${!notification.is_read ? 'text-foreground' : 'text-muted-foreground'}`}
-                          >
-                            {notification.title}
-                          </p>
+                          {href ? (
+                            <Link
+                              href={href}
+                              onClick={() => handleOpenNotification(notification.id, notification.is_read)}
+                              className={`text-sm font-medium hover:underline ${!notification.is_read ? 'text-foreground' : 'text-muted-foreground'}`}
+                            >
+                              {notification.title}
+                            </Link>
+                          ) : (
+                            <p
+                              className={`text-sm font-medium ${!notification.is_read ? 'text-foreground' : 'text-muted-foreground'}`}
+                            >
+                              {notification.title}
+                            </p>
+                          )}
                           <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                             {label === 'วันนี้' || label === 'เมื่อวาน'
                               ? formatTime(notification.created_at)
                               : formatDateFull(notification.created_at)}
                           </span>
                         </div>
-                        <p className="text-sm text-muted-foreground mt-1 leading-relaxed break-words">
-                          {formatNotificationMessage(notification.title, notification.message)}
-                        </p>
+                        {href ? (
+                          <Link
+                            href={href}
+                            onClick={() => handleOpenNotification(notification.id, notification.is_read)}
+                            className="block text-sm text-muted-foreground mt-1 leading-relaxed break-words hover:underline"
+                          >
+                            {formatNotificationMessage(notification.title, notification.message)}
+                          </Link>
+                        ) : (
+                          <p className="text-sm text-muted-foreground mt-1 leading-relaxed break-words">
+                            {formatNotificationMessage(notification.title, notification.message)}
+                          </p>
+                        )}
                         <div className="flex items-center gap-2 mt-2">
                           <Badge
                             variant="secondary"
                             className="text-[10px] h-5 px-1.5 font-normal bg-secondary/50 text-muted-foreground border-transparent"
                           >
-                            {getTypeLabel(notification.type as NotificationType)}
+                            {getTypeLabel(normalizeNotificationType(notification.type))}
                           </Badge>
                           {!notification.is_read && (
                             <Button
@@ -365,6 +447,8 @@ export function NotificationsPage() {
                         <div className="absolute top-4 right-[-6px] w-2 h-2 rounded-full bg-primary ring-4 ring-background" />
                       )}
                     </div>
+                      );
+                    })()
                   ))}
                 </div>
               ),

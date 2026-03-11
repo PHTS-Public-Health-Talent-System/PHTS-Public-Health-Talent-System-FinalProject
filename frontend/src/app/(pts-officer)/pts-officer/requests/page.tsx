@@ -40,16 +40,11 @@ import {
   Search,
   Clock,
   CheckCircle2,
-  XCircle,
-  RefreshCw,
   Eye,
-  Check,
-  X,
-  RotateCcw,
   UserPlus,
   FileText,
-  Inbox,
   AlertCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -62,11 +57,12 @@ import {
   useProcessAction,
   useReassignRequest,
 } from '@/features/request';
+import { usePendingWithSla } from '@/features/sla/hooks';
 import type { RequestWithDetails } from '@/types/request.types';
 import { formatThaiNumber } from '@/shared/utils/thai-locale';
 
 type RequestStatus = 'pending' | 'approved' | 'rejected' | 'returned';
-const SHOW_CREATE_ON_BEHALF_BUTTON = false;
+const SHOW_CREATE_ON_BEHALF_BUTTON = true;
 
 interface Request {
   id: number;
@@ -82,7 +78,17 @@ interface Request {
   amount: number;
   hasVerificationSnapshot: boolean;
   isOfficerCreated: boolean;
+  slaStatus: 'normal' | 'warning' | 'danger' | 'unknown';
+  slaRemaining: number | null;
 }
+
+type SlaInfo = {
+  request_id: number;
+  is_approaching_sla: boolean;
+  is_overdue: boolean;
+  days_until_sla: number;
+  days_overdue: number;
+};
 
 // ... (Helper functions: parseSubmissionData, pickSubmissionValue, mapStatus, sanitizeRatePart remain same)
 function parseSubmissionData(data: RequestWithDetails['submission_data']) {
@@ -124,45 +130,34 @@ function sanitizeRatePart(value: unknown): string {
   return text;
 }
 
-function getStatusBadge(status: RequestStatus) {
+function getSlaStatusBadge(status: Request['slaStatus'], remaining: number) {
   switch (status) {
-    case 'pending':
-      return (
-        <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 gap-1.5">
-          <Clock className="h-3 w-3" />
-          รออนุมัติ
-        </Badge>
-      );
-    case 'approved':
+    case 'normal':
       return (
         <Badge
           variant="outline"
-          className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20 gap-1.5"
+          className="bg-emerald-50 text-emerald-700 border-emerald-200 font-normal gap-1"
         >
-          <CheckCircle2 className="h-3 w-3" />
-          อนุมัติแล้ว
+          <Clock className="w-3 h-3" /> {remaining} วัน
         </Badge>
       );
-    case 'returned':
+    case 'warning':
       return (
         <Badge
           variant="outline"
-          className="bg-amber-500/10 text-amber-600 border-amber-500/20 gap-1.5"
+          className="bg-amber-50 text-amber-700 border-amber-200 font-normal gap-1"
         >
-          <RefreshCw className="h-3 w-3" />
-          ส่งกลับแก้ไข
+          <AlertCircle className="w-3 h-3" /> เหลือ {remaining} วัน
         </Badge>
       );
-    case 'rejected':
+    case 'danger':
       return (
-        <Badge
-          variant="outline"
-          className="bg-destructive/10 text-destructive border-destructive/20 gap-1.5"
-        >
-          <XCircle className="h-3 w-3" />
-          ไม่อนุมัติ
+        <Badge variant="destructive" className="font-normal gap-1">
+          <AlertCircle className="w-3 h-3" /> เกิน {Math.abs(remaining)} วัน
         </Badge>
       );
+    default:
+      return <span className="text-muted-foreground text-xs">-</span>;
   }
 }
 
@@ -201,26 +196,41 @@ export default function RequestsPage() {
   const [selectedOfficerId, setSelectedOfficerId] = useState<number | null>(null);
   const [reassignRemark, setReassignRemark] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState<RequestStatus | 'all'>('all');
+  const [slaFilter, setSlaFilter] = useState<'all' | 'normal' | 'warning' | 'danger'>('all');
 
   const { data: requestsData, isLoading } = usePendingApprovals();
+  const { data: slaData } = usePendingWithSla();
   const processAction = useProcessAction();
   const { data: availableOfficers = [], isLoading: isLoadingOfficers } = useAvailableOfficers();
   const reassignMutation = useReassignRequest();
+
+  const slaMap = useMemo(() => {
+    const map = new Map<number, SlaInfo>();
+    const rows = (slaData as SlaInfo[] | undefined) ?? [];
+    for (const row of rows) {
+      map.set(row.request_id, row);
+    }
+    return map;
+  }, [slaData]);
 
   const requests = useMemo<Request[]>(() => {
     if (!Array.isArray(requestsData)) return [];
     return (requestsData as RequestWithDetails[]).map((req) => {
       const submission = parseSubmissionData(req.submission_data);
+      const requesterTitle =
+        (pickSubmissionValue(submission, 'title') as string | undefined) ||
+        ((req.requester as { title?: string } | undefined)?.title ?? '');
       const requesterName =
         req.requester?.first_name || req.requester?.last_name
-          ? `${req.requester?.first_name ?? ''} ${req.requester?.last_name ?? ''}`.trim()
+          ? `${requesterTitle} ${req.requester?.first_name ?? ''} ${req.requester?.last_name ?? ''}`.trim()
           : undefined;
       const name =
         requesterName ||
         (pickSubmissionValue(submission, 'first_name', 'firstName') ||
         pickSubmissionValue(submission, 'last_name', 'lastName')
-          ? `${String(pickSubmissionValue(submission, 'first_name', 'firstName') ?? '')} ${String(
+          ? `${String(pickSubmissionValue(submission, 'title') ?? '')} ${String(
+              pickSubmissionValue(submission, 'first_name', 'firstName') ?? '',
+            )} ${String(
               pickSubmissionValue(submission, 'last_name', 'lastName') ?? '',
             )}`.trim()
           : undefined) ||
@@ -244,6 +254,21 @@ export default function RequestsPage() {
       const rateMappingDisplay =
         rateSubItem !== '-' ? `${rateGroup}/${rateItem}/${rateSubItem}` : `${rateGroup}/${rateItem}`;
       const onBehalfMeta = getOnBehalfMetadata(submission);
+      const sla = slaMap.get(req.request_id);
+      let slaStatus: Request['slaStatus'] = 'unknown';
+      let slaRemaining: number | null = null;
+      if (sla) {
+        if (sla.is_overdue) {
+          slaStatus = 'danger';
+          slaRemaining = -Math.abs(sla.days_overdue);
+        } else if (sla.is_approaching_sla) {
+          slaStatus = 'warning';
+          slaRemaining = sla.days_until_sla;
+        } else {
+          slaStatus = 'normal';
+          slaRemaining = sla.days_until_sla;
+        }
+      }
 
       return {
         id: req.request_id,
@@ -267,16 +292,22 @@ export default function RequestsPage() {
         amount: Number(req.requested_amount ?? 0),
         hasVerificationSnapshot: Boolean(req.has_verification_snapshot),
         isOfficerCreated: onBehalfMeta.isOfficerCreated,
+        slaStatus,
+        slaRemaining,
       };
     });
-  }, [requestsData]);
+  }, [requestsData, slaMap]);
 
   const filteredRequests = requests.filter((request) => {
     const matchesSearch =
       request.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       request.requestNo.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = filterStatus === 'all' || request.status === filterStatus;
-    return matchesSearch && matchesStatus;
+    const matchesSla =
+      slaFilter === 'all' ||
+      (slaFilter === 'normal' && request.slaStatus === 'normal') ||
+      (slaFilter === 'warning' && request.slaStatus === 'warning') ||
+      (slaFilter === 'danger' && request.slaStatus === 'danger');
+    return matchesSearch && matchesSla;
   });
 
   const handleAction = async () => {
@@ -296,11 +327,6 @@ export default function RequestsPage() {
     } catch {
       toast.error('ไม่สามารถดำเนินการคำขอได้');
     }
-  };
-
-  const openActionDialog = (request: Request, action: 'approve' | 'reject' | 'return') => {
-    setSelectedRequest(request);
-    setActionType(action);
   };
 
   const openReassignDialog = (request: Request) => {
@@ -381,7 +407,7 @@ export default function RequestsPage() {
         <StatCard
           title="ยังไม่ได้ตรวจ"
           value={pendingVerificationCount}
-          icon={AlertCircle}
+          icon={AlertTriangle}
           colorClass="text-amber-600"
           bgClass="bg-amber-500/10"
         />
@@ -400,7 +426,7 @@ export default function RequestsPage() {
         <CardHeader className="py-4 px-6 border-b bg-muted/10">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <CardTitle className="text-lg flex items-center gap-2">
-              <Inbox className="h-5 w-5 text-muted-foreground" />
+              <Clock className="h-5 w-5 text-muted-foreground" />
               รายการคำขอที่รอดำเนินการ
             </CardTitle>
 
@@ -414,19 +440,15 @@ export default function RequestsPage() {
                   className="bg-background pl-9 h-9"
                 />
               </div>
-              <Select
-                value={filterStatus}
-                onValueChange={(value) => setFilterStatus(value as RequestStatus | 'all')}
-              >
-                <SelectTrigger className="w-full sm:w-[140px] bg-background h-9">
-                  <SelectValue placeholder="สถานะ" />
+              <Select value={slaFilter} onValueChange={(value) => setSlaFilter(value as typeof slaFilter)}>
+                <SelectTrigger className="w-full sm:w-[160px] bg-background h-9">
+                  <SelectValue placeholder="สถานะกำหนดเวลา" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">ทุกสถานะ</SelectItem>
-                  <SelectItem value="pending">รออนุมัติ</SelectItem>
-                  <SelectItem value="approved">อนุมัติแล้ว</SelectItem>
-                  <SelectItem value="returned">ส่งกลับแก้ไข</SelectItem>
-                  <SelectItem value="rejected">ไม่อนุมัติ</SelectItem>
+                  <SelectItem value="all">ทุกสถานะกำหนดเวลา</SelectItem>
+                  <SelectItem value="normal">ปกติ</SelectItem>
+                  <SelectItem value="warning">ใกล้ครบกำหนด</SelectItem>
+                  <SelectItem value="danger">เกินกำหนด</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -443,7 +465,7 @@ export default function RequestsPage() {
                   <TableHead className="font-semibold">หน่วยงาน</TableHead>
                   <TableHead className="font-semibold text-center">กลุ่ม/ข้อ</TableHead>
                   <TableHead className="font-semibold text-right">อัตรา (บาท)</TableHead>
-                  <TableHead className="font-semibold text-center">สถานะ</TableHead>
+                  <TableHead className="font-semibold text-center">กำหนดเวลา</TableHead>
                   <TableHead className="font-semibold text-right w-[100px]">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
@@ -466,7 +488,14 @@ export default function RequestsPage() {
                       key={request.id}
                       className="group hover:bg-muted/30 border-border transition-colors"
                     >
-                      <TableCell className="font-mono text-sm">{request.requestNo}</TableCell>
+                      <TableCell className="font-mono text-sm">
+                        <Link
+                          href={`/pts-officer/requests/${request.id}`}
+                          className="text-primary hover:underline"
+                        >
+                          {request.requestNo}
+                        </Link>
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
                           <div className="flex flex-wrap items-center gap-2">
@@ -498,7 +527,11 @@ export default function RequestsPage() {
                         {formatThaiNumber(request.amount)}
                       </TableCell>
                       <TableCell className="text-center">
-                        {getStatusBadge(request.status)}
+                        {request.slaStatus === 'unknown' || request.slaRemaining === null ? (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        ) : (
+                          getSlaStatusBadge(request.slaStatus, request.slaRemaining)
+                        )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
@@ -519,28 +552,10 @@ export default function RequestsPage() {
                               {request.status === 'pending' && (
                                 <>
                                   <DropdownMenuItem
-                                    className="text-emerald-600 focus:text-emerald-700 cursor-pointer"
-                                    onClick={() => openActionDialog(request, 'approve')}
-                                  >
-                                    <Check className="mr-2 h-4 w-4" /> อนุมัติ
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    className="text-amber-600 focus:text-amber-700 cursor-pointer"
-                                    onClick={() => openActionDialog(request, 'return')}
-                                  >
-                                    <RotateCcw className="mr-2 h-4 w-4" /> ส่งกลับแก้ไข
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    className="text-destructive focus:text-destructive cursor-pointer"
-                                    onClick={() => openActionDialog(request, 'reject')}
-                                  >
-                                    <X className="mr-2 h-4 w-4" /> ไม่อนุมัติ
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
                                     className="cursor-pointer"
                                     onClick={() => openReassignDialog(request)}
                                   >
-                                    <UserPlus className="mr-2 h-4 w-4" /> โยกงาน (Reassign)
+                                    <UserPlus className="mr-2 h-4 w-4" /> โยกงานให้เจ้าหน้าที่คนอื่น
                                   </DropdownMenuItem>
                                 </>
                               )}
@@ -652,7 +667,7 @@ export default function RequestsPage() {
       >
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>โยกงาน (Reassign)</DialogTitle>
+            <DialogTitle>โยกงาน</DialogTitle>
             <DialogDescription>
               {reassignTargetRequest ? (
                 <span>

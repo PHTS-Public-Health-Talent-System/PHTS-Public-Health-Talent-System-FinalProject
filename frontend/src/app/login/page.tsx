@@ -33,6 +33,12 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 type ValidationDetail = { field?: string; message?: string };
+type LoginRateLimitPayload = {
+  code?: string;
+  retry_after_seconds?: number;
+  retry_after_minutes?: number;
+  message?: string;
+};
 
 const toThaiLoginError = (message: string) => {
   if (message === "Invalid citizen ID or password" || message === "Login failed") {
@@ -89,9 +95,30 @@ export default function LoginPage() {
 
       if (isAxiosError(error) && error.response?.status === 429) {
         const retryAfter = Number(error.response.headers?.["retry-after"]);
-        if (Number.isFinite(retryAfter) && retryAfter > 0) {
-          setRetryAfterSeconds(Math.floor(retryAfter));
-          message = `พยายามเข้าสู่ระบบบ่อยเกินไป กรุณาลองอีกครั้งใน ${Math.floor(retryAfter)} วินาที`;
+        const payload = (error.response?.data ?? {}) as LoginRateLimitPayload;
+        const retryAfterBody = Number(payload.retry_after_seconds);
+        const resolvedRetryAfterSeconds = Number.isFinite(retryAfter) && retryAfter > 0
+          ? Math.floor(retryAfter)
+          : Number.isFinite(retryAfterBody) && retryAfterBody > 0
+            ? Math.floor(retryAfterBody)
+            : 0;
+        const retryAfterMinutes =
+          Number.isFinite(Number(payload.retry_after_minutes)) &&
+          Number(payload.retry_after_minutes) > 0
+            ? Math.ceil(Number(payload.retry_after_minutes))
+            : resolvedRetryAfterSeconds > 0
+              ? Math.max(1, Math.ceil(resolvedRetryAfterSeconds / 60))
+              : 0;
+        if (resolvedRetryAfterSeconds > 0) {
+          setRetryAfterSeconds(resolvedRetryAfterSeconds);
+        }
+        if (payload.code === "AUTH_RATE_LIMIT_EXCEEDED") {
+          message =
+            retryAfterMinutes > 0
+              ? `ระบบจำกัดการล็อกอินชั่วคราว (พยายามบ่อยเกินไป) กรุณาลองใหม่ในอีกประมาณ ${retryAfterMinutes} นาที`
+              : "ระบบจำกัดการล็อกอินชั่วคราว (พยายามบ่อยเกินไป) กรุณารอสักครู่แล้วลองใหม่";
+        } else if (resolvedRetryAfterSeconds > 0) {
+          message = `พยายามเข้าสู่ระบบบ่อยเกินไป กรุณาลองอีกครั้งใน ${resolvedRetryAfterSeconds} วินาที`;
         } else {
           message = "พยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่";
         }

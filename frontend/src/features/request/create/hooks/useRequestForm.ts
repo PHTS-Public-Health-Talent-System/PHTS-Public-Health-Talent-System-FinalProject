@@ -11,6 +11,7 @@ import {
   submitRequest,
   updateRateMapping,
   confirmAttachments as confirmAttachmentsApi,
+  deleteRequestAttachment,
 } from "@/features/request/core/api";
 import { toast } from "sonner";
 import { mapRequestToFormData } from "./request-form-mapper";
@@ -134,6 +135,21 @@ export function useRequestForm(options?: {
       ...prev,
       files: prev.files.filter((_, i) => i !== index),
     }));
+  };
+
+  const removeExistingAttachment = async (attachmentId: number) => {
+    if (!draftRequestId) return;
+    setIsSubmitting(true);
+    try {
+      const updated = await deleteRequestAttachment(draftRequestId, attachmentId);
+      setFormDataField("attachments", updated.attachments ?? []);
+    } catch (error: unknown) {
+      const msg =
+        error instanceof Error ? error.message : "เกิดข้อผิดพลาดในการลบไฟล์แนบ";
+      toast.error(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   useEffect(() => {
@@ -430,6 +446,7 @@ export function useRequestForm(options?: {
     updateFormData,
     handleUploadFile,
     removeFile,
+    removeExistingAttachment,
     isSubmitting,
     submitRequest: submitRequestFlow,
     validateStep,

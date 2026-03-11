@@ -10,8 +10,25 @@ import { Badge } from '@/components/ui/badge';
 
 export function ApprovalTimelineCard({ request }: { request: RequestWithDetails }) {
   const approvalActions = request.actions ?? [];
-  const submitAction = approvalActions.find((action) => action.action === 'SUBMIT');
-  const cancelAction = approvalActions
+  const toActionTs = (value?: string | null) => {
+    if (!value) return 0;
+    const ts = new Date(value).getTime();
+    return Number.isFinite(ts) ? ts : 0;
+  };
+  const sortedActions = [...approvalActions].sort(
+    (a, b) => toActionTs(a.action_date) - toActionTs(b.action_date),
+  );
+  const latestSubmitAction = sortedActions
+    .filter((action) => action.action === 'SUBMIT')
+    .pop();
+  const cycleStartTs = latestSubmitAction ? toActionTs(latestSubmitAction.action_date) : null;
+  const timelineActions =
+    cycleStartTs === null
+      ? sortedActions
+      : sortedActions.filter((action) => toActionTs(action.action_date) >= cycleStartTs);
+
+  const submitAction = latestSubmitAction;
+  const cancelAction = timelineActions
     .filter((action) => action.action === 'CANCEL')
     .sort((a, b) => (a.action_date || '').localeCompare(b.action_date || ''))
     .pop();
@@ -21,7 +38,7 @@ export function ApprovalTimelineCard({ request }: { request: RequestWithDetails 
 
   const getVisibleApprovalSteps = () => {
     if (submitterRole === 'HEAD_SCOPE') {
-      const progressedStepNumbers = approvalActions
+      const progressedStepNumbers = timelineActions
         .filter(
           (action) =>
             action.step_no &&
@@ -58,7 +75,7 @@ export function ApprovalTimelineCard({ request }: { request: RequestWithDetails 
         ? cancelAction.step_no
         : null;
     if (stepNo) return stepNo;
-    const hasApprovalProgress = approvalActions.some(
+    const hasApprovalProgress = timelineActions.some(
       (action) =>
         action.action === 'APPROVE' || action.action === 'REJECT' || action.action === 'RETURN',
     );
@@ -157,7 +174,7 @@ export function ApprovalTimelineCard({ request }: { request: RequestWithDetails 
             {/* Timeline Items */}
             <div className="space-y-0 relative z-10">
               {visibleSteps.map((step, index) => {
-                const approvalAction = approvalActions
+                const approvalAction = timelineActions
                   .filter(
                     (a) =>
                       a.step_no === step.step &&

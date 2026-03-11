@@ -930,6 +930,18 @@ function ChangeDetailContent({
   const typeInfo = changeTypeConfig[change.changeType];
   const statusInfo = statusConfig[change.status];
   const TypeIcon = typeInfo.icon;
+  const normalizedReason = (change.reason ?? '').trim();
+  const normalizedNote = (change.note ?? '').trim();
+  const normalizedTransferTo = (change.transferTo ?? '').trim();
+  const hasReason = normalizedReason.length > 0;
+  const hasNote = normalizedNote.length > 0;
+  const hasTransferTo = normalizedTransferTo.length > 0;
+  const isReasonSameAsNote =
+    hasReason && hasNote && normalizedReason.toLocaleLowerCase() === normalizedNote.toLocaleLowerCase();
+  const isTransferToSameAsNote =
+    hasTransferTo &&
+    hasNote &&
+    normalizedTransferTo.toLocaleLowerCase() === normalizedNote.toLocaleLowerCase();
 
   return (
     <div className="space-y-6">
@@ -969,28 +981,28 @@ function ChangeDetailContent({
         </div>
       </div>
 
-      {(change.reason || change.transferTo || change.note) && (
+      {(hasReason || hasTransferTo || hasNote) && (
         <div className="space-y-3">
           <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
             <FileText className="h-4 w-4" /> รายละเอียดเพิ่มเติม
           </h4>
           <div className="p-3 bg-secondary/30 rounded-md text-sm space-y-2">
-            {change.reason && (
+            {hasReason && (
               <div>
                 <span className="text-muted-foreground block text-xs mb-1">เหตุผล:</span>
-                <p>{change.reason}</p>
+                <p>{normalizedReason}</p>
               </div>
             )}
-            {change.transferTo && (
+            {hasTransferTo && (
               <div>
                 <span className="text-muted-foreground block text-xs mb-1">ย้ายไปที่:</span>
-                <p className="font-medium text-blue-600">{change.transferTo}</p>
+                <p className="font-medium text-blue-600">{normalizedTransferTo}</p>
               </div>
             )}
-            {change.note && (
-              <div className="pt-2 border-t border-border/50 mt-2">
+            {hasNote && !isReasonSameAsNote && !isTransferToSameAsNote && (
+              <div className={`${hasReason || hasTransferTo ? 'pt-2 border-t border-border/50 mt-2' : ''}`}>
                 <span className="text-muted-foreground block text-xs mb-1">หมายเหตุ:</span>
-                <p className="text-muted-foreground">{change.note}</p>
+                <p className="text-muted-foreground">{normalizedNote}</p>
               </div>
             )}
           </div>

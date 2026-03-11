@@ -410,13 +410,6 @@ export async function searchPayouts(params: {
   return res.data.data;
 }
 
-export async function downloadPeriodReport(periodId: number | string) {
-  const res = await api.get(`/payroll/period/${periodId}/report`, {
-    responseType: "blob",
-  });
-  return res.data as Blob;
-}
-
 export async function calculateOnDemand(payload: ApiPayload) {
   const res = await api.post<ApiResponse<ApiPayload>>(
     "/payroll/calculate",

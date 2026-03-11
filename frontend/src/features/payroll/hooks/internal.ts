@@ -5,6 +5,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "@/components/providers/auth-provider";
 import {
   approveByDirector,
   approveByHR,
@@ -14,7 +15,6 @@ import {
   calculatePeriod,
   createPeriod,
   deletePeriod,
-  downloadPeriodReport,
   getPeriodDetail,
   getPeriodLeaves,
   getPeriodLeaveProfessionSummary,
@@ -34,11 +34,20 @@ import {
 const invalidateNavigation = (qc: ReturnType<typeof useQueryClient>) =>
   qc.invalidateQueries({ queryKey: ["navigation"] });
 
+const useViewerKey = () => {
+  const { user } = useAuth();
+  return {
+    user,
+    key: [user?.id ?? "anonymous", user?.role ?? "unknown"] as const,
+  };
+};
+
 export function usePeriodPayouts(periodId: number | string | undefined) {
+  const { user, key: viewerKey } = useViewerKey();
   return useQuery({
-    queryKey: ["payroll-period-payouts", periodId],
+    queryKey: ["payroll-period-payouts", periodId, ...viewerKey],
     queryFn: () => getPeriodPayouts(periodId!),
-    enabled: !!periodId,
+    enabled: !!periodId && Boolean(user),
   });
 }
 
@@ -55,10 +64,11 @@ export function usePeriodLeaves(
     sort_dir?: "asc" | "desc";
   },
 ) {
+  const { user, key: viewerKey } = useViewerKey();
   return useQuery({
-    queryKey: ["payroll-period-leaves", periodId, params ?? {}],
+    queryKey: ["payroll-period-leaves", periodId, params ?? {}, ...viewerKey],
     queryFn: () => getPeriodLeaves(periodId!, params),
-    enabled: !!periodId,
+    enabled: !!periodId && Boolean(user),
     placeholderData: (prev) => prev,
   });
 }
@@ -71,19 +81,21 @@ export function usePeriodLeaveProfessionSummary(
     search?: string;
   },
 ) {
+  const { user, key: viewerKey } = useViewerKey();
   return useQuery({
-    queryKey: ["payroll-period-leave-professions", periodId, params ?? {}],
+    queryKey: ["payroll-period-leave-professions", periodId, params ?? {}, ...viewerKey],
     queryFn: () => getPeriodLeaveProfessionSummary(periodId!, params),
-    enabled: !!periodId,
+    enabled: !!periodId && Boolean(user),
     placeholderData: (prev) => prev,
   });
 }
 
 export function usePayoutDetail(payoutId: number | string | undefined) {
+  const { user, key: viewerKey } = useViewerKey();
   return useQuery({
-    queryKey: ["payroll-payout-detail", payoutId],
+    queryKey: ["payroll-payout-detail", payoutId, ...viewerKey],
     queryFn: () => getPayoutDetail(payoutId!),
-    enabled: !!payoutId,
+    enabled: !!payoutId && Boolean(user),
   });
 }
 
@@ -119,33 +131,38 @@ export function useUpdatePayout() {
 export function usePeriodSummaryByProfession(
   periodId: number | string | undefined,
 ) {
+  const { user, key: viewerKey } = useViewerKey();
   return useQuery({
-    queryKey: ["payroll-period-summary", periodId],
+    queryKey: ["payroll-period-summary", periodId, ...viewerKey],
     queryFn: () => getPeriodSummaryByProfession(periodId!),
-    enabled: !!periodId,
+    enabled: !!periodId && Boolean(user),
   });
 }
 
 export function usePeriodReviewProgress(periodId: number | string | undefined) {
+  const { user, key: viewerKey } = useViewerKey();
   return useQuery({
-    queryKey: ["payroll-period-review-progress", periodId],
+    queryKey: ["payroll-period-review-progress", periodId, ...viewerKey],
     queryFn: () => getPeriodReviewProgress(periodId!),
-    enabled: !!periodId,
+    enabled: !!periodId && Boolean(user),
   });
 }
 
 export function usePeriods() {
+  const { user, key: viewerKey } = useViewerKey();
   return useQuery({
-    queryKey: ["payroll-periods"],
+    queryKey: ["payroll-periods", ...viewerKey],
     queryFn: listPeriods,
+    enabled: Boolean(user),
   });
 }
 
 export function usePeriodDetail(periodId: number | string | undefined) {
+  const { user, key: viewerKey } = useViewerKey();
   return useQuery({
-    queryKey: ["payroll-period-detail", periodId],
+    queryKey: ["payroll-period-detail", periodId, ...viewerKey],
     queryFn: () => getPeriodDetail(periodId!),
-    enabled: !!periodId,
+    enabled: !!periodId && Boolean(user),
   });
 }
 
@@ -220,16 +237,11 @@ export function useSearchPayouts(params: {
   year?: number;
   month?: number;
 }) {
+  const { user, key: viewerKey } = useViewerKey();
   return useQuery({
-    queryKey: ["payroll-search", params],
+    queryKey: ["payroll-search", params, ...viewerKey],
     queryFn: () => searchPayouts(params),
-    enabled: !!params.q,
-  });
-}
-
-export function useDownloadPeriodReport() {
-  return useMutation({
-    mutationFn: (periodId: number | string) => downloadPeriodReport(periodId),
+    enabled: !!params.q && Boolean(user),
   });
 }
 

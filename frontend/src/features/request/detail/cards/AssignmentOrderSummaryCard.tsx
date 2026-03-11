@@ -61,6 +61,8 @@ export function AssignmentOrderSummaryCard({ summary }: { summary: AssignmentOrd
           {summary.effectiveDate && (
             <Field label="วันเริ่มมีผลตามคำสั่ง" value={summary.effectiveDate} />
           )}
+          {summary.signerName && <Field label="ผู้ลงนามคำสั่ง" value={summary.signerName} />}
+          {summary.signerTitle && <Field label="ตำแหน่งผู้ลงนาม" value={summary.signerTitle} />}
         </div>
 
         {/* Group 2: Content Details (แยกด้วยเส้นประ) */}
@@ -93,6 +95,13 @@ export function AssignmentOrderSummaryCard({ summary }: { summary: AssignmentOrd
             </div>
           </div>
         )}
+
+        {summary.warnings && summary.warnings.length > 0 ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <p className="font-medium">หมายเหตุความครบถ้วนข้อมูล OCR</p>
+            <p>{summary.warnings.join(' / ')}</p>
+          </div>
+        ) : null}
       </CardContent>
     </Card>
   );

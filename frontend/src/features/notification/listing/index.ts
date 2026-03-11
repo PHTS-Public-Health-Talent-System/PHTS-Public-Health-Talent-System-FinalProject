@@ -1,5 +1,6 @@
 export {
   useDeleteReadNotifications,
+  useMarkAllNotificationsRead,
   useMarkNotificationRead,
   useNotifications,
 } from "../core/hooks";

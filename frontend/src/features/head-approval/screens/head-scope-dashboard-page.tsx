@@ -1,15 +1,14 @@
 'use client';
 
 import { useMemo } from 'react';
-import Link from 'next/link';
 import { Clock, FileCheck, FileText, Layers } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useMyRequests, useMyScopes, usePendingApprovals } from '@/features/request/core/hooks';
 import type { RequestWithDetails } from '@/types/request.types';
 import { formatThaiDate, formatThaiNumber } from '@/shared/utils/thai-locale';
+import { RequestListCard } from '@/components/request-list-card';
+import { DashboardHeader } from '@/components/dashboard-header';
 
 const getPendingStepLabel = (step?: number | null) => {
   switch (step) {
@@ -35,20 +34,41 @@ type HeadScopeDashboardPageProps = {
   roleTitle: string;
 };
 
+function parseSubmissionData(input: unknown): Record<string, unknown> {
+  if (!input) return {};
+  if (typeof input === 'string') {
+    try {
+      const parsed = JSON.parse(input);
+      return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+    } catch {
+      return {};
+    }
+  }
+  return typeof input === 'object' ? (input as Record<string, unknown>) : {};
+}
+
+function pickString(data: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = data[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
 export function HeadScopeDashboardPage({ basePath, roleTitle }: HeadScopeDashboardPageProps) {
   const pendingQuery = usePendingApprovals();
   const myRequestsQuery = useMyRequests();
   const scopesQuery = useMyScopes();
 
   const pendingApprovals = useMemo(
-    () => ((pendingQuery.data ?? []) as RequestWithDetails[]).slice(0, 5),
+    () => ((pendingQuery.data ?? []) as RequestWithDetails[]).slice(0, 3),
     [pendingQuery.data],
   );
   const myPending = useMemo(
     () =>
       ((myRequestsQuery.data ?? []) as RequestWithDetails[])
         .filter((row) => row.status === 'PENDING')
-        .slice(0, 5),
+        .slice(0, 3),
     [myRequestsQuery.data],
   );
 
@@ -79,16 +99,27 @@ export function HeadScopeDashboardPage({ basePath, roleTitle }: HeadScopeDashboa
     );
   }
 
+  const getRequesterName = (row: RequestWithDetails) => {
+    const byRequester = `${row.requester?.first_name ?? ''} ${row.requester?.last_name ?? ''}`.trim();
+    if (byRequester) return byRequester;
+    const submission = parseSubmissionData(row.submission_data);
+    const title = pickString(submission, ['title']);
+    const firstName = pickString(submission, ['first_name', 'firstName']);
+    const lastName = pickString(submission, ['last_name', 'lastName']);
+    const bySubmission = [title, firstName, lastName].filter(Boolean).join(' ').trim();
+    return bySubmission || 'ผู้ยื่นคำขอ';
+  };
+
+  const getRequesterPosition = (row: RequestWithDetails) => {
+    if (row.requester?.position?.trim()) return row.requester.position.trim();
+    const submission = parseSubmissionData(row.submission_data);
+    const bySubmission = pickString(submission, ['position_name', 'positionName']);
+    return bySubmission || row.current_department || '-';
+  };
+
   return (
     <div className="p-8 space-y-8 pb-20">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">แดชบอร์ด</h1>
-          <p className="text-muted-foreground mt-1">
-            ภาพรวมงานอนุมัติคำขอสำหรับ{roleTitle}
-          </p>
-        </div>
-      </div>
+      <DashboardHeader title="แดชบอร์ด" subtitle={`ภาพรวมงานอนุมัติคำขอสำหรับ${roleTitle}`} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-border shadow-sm">
@@ -130,65 +161,39 @@ export function HeadScopeDashboardPage({ basePath, roleTitle }: HeadScopeDashboa
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border-border shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between border-b">
-            <CardTitle className="text-lg">คำขอที่รอการอนุมัติ</CardTitle>
-            <Button size="sm" variant="outline" asChild>
-              <Link href={`${basePath}/requests`}>ดูทั้งหมด</Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="p-0 divide-y">
-            {pendingApprovals.length === 0 ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">ไม่มีรายการรออนุมัติ</p>
-            ) : (
-              pendingApprovals.map((row) => (
-                <Link
-                  key={row.request_id}
-                  href={`${basePath}/requests/${row.request_id}`}
-                  className="block px-4 py-3 hover:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium">{row.request_no ?? '-'}</p>
-                      <p className="text-xs text-muted-foreground">{formatThaiDate(row.created_at)}</p>
-                    </div>
-                    <Badge variant="outline">รออนุมัติ</Badge>
-                  </div>
-                </Link>
-              ))
-            )}
-          </CardContent>
-        </Card>
+        <RequestListCard
+          title="คำขอที่รอการอนุมัติ"
+          viewAllHref={`${basePath}/requests`}
+          rows={pendingApprovals.map((row) => ({
+            id: row.request_id,
+            href: `${basePath}/requests/${row.request_id}`,
+            requestNo: row.request_no ?? '-',
+            status: { type: 'pending', label: 'รออนุมัติ' },
+            primaryText: getRequesterName(row),
+            secondaryText: getRequesterPosition(row),
+            dateText: formatThaiDate(row.created_at),
+            amountText: `${formatThaiNumber(row.requested_amount ?? 0)} บาท`,
+          }))}
+          emptyMessage="ไม่มีรายการรออนุมัติ"
+          minRows={3}
+        />
 
-        <Card className="border-border shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between border-b">
-            <CardTitle className="text-lg">คำขอของฉันล่าสุด</CardTitle>
-            <Button size="sm" variant="outline" asChild>
-              <Link href={`${basePath}/my-requests`}>ดูทั้งหมด</Link>
-            </Button>
-          </CardHeader>
-          <CardContent className="p-0 divide-y">
-            {myPending.length === 0 ? (
-              <p className="py-10 text-center text-sm text-muted-foreground">ไม่มีคำขอคงค้างของคุณ</p>
-            ) : (
-              myPending.map((row) => (
-                <Link
-                  key={row.request_id}
-                  href={`${basePath}/my-requests/${row.request_id}`}
-                  className="block px-4 py-3 hover:bg-muted/40 transition-colors"
-                >
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-medium">{row.request_no ?? '-'}</p>
-                      <p className="text-xs text-muted-foreground">{getPendingStepLabel(row.current_step)}</p>
-                    </div>
-                    <p className="text-sm font-semibold">{formatThaiNumber(row.requested_amount ?? 0)} บาท</p>
-                  </div>
-                </Link>
-              ))
-            )}
-          </CardContent>
-        </Card>
+        <RequestListCard
+          title="คำขอของฉันล่าสุด"
+          viewAllHref={`${basePath}/my-requests`}
+          rows={myPending.map((row) => ({
+            id: row.request_id,
+            href: `${basePath}/my-requests/${row.request_id}`,
+            requestNo: row.request_no ?? '-',
+            status: { type: 'pending', label: getPendingStepLabel(row.current_step) },
+            primaryText: getRequesterName(row),
+            secondaryText: getRequesterPosition(row),
+            dateText: formatThaiDate(row.created_at),
+            amountText: `${formatThaiNumber(row.requested_amount ?? 0)} บาท`,
+          }))}
+          emptyMessage="ไม่มีคำขอคงค้างของคุณ"
+          minRows={3}
+        />
       </div>
     </div>
   );

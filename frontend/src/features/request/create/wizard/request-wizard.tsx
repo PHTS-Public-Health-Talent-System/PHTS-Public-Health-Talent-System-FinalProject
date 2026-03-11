@@ -40,6 +40,7 @@ export function RequestWizard({ initialRequest, returnPath, prefillUserId }: Req
     updateFormData,
     handleUploadFile,
     removeFile,
+    removeExistingAttachment,
     isSubmitting,
     submitRequest,
     confirmAttachments,
@@ -183,6 +184,7 @@ export function RequestWizard({ initialRequest, returnPath, prefillUserId }: Req
                 data={formData}
                 onUpload={handleUploadFile}
                 onRemove={removeFile}
+                onRemoveExisting={removeExistingAttachment}
                 showExistingAttachments={Boolean(initialRequest)}
               />
             )}

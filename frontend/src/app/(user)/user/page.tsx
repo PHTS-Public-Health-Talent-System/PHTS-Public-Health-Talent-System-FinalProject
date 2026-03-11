@@ -3,14 +3,17 @@
 import { useMemo } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { FileText, Clock, CheckCircle2, Bell, Plus, Megaphone, User, Inbox } from 'lucide-react';
+import { FileText, Clock, CheckCircle2, Bell, Plus, Megaphone, User } from 'lucide-react';
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
 import { DataTableCard } from '@/components/data-table-card';
-import { StatusBadge, type StatusType } from '@/components/status-badge';
+import { type StatusType } from '@/components/status-badge';
+import { RequestListCard } from '@/components/request-list-card';
+import { DashboardHeader } from '@/components/dashboard-header';
 import { useCurrentUser } from '@/features/auth/hooks';
 import { useUserDashboard } from '@/features/dashboard/hooks';
-import type { RequestStatus } from '@/types/request.types';
+import { useMyRequests } from '@/features/request/core/hooks';
+import type { RequestStatus, RequestWithDetails } from '@/types/request.types';
 import { buildStatItems } from '@/features/dashboard/user/userDashboard.mappers';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -24,6 +27,7 @@ const quickActions = [
 export default function UserDashboardPage() {
   const { data: userResponse, isLoading: userLoading } = useCurrentUser();
   const { data: dashboardData, isLoading: dashboardLoading } = useUserDashboard();
+  const { data: myRequestsData } = useMyRequests();
 
   const dashboardStats = useMemo(
     () =>
@@ -60,13 +64,24 @@ export default function UserDashboardPage() {
   const userName = useMemo(() => {
     const user = userResponse?.data as
       | {
+          title?: string;
           first_name?: string;
           last_name?: string;
           firstName?: string;
           lastName?: string;
         }
       | undefined;
-    return `${user?.first_name ?? user?.firstName ?? ''} ${user?.last_name ?? user?.lastName ?? ''}`.trim();
+    return `${user?.title ?? ''} ${user?.first_name ?? user?.firstName ?? ''} ${user?.last_name ?? user?.lastName ?? ''}`.trim();
+  }, [userResponse?.data]);
+
+  const userPositionOrDepartment = useMemo(() => {
+    const user = userResponse?.data as
+      | {
+          position?: string;
+          department?: string;
+        }
+      | undefined;
+    return user?.position || user?.department || '-';
   }, [userResponse?.data]);
 
   const mapStatusToBadge = (status: RequestStatus): StatusType => {
@@ -88,6 +103,61 @@ export default function UserDashboardPage() {
 
   const isLoading = userLoading || dashboardLoading;
 
+  const parseSubmissionData = (input: unknown): Record<string, unknown> => {
+    if (!input) return {};
+    if (typeof input === 'string') {
+      try {
+        const parsed = JSON.parse(input);
+        return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : {};
+      } catch {
+        return {};
+      }
+    }
+    return typeof input === 'object' ? (input as Record<string, unknown>) : {};
+  };
+
+  const pickString = (data: Record<string, unknown>, keys: string[]) => {
+    for (const key of keys) {
+      const value = data[key];
+      if (typeof value === 'string' && value.trim()) return value.trim();
+    }
+    return undefined;
+  };
+
+  const myRequestsById = useMemo(() => {
+    const map = new Map<number, RequestWithDetails>();
+    ((myRequestsData ?? []) as RequestWithDetails[]).forEach((req) => map.set(req.request_id, req));
+    return map;
+  }, [myRequestsData]);
+
+  const getDisplayNameByRequestId = (requestId: number) => {
+    const req = myRequestsById.get(requestId);
+    if (!req) return userName || 'ผู้ยื่นคำขอ';
+    const submission = parseSubmissionData(req.submission_data);
+    const title = pickString(submission, ['title']);
+    const first = req.requester?.first_name || pickString(submission, ['first_name', 'firstName']);
+    const last = req.requester?.last_name || pickString(submission, ['last_name', 'lastName']);
+    return [title, first, last].filter(Boolean).join(' ').trim() || userName || 'ผู้ยื่นคำขอ';
+  };
+
+  const getDisplayPositionByRequestId = (requestId: number) => {
+    const req = myRequestsById.get(requestId);
+    if (!req) return userPositionOrDepartment;
+    const submission = parseSubmissionData(req.submission_data);
+    return (
+      req.requester?.position ||
+      pickString(submission, ['position_name', 'positionName']) ||
+      req.current_department ||
+      userPositionOrDepartment
+    );
+  };
+
+  const getAmountText = (status: RequestStatus, amount: string) => {
+    const badge = mapStatusToBadge(status);
+    if (badge === 'approved') return `${amount} บาท`;
+    return `${amount} บาท`;
+  };
+
   if (isLoading) {
     return (
       <div className="p-6 lg:p-8 space-y-6">
@@ -104,19 +174,11 @@ export default function UserDashboardPage() {
   return (
     <div className="p-6 lg:p-8 space-y-8 pb-20">
       {/* Header */}
-      <div className="flex items-start gap-4">
-        <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-          <User className="h-6 w-6" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">
-            สวัสดี, {userName || 'ผู้ใช้งาน'}
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            ยินดีต้อนรับสู่ระบบเบิกจ่ายค่าตอบแทนพิเศษ (พ.ต.ส.)
-          </p>
-        </div>
-      </div>
+      <DashboardHeader
+        title={`สวัสดี, ${userName || 'ผู้ใช้งาน'}`}
+        subtitle="ยินดีต้อนรับสู่ระบบเบิกจ่ายค่าตอบแทนพิเศษ (พ.ต.ส.)"
+        icon={User}
+      />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -152,54 +214,30 @@ export default function UserDashboardPage() {
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Recent Requests */}
         <div className="lg:col-span-2 space-y-6">
-          <DataTableCard title="คำขอของฉันล่าสุด" viewAllHref="/user/my-requests">
-            <div className="space-y-3">
-              {recentRequests.length > 0 ? (
-                recentRequests.map((request) => (
-                  <Link
-                    key={request.request_id}
-                    href={`/user/my-requests/${request.request_id}`}
-                    className="group flex items-center justify-between rounded-lg border border-border bg-card p-4 transition-all hover:bg-secondary/50 hover:shadow-sm"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs font-mono text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                          {request.display_id}
-                        </span>
-                        <StatusBadge
-                          status={mapStatusToBadge(request.status)}
-                          label={request.status_label}
-                        />
-                      </div>
-                      <p className="mt-2 font-medium text-foreground truncate group-hover:text-primary transition-colors">
-                        {request.month_label}
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        สถานะ: ขั้นตอนที่ {request.step}/6
-                      </p>
-                    </div>
-                    <div className="text-right pl-4">
-                      <p className="text-lg font-bold text-foreground">
-                        {request.amount}{' '}
-                        <span className="text-xs font-normal text-muted-foreground">บาท</span>
-                      </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {request.submitted_label}
-                      </p>
-                    </div>
-                  </Link>
-                ))
-              ) : (
-                <div className="py-12 text-center flex flex-col items-center justify-center text-muted-foreground">
-                  <Inbox className="h-10 w-10 mb-3 opacity-20" />
-                  <p>ไม่มีรายการคำขอล่าสุด</p>
-                  <Button variant="link" asChild className="mt-2 text-primary">
-                    <Link href="/user/my-requests/new">สร้างคำขอใหม่</Link>
-                  </Button>
-                </div>
-              )}
-            </div>
-          </DataTableCard>
+          <RequestListCard
+            title="คำขอของฉันล่าสุด"
+            viewAllHref="/user/my-requests"
+            rows={recentRequests.map((request) => ({
+              id: request.request_id,
+              href: `/user/my-requests/${request.request_id}`,
+              requestNo: request.display_id,
+              status: {
+                type: mapStatusToBadge(request.status),
+                label: request.status_label,
+              },
+              primaryText: getDisplayNameByRequestId(request.request_id),
+              secondaryText: getDisplayPositionByRequestId(request.request_id),
+              dateText: request.submitted_label,
+              amountText: getAmountText(request.status, request.amount),
+            }))}
+            emptyMessage="ไม่มีรายการคำขอล่าสุด"
+            minRows={3}
+            emptyAction={
+              <Button variant="link" asChild className="mt-2 text-primary">
+                <Link href="/user/my-requests/new">สร้างคำขอใหม่</Link>
+              </Button>
+            }
+          />
         </div>
 
         {/* Right Column: Quick Actions & Announcements */}

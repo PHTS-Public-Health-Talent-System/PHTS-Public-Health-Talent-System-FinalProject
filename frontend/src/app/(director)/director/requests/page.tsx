@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -163,7 +164,6 @@ export default function DirectorRequestsPage() {
   const [comment, setComment] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [slaFilter, setSlaFilter] = useState('all');
-  const [groupFilter, setGroupFilter] = useState('all');
   const [actionError, setActionError] = useState<string | null>(null);
 
   const pendingQuery = usePendingApprovals();
@@ -255,10 +255,9 @@ export default function DirectorRequestsPage() {
         (slaFilter === 'normal' && row.slaStatus === 'normal') ||
         (slaFilter === 'warning' && row.slaStatus === 'warning') ||
         (slaFilter === 'danger' && row.slaStatus === 'danger');
-      const matchesGroup = groupFilter === 'all' || row.groupNo === groupFilter;
-      return matchesSearch && matchesSla && matchesGroup;
+      return matchesSearch && matchesSla;
     });
-  }, [rows, searchTerm, slaFilter, groupFilter]);
+  }, [rows, searchTerm, slaFilter]);
 
   const summaryCounts = useMemo(() => {
     const base = { total: rows.length, normal: 0, warning: 0, danger: 0 };
@@ -425,17 +424,6 @@ export default function DirectorRequestsPage() {
                   <SelectItem value="danger">เกินกำหนด</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={groupFilter} onValueChange={setGroupFilter}>
-                <SelectTrigger className="w-full sm:w-[160px] bg-background h-9">
-                  <SelectValue placeholder="กลุ่มตำแหน่ง" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ทุกกลุ่มตำแหน่ง</SelectItem>
-                  <SelectItem value="1">กลุ่มที่ 1</SelectItem>
-                  <SelectItem value="2">กลุ่มที่ 2</SelectItem>
-                  <SelectItem value="3">กลุ่มที่ 3</SelectItem>
-                </SelectContent>
-              </Select>
               {selectedRequests.length > 0 && (
                 <Button
                   variant="success"
@@ -505,7 +493,14 @@ export default function DirectorRequestsPage() {
                           aria-label={`เลือกรายการ ${request.requestNo}`}
                         />
                       </TableCell>
-                      <TableCell className="font-mono text-sm">{request.requestNo}</TableCell>
+                      <TableCell className="font-mono text-sm">
+                        <Link
+                          href={`/director/requests/${request.id}`}
+                          className="text-primary hover:underline"
+                        >
+                          {request.requestNo}
+                        </Link>
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
                           <span className="font-medium text-foreground">{request.name}</span>

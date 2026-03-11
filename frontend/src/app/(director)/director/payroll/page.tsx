@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,7 +27,6 @@ import {
   CheckCircle2,
   XCircle,
   Clock,
-  Download,
   Users,
   Banknote,
   TrendingUp,
@@ -37,7 +37,6 @@ import { TableRowViewAction } from '@/components/common';
 import { toast } from 'sonner';
 import {
   useApproveByDirector,
-  useDownloadPeriodReport,
   usePeriods,
   useRejectPeriod,
 } from '@/features/payroll/hooks';
@@ -96,7 +95,6 @@ export default function DirectorPayrollPage() {
   const periodsQuery = usePeriods();
   const approveByDirector = useApproveByDirector();
   const rejectPeriod = useRejectPeriod();
-  const downloadReport = useDownloadPeriodReport();
 
   const [selectedPayroll, setSelectedPayroll] = useState<PayrollRow | null>(null);
   const [actionType, setActionType] = useState<'approve' | 'reject' | null>(null);
@@ -175,26 +173,7 @@ export default function DirectorPayrollPage() {
           <h1 className="text-2xl font-bold tracking-tight text-foreground">รอบจ่ายเงิน</h1>
           <p className="text-muted-foreground mt-1">ตรวจสอบและอนุมัติรอบจ่ายเงิน พ.ต.ส. ขั้นสุดท้าย</p>
         </div>
-        <div>
-          <Button
-            variant="outline"
-            className="bg-background shadow-sm"
-            disabled={!latestPeriodId || downloadReport.isPending}
-            onClick={async () => {
-              if (!latestPeriodId) return;
-              const blob = await downloadReport.mutateAsync(latestPeriodId);
-              const url = window.URL.createObjectURL(blob);
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = `payroll_${latestPeriodId}.pdf`;
-              link.click();
-              window.URL.revokeObjectURL(url);
-            }}
-          >
-            <Download className="mr-2 h-4 w-4" />
-            ดาวน์โหลดรายงานล่าสุด
-          </Button>
-        </div>
+        <div />
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -214,7 +193,7 @@ export default function DirectorPayrollPage() {
         />
         <StatCard
           title="ยอดรวมรออนุมัติ"
-          value={`${(pendingTotalAmount / 1_000_000).toFixed(2)}M`}
+          value={`${formatThaiNumber(pendingTotalAmount)} บาท`}
           icon={Banknote}
           colorClass="text-emerald-600"
           bgClass="bg-emerald-500/10"
@@ -244,7 +223,7 @@ export default function DirectorPayrollPage() {
                   <TableHead className="font-semibold">เดือนงวด</TableHead>
                   <TableHead className="font-semibold text-right">จำนวนคน</TableHead>
                   <TableHead className="font-semibold text-right">ยอดรวม</TableHead>
-                  <TableHead className="font-semibold">ผู้อนุมัติก่อนหน้า</TableHead>
+                  <TableHead className="font-semibold">ผู้ส่งรอบ</TableHead>
                   <TableHead className="font-semibold">วันที่ส่ง</TableHead>
                   <TableHead className="font-semibold text-right w-[170px]">การดำเนินการ</TableHead>
                 </TableRow>
@@ -265,7 +244,14 @@ export default function DirectorPayrollPage() {
                 ) : (
                   pendingRows.map((row) => (
                     <TableRow key={row.periodId} className="group hover:bg-muted/30 border-border">
-                      <TableCell className="font-mono text-sm">PAY-{row.periodCode}</TableCell>
+                      <TableCell className="font-mono text-sm">
+                        <Link
+                          href={`/director/payroll/${row.periodId}`}
+                          className="text-primary hover:underline"
+                        >
+                          {row.periodCode}
+                        </Link>
+                      </TableCell>
                       <TableCell className="font-medium">{row.periodLabel}</TableCell>
                       <TableCell className="text-right">
                         {formatThaiNumber(row.totalRecords)} คน
@@ -274,10 +260,7 @@ export default function DirectorPayrollPage() {
                         {formatThaiNumber(row.totalAmount)} บาท
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm">
-                          <div>ฝ่ายทรัพยากรบุคคล: อนุมัติแล้ว</div>
-                          <div>ฝ่ายการเงิน: อนุมัติแล้ว</div>
-                        </div>
+                        <div className="text-sm">{row.submittedBy}</div>
                       </TableCell>
                       <TableCell>{row.submittedDate}</TableCell>
                       <TableCell>
@@ -355,7 +338,14 @@ export default function DirectorPayrollPage() {
                 ) : (
                   closedRows.map((row) => (
                     <TableRow key={row.periodId} className="group hover:bg-muted/30 border-border">
-                      <TableCell className="font-mono text-sm">PAY-{row.periodCode}</TableCell>
+                      <TableCell className="font-mono text-sm">
+                        <Link
+                          href={`/director/payroll/${row.periodId}`}
+                          className="text-primary hover:underline"
+                        >
+                          {row.periodCode}
+                        </Link>
+                      </TableCell>
                       <TableCell className="font-medium">{row.periodLabel}</TableCell>
                       <TableCell className="text-right">
                         {formatThaiNumber(row.totalRecords)} คน
@@ -410,28 +400,31 @@ export default function DirectorPayrollPage() {
               {actionType === 'approve' ? 'ยืนยันการอนุมัติ' : 'ยืนยันการปฏิเสธ'}
             </DialogTitle>
             <DialogDescription>
-              {selectedPayroll && (
-                <div className="mt-3 rounded-md bg-secondary/50 p-3 text-sm space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">รหัสรอบ:</span>
-                    <span className="font-mono font-medium">PAY-{selectedPayroll.periodCode}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">รอบจ่าย:</span>
-                    <span className="font-medium">{selectedPayroll.periodLabel}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">ยอดรวม:</span>
-                    <span className="font-medium">
-                      {formatThaiNumber(selectedPayroll.totalAmount)} บาท
-                    </span>
-                  </div>
-                </div>
-              )}
+              {selectedPayroll
+                ? `รอบเดือน ${selectedPayroll.periodLabel} (รหัส ${selectedPayroll.periodCode})`
+                : undefined}
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 py-2">
+            {selectedPayroll && (
+              <div className="rounded-md bg-secondary/50 p-3 text-sm space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">รหัสรอบ:</span>
+                  <span className="font-mono font-medium">PAY-{selectedPayroll.periodCode}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">รอบจ่าย:</span>
+                  <span className="font-medium">{selectedPayroll.periodLabel}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">ยอดรวม:</span>
+                  <span className="font-medium">
+                    {formatThaiNumber(selectedPayroll.totalAmount)} บาท
+                  </span>
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
                 {actionType === 'approve' ? 'หมายเหตุ (ไม่บังคับ)' : 'เหตุผลการปฏิเสธ'}

@@ -49,6 +49,7 @@ describe('allowance attachment OCR result collections', () => {
           name: 'page-5-6.pdf',
           ok: true,
           markdown: 'คำสั่งกลุ่มงานเภสัชกรรม',
+          engine_used: 'tesseract',
         },
       ],
       requestResults: [
@@ -65,10 +66,12 @@ describe('allowance attachment OCR result collections', () => {
       {
         fileName: 'page-5-6.pdf',
         markdown: 'คำสั่งกลุ่มงานเภสัชกรรม',
+        engineUsed: 'tesseract',
       },
       {
         fileName: 'memo.pdf',
         markdown: 'บันทึกข้อความ',
+        engineUsed: null,
       },
     ])
   })

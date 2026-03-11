@@ -650,6 +650,16 @@ export async function confirmAttachments(id: number | string) {
   return res.data.data;
 }
 
+export async function deleteRequestAttachment(
+  id: number | string,
+  attachmentId: number | string,
+) {
+  const res = await api.delete<ApiResponse<RequestWithDetails>>(
+    `/requests/${id}/attachments/${attachmentId}`,
+  );
+  return res.data.data;
+}
+
 export async function updateRateMapping(
   id: number | string,
   payload: {
@@ -760,22 +770,6 @@ export async function reassignRequest(
 export async function getReassignHistory(id: number | string) {
   const res = await api.get<ApiResponse<ReassignHistoryItem[]>>(
     `/requests/${id}/reassign-history`,
-  );
-  return res.data.data;
-}
-
-export async function adjustLeaveRequest(
-  id: number | string,
-  payload: {
-    manual_start_date: string;
-    manual_end_date: string;
-    manual_duration_days: number;
-    remark?: string;
-  },
-) {
-  const res = await api.put<ApiResponse<ApiPayload>>(
-    `/requests/${id}/adjust-leave`,
-    payload,
   );
   return res.data.data;
 }

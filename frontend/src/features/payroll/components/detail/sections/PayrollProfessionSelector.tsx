@@ -62,7 +62,7 @@ export function PayrollProfessionSelector({
                   ? 'border-primary shadow-md ring-1 ring-primary'
                   : 'border-border bg-card hover:border-primary/40 hover:shadow-sm',
                 !isAllCard && isReviewed && !isActive
-                  ? 'bg-muted/30 opacity-70 hover:opacity-100'
+                  ? 'border-emerald-200 bg-emerald-50/40 hover:border-emerald-300 hover:bg-emerald-50'
                   : 'bg-card',
                 isActive && !isAllCard && isReviewed && 'bg-emerald-50/30',
               )}
@@ -94,11 +94,22 @@ export function PayrollProfessionSelector({
                 <p
                   className={cn(
                     'text-xl font-bold tracking-tight tabular-nums',
-                    isActive ? 'text-foreground' : 'text-muted-foreground',
+                    isActive
+                      ? 'text-foreground'
+                      : !isAllCard && isReviewed
+                        ? 'text-slate-700'
+                        : 'text-muted-foreground',
                   )}
                 >
                   {formatThaiNumber(totalAmount)}
-                  <span className="ml-1 text-[11px] font-normal text-muted-foreground">บาท</span>
+                  <span
+                    className={cn(
+                      'ml-1 text-[11px] font-normal',
+                      !isAllCard && isReviewed ? 'text-slate-500' : 'text-muted-foreground',
+                    )}
+                  >
+                    บาท
+                  </span>
                 </p>
               </div>
 

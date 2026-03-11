@@ -7,14 +7,12 @@ import {
   Send,
   XCircle,
   Loader2,
-  FileDown,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmActionDialog } from '@/components/common';
 import { formatDate, formatPeriodLabel } from '../model/detail.helpers';
 import { cn } from '@/lib/utils';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 type PayrollDetailHeaderProps = {
   backHref: string;
@@ -43,10 +41,6 @@ type PayrollDetailHeaderProps = {
   onRejectClick: () => void;
   onToggleReviewed?: () => void;
   onSubmitForReview?: () => Promise<void>;
-  onExportPdf: () => Promise<void>;
-  isPdfPending: boolean;
-  isPdfReady: boolean;
-  pdfDisabledReason?: string;
   snapshotStatusLabel: string;
   snapshotStatusClassName: string;
 };
@@ -69,10 +63,6 @@ export function PayrollDetailHeader({
   onRejectClick,
   onToggleReviewed,
   onSubmitForReview,
-  onExportPdf,
-  isPdfPending,
-  isPdfReady,
-  pdfDisabledReason,
   snapshotStatusLabel,
   snapshotStatusClassName,
 }: PayrollDetailHeaderProps) {
@@ -233,53 +223,6 @@ export function PayrollDetailHeader({
               )}
             </div>
 
-            {/* Divider */}
-            <div className="hidden h-8 w-px bg-border/60 lg:block" />
-
-            {/* 2. Export Actions */}
-            <TooltipProvider>
-              <div className="flex items-center bg-muted/30 rounded-lg p-0.5 border border-border/50">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div>
-                      <ConfirmActionDialog
-                        trigger={
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className={cn(
-                              'h-8 w-8',
-                              isPdfReady
-                                ? 'text-muted-foreground hover:text-foreground'
-                                : 'text-muted-foreground/40',
-                            )}
-                            disabled={isPdfPending || !isPdfReady}
-                          >
-                            {isPdfPending ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <FileDown className="h-4 w-4" />
-                            )}
-                          </Button>
-                        }
-                        title="ดาวน์โหลดรายงานผลการจ่ายเงิน (PDF)"
-                        description={
-                          pdfDisabledReason ||
-                          'ระบบจะสร้างรายงานสรุปผลการเบิกจ่ายประจำรอบในรูปแบบ PDF'
-                        }
-                        confirmText="ดาวน์โหลด PDF"
-                        onConfirm={onExportPdf}
-                      />
-                    </div>
-                  </TooltipTrigger>
-                  {!isPdfReady && (
-                    <TooltipContent side="bottom" className="max-w-[200px] text-xs">
-                      {pdfDisabledReason || 'ข้อมูลรายงานยังไม่พร้อม'}
-                    </TooltipContent>
-                  )}
-                </Tooltip>
-              </div>
-            </TooltipProvider>
           </div>
         </div>
       </div>

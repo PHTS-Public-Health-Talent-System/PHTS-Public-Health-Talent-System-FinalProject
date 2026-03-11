@@ -259,17 +259,8 @@ export default function HeadFinanceDashboardPage() {
               <span className="text-xs font-medium">อนุมัติรอบจ่าย</span>
             </Link>
             <Link
-              href="/head-finance/sla-report"
-              className="flex flex-col items-center justify-center p-4 rounded-xl border bg-card hover:bg-secondary/50 hover:border-primary/30 transition-all text-center gap-2 group"
-            >
-              <div className="p-2 rounded-full bg-purple-100 text-purple-600 group-hover:bg-purple-200 transition-colors">
-                <Clock className="h-5 w-5" />
-              </div>
-              <span className="text-xs font-medium">รายงานกำหนดเวลา</span>
-            </Link>
-            <Link
               href="/head-finance/reports"
-              className="flex flex-col items-center justify-center p-4 rounded-xl border bg-card hover:bg-secondary/50 hover:border-primary/30 transition-all text-center gap-2 group"
+              className="col-span-2 flex flex-col items-center justify-center p-4 rounded-xl border bg-card hover:bg-secondary/50 hover:border-primary/30 transition-all text-center gap-2 group"
             >
               <div className="p-2 rounded-full bg-slate-100 text-slate-600 group-hover:bg-slate-200 transition-colors">
                 <ArrowRight className="h-5 w-5" />

@@ -163,6 +163,46 @@ describe('allowance attachment OCR policy', () => {
     })
   })
 
+  test('does not show assignment-order mismatch warning when OCR splits full name across nearby lines', () => {
+    const policy = buildAllowanceAttachmentOcrPolicy({
+      fileName: 'page-5-6.pdf',
+      personName: 'นางสาว จริยา ใจใหญ่',
+      result: {
+        name: 'page-5-6.pdf',
+        ok: true,
+        document_kind: 'assignment_order',
+        markdown:
+          'คำสั่งกลุ่มงานเภสัชกรรม\nเรื่อง ยกเลิกและมอบหมายเจ้าหน้าที่รับผิดชอบในการปฏิบัติงาน\n1.6 นางสาวจริยา\nเภสัชกรปฏิบัติการ\nใจใหญ่',
+      },
+      clearableFileNames: new Set(['page-5-6.pdf']),
+    })
+
+    expect(policy.notice).toBeNull()
+    expect(policy.uiState.canRunOcr).toBe(false)
+    expect(policy.uiState.canClearOcr).toBe(true)
+    expect(policy.uiState.shouldShowResetHint).toBe(true)
+  })
+
+  test('does not show mismatch warning when surname drifts to previous nearby OCR lines', () => {
+    const policy = buildAllowanceAttachmentOcrPolicy({
+      fileName: 'page-5-6.pdf',
+      personName: 'นางสาว จริยา ใจใหญ่',
+      result: {
+        name: 'page-5-6.pdf',
+        ok: true,
+        document_kind: 'assignment_order',
+        markdown:
+          'คำสั่งกลุ่มงานเภสัชกรรม\nเรื่อง ยกเลิกและมอบหมายเจ้าหน้าที่รับผิดชอบในการปฏิบัติงาน\n๑.๕ นางสาวธมลวรรณ,\nเภสัชกรปฏิบัติการ\nใจใหญ่\n๑.6 นางสาวจริยา\nเภสัชกรปฏิบัติการ\nโดยมีหน้าที่ ดังนี้',
+      },
+      clearableFileNames: new Set(['page-5-6.pdf']),
+    })
+
+    expect(policy.notice).toBeNull()
+    expect(policy.uiState.canRunOcr).toBe(false)
+    expect(policy.uiState.canClearOcr).toBe(true)
+    expect(policy.uiState.shouldShowResetHint).toBe(true)
+  })
+
   test('builds unified OCR policy with no run action for license files', () => {
     const policy = buildAllowanceAttachmentOcrPolicy({
       fileName: 'page-2.pdf',

@@ -13,7 +13,11 @@ export const useNavigation = () => {
     queryKey: ["navigation", user?.id ?? "anonymous", user?.role ?? "unknown"],
     queryFn: getNavigation,
     enabled: Boolean(user),
-    staleTime: 1000 * 60 * 5,
+    staleTime: 0,
+    refetchInterval: 1000 * 15,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     gcTime: 1000 * 60 * 15,
   });
 };

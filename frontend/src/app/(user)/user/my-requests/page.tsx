@@ -32,6 +32,7 @@ import {
   Clock,
   XCircle,
   AlertCircle,
+  Ban,
   Filter,
   FilePen,
   List,
@@ -67,6 +68,8 @@ const getStatusIcon = (status: string) => {
       return <XCircle className="h-4 w-4" />;
     case 'RETURNED':
       return <AlertCircle className="h-4 w-4" />;
+    case 'CANCELLED':
+      return <Ban className="h-4 w-4" />;
     default:
       return <FileText className="h-4 w-4" />;
   }
@@ -84,6 +87,8 @@ const getStatusColor = (status: string) => {
       return 'bg-destructive/10 text-destructive border-destructive/20';
     case 'RETURNED':
       return 'bg-orange-500/10 text-orange-600 border-orange-200';
+    case 'CANCELLED':
+      return 'bg-slate-500/10 text-slate-600 border-slate-200';
     default:
       return 'bg-muted text-muted-foreground border-border';
   }
@@ -103,6 +108,8 @@ const getStatusLabel = (status: string) => {
       return 'ถูกส่งกลับ';
     case 'REJECTED':
       return 'ไม่อนุมัติ';
+    case 'CANCELLED':
+      return 'ยกเลิกแล้ว';
     default:
       return status;
   }
@@ -134,6 +141,7 @@ const statusOptions = [
   { value: 'APPROVED', label: 'อนุมัติแล้ว' },
   { value: 'RETURNED', label: 'ถูกส่งกลับ' },
   { value: 'REJECTED', label: 'ไม่อนุมัติ' },
+  { value: 'CANCELLED', label: 'ยกเลิกแล้ว' },
 ];
 
 // Helper Component: Stat Card
@@ -380,7 +388,7 @@ export default function MyRequestsPage() {
                           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <TableRowViewAction href={`/user/my-requests/${request.id}`} />
 
-                            {request.status === 'DRAFT' && (
+                            {(request.status === 'DRAFT' || request.status === 'RETURNED') && (
                               <>
                                 <Tooltip>
                                   <TooltipTrigger asChild>
@@ -397,6 +405,7 @@ export default function MyRequestsPage() {
                                   </TooltipTrigger>
                                   <TooltipContent>แก้ไข</TooltipContent>
                                 </Tooltip>
+                                {request.status === 'DRAFT' && (
                                 <Tooltip>
                                   <TooltipTrigger asChild>
                                     <Button
@@ -411,6 +420,7 @@ export default function MyRequestsPage() {
                                   </TooltipTrigger>
                                   <TooltipContent>ส่งคำขอ</TooltipContent>
                                 </Tooltip>
+                                )}
                               </>
                             )}
 

@@ -266,7 +266,7 @@ export function HeadScopeScopeMembersPage({ roleTitle }: HeadScopeScopeMembersPa
           <CardContent className="py-16 text-center text-muted-foreground flex flex-col items-center">
             <Layers className="h-12 w-12 opacity-20 mb-4" />
             <p className="text-lg font-medium">ไม่พบขอบเขตที่กำกับดูแล</p>
-            <p className="text-sm">บัญชีของคุณยังไม่ได้รับการกำหนดขอบเขตการดูแลสำหรับบทบาทหัวหน้าหน่วยงาน</p>
+            <p className="text-sm">บัญชีของคุณยังไม่ได้รับการกำหนดขอบเขตการดูแลสำหรับบทบาทหัวหน้างาน</p>
           </CardContent>
         </Card>
       ) : (

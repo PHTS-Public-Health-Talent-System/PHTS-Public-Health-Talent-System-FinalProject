@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,12 +41,8 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { TableRowMoreActionsTrigger, TableRowViewAction } from '@/components/common';
+  TableRowViewAction,
+} from '@/components/common';
 import { usePendingApprovals, useProcessAction } from '@/features/request';
 import { usePendingWithSla } from '@/features/sla/hooks';
 import { mapRequestToFormData } from '@/features/request';
@@ -161,7 +158,6 @@ export default function HeadFinanceRequestsPage() {
   const [comment, setComment] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [slaFilter, setSlaFilter] = useState('all');
-  const [groupFilter, setGroupFilter] = useState('all');
   const [actionError, setActionError] = useState<string | null>(null);
 
   const pendingQuery = usePendingApprovals();
@@ -250,10 +246,9 @@ export default function HeadFinanceRequestsPage() {
         (slaFilter === 'normal' && row.slaStatus === 'normal') ||
         (slaFilter === 'warning' && row.slaStatus === 'warning') ||
         (slaFilter === 'danger' && row.slaStatus === 'danger');
-      const matchesGroup = groupFilter === 'all' || row.groupNo === groupFilter;
-      return matchesSearch && matchesSla && matchesGroup;
+      return matchesSearch && matchesSla;
     });
-  }, [rows, searchTerm, slaFilter, groupFilter]);
+  }, [rows, searchTerm, slaFilter]);
 
   const summaryCounts = useMemo(() => {
     const base = { total: rows.length, normal: 0, warning: 0, danger: 0 };
@@ -372,17 +367,6 @@ export default function HeadFinanceRequestsPage() {
                   <SelectItem value="danger">เกินกำหนด</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={groupFilter} onValueChange={setGroupFilter}>
-                <SelectTrigger className="w-full sm:w-[160px] bg-background h-9">
-                  <SelectValue placeholder="กลุ่มตำแหน่ง" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ทุกกลุ่มตำแหน่ง</SelectItem>
-                  <SelectItem value="1">กลุ่มที่ 1</SelectItem>
-                  <SelectItem value="2">กลุ่มที่ 2</SelectItem>
-                  <SelectItem value="3">กลุ่มที่ 3</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
           </div>
         </CardHeader>
@@ -426,7 +410,14 @@ export default function HeadFinanceRequestsPage() {
                       key={request.id}
                       className="group hover:bg-muted/30 border-border transition-colors"
                     >
-                      <TableCell className="font-mono text-sm">{request.requestNo}</TableCell>
+                      <TableCell className="font-mono text-sm">
+                        <Link
+                          href={`/head-finance/requests/${request.id}`}
+                          className="text-primary hover:underline"
+                        >
+                          {request.requestNo}
+                        </Link>
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-col">
                           <span className="font-medium text-foreground">{request.name}</span>
@@ -463,44 +454,6 @@ export default function HeadFinanceRequestsPage() {
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           <TableRowViewAction href={`/head-finance/requests/${request.id}`} />
-
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <TableRowMoreActionsTrigger />
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuItem
-                                className="text-emerald-600 focus:text-emerald-700 cursor-pointer"
-                                onClick={() => {
-                                  setSelectedRequest(request);
-                                  setActionType('approve');
-                                  setActionError(null);
-                                }}
-                              >
-                                <CheckCircle2 className="mr-2 h-4 w-4" /> อนุมัติ
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-amber-600 focus:text-amber-700 cursor-pointer"
-                                onClick={() => {
-                                  setSelectedRequest(request);
-                                  setActionType('return');
-                                  setActionError(null);
-                                }}
-                              >
-                                <RefreshCw className="mr-2 h-4 w-4" /> ส่งกลับแก้ไข
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-destructive focus:text-destructive cursor-pointer"
-                                onClick={() => {
-                                  setSelectedRequest(request);
-                                  setActionType('reject');
-                                  setActionError(null);
-                                }}
-                              >
-                                <XCircle className="mr-2 h-4 w-4" /> ไม่อนุมัติ
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
                         </div>
                       </TableCell>
                     </TableRow>

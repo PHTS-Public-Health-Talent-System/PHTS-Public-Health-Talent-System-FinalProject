@@ -94,6 +94,11 @@ const HEAD_SCOPE_ROLE_LABELS = {
 } as const;
 
 type HeadScopeRoleKey = keyof typeof HEAD_SCOPE_ROLE_LABELS;
+type UiScopeItem = {
+  type: 'UNIT' | 'DEPT';
+  label: string;
+  value: string;
+};
 
 function normalizeForMatch(value: string | null | undefined): string {
   return (value ?? '')
@@ -116,6 +121,41 @@ function scopeTextMatches(scopeText: string | null | undefined, target: string |
   }
 
   return false;
+}
+
+export function filterMatchedScopesForActingRole(
+  scopes: UiScopeItem[],
+  actingHeadScopeRole: HeadScopeRoleKey | undefined,
+  requestDepartmentValue: string | null | undefined,
+  requestSubDepartmentValue: string | null | undefined,
+): UiScopeItem[] {
+  if (!Array.isArray(scopes) || !actingHeadScopeRole) return [];
+
+  const normalizedDept = normalizeForMatch(requestDepartmentValue);
+  const normalizedSubDept = normalizeForMatch(requestSubDepartmentValue);
+
+  return scopes.filter((scope) => {
+    const matchesDept = scopeTextMatches(scope.label, normalizedDept) || scopeTextMatches(scope.value, normalizedDept);
+    const matchesSubDept = scopeTextMatches(scope.label, normalizedSubDept) || scopeTextMatches(scope.value, normalizedSubDept);
+
+    if (actingHeadScopeRole === 'WARD_SCOPE') {
+      if (scope.type === 'UNIT') {
+        return matchesSubDept;
+      }
+      if (scope.type === 'DEPT') {
+        return matchesDept;
+      }
+      return false;
+    }
+
+    if (scope.type === 'DEPT') {
+      return matchesDept;
+    }
+    if (scope.type === 'UNIT') {
+      return matchesSubDept;
+    }
+    return false;
+  });
 }
 
 type HeadScopeRequestDetailPageProps = {
@@ -254,33 +294,12 @@ export function HeadScopeRequestDetailPage({ params, basePath }: HeadScopeReques
   const canResolveActingRole =
     !!actingHeadScopeRole && activeHeadScopeRoles.includes(actingHeadScopeRole);
   const matchedScopes = useMemo(() => {
-    if (!Array.isArray(myScopes) || !actingHeadScopeRole) return [];
-
-    const normalizedDept = normalizeForMatch(requestDepartmentValue);
-    const normalizedSubDept = normalizeForMatch(requestSubDepartmentValue);
-
-    return myScopes.filter((scope) => {
-      const matchesDept = scopeTextMatches(scope.label, normalizedDept) || scopeTextMatches(scope.value, normalizedDept);
-      const matchesSubDept = scopeTextMatches(scope.label, normalizedSubDept) || scopeTextMatches(scope.value, normalizedSubDept);
-
-      if (actingHeadScopeRole === 'WARD_SCOPE') {
-        if (scope.type === 'UNIT') {
-          return matchesSubDept;
-        }
-        if (scope.type === 'DEPT') {
-          return !normalizedSubDept && matchesDept;
-        }
-        return false;
-      }
-
-      if (scope.type === 'DEPT') {
-        return matchesDept;
-      }
-      if (scope.type === 'UNIT') {
-        return matchesSubDept;
-      }
-      return false;
-    });
+    return filterMatchedScopesForActingRole(
+      Array.isArray(myScopes) ? myScopes : [],
+      actingHeadScopeRole,
+      requestDepartmentValue,
+      requestSubDepartmentValue,
+    );
   }, [actingHeadScopeRole, myScopes, requestDepartmentValue, requestSubDepartmentValue]);
 
   const currentUserSteps = user?.role === 'HEAD_SCOPE'

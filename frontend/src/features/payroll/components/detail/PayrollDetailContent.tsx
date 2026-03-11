@@ -12,7 +12,6 @@ import {
   useApproveByDirector,
   useApproveByHeadFinance,
   useApproveByHR,
-  useDownloadPeriodReport,
   usePeriodDetail,
   usePeriodPayouts,
   usePayoutDetail,
@@ -20,7 +19,6 @@ import {
   useUpdatePayout,
 } from '@/features/payroll/hooks';
 import type { PayoutDetail, PeriodDetail, PeriodPayoutRow } from '@/features/payroll/api';
-import { isSnapshotNotReadyError } from '@/features/payroll/api/errors';
 import { getSnapshotStatusUi, normalizeSnapshotStatus } from '@/features/payroll/domain/snapshot';
 import { useRateHierarchy } from '@/features/master-data/hooks';
 import type { ProfessionHierarchy } from '@/features/master-data/api';
@@ -91,7 +89,6 @@ export function PayrollDetailContent({
   const approveByHeadFinance = useApproveByHeadFinance();
   const approveByHR = useApproveByHR();
   const rejectPeriod = useRejectPeriod();
-  const downloadReport = useDownloadPeriodReport();
   const updatePayoutMutation = useUpdatePayout();
 
   const periodDetail = periodDetailQuery.data as PeriodDetail | undefined;
@@ -115,8 +112,6 @@ export function PayrollDetailContent({
   const canEditPayout = period?.status === 'OPEN' && !Boolean(period?.is_locked);
   const snapshotStatus = normalizeSnapshotStatus(period?.snapshot_status);
   const snapshotUi = getSnapshotStatusUi(snapshotStatus);
-  const isPdfReady = snapshotStatus === 'READY';
-  const pdfDisabledReason = 'ยังไม่สามารถดาวน์โหลดรายงานได้: Snapshot ยังไม่พร้อมใช้งาน';
   const approvalStatus =
     approvalRole === 'DIRECTOR'
       ? 'WAITING_DIRECTOR'
@@ -225,31 +220,6 @@ export function PayrollDetailContent({
               }
             : undefined
         }
-        onExportPdf={async () => {
-          if (!isPdfReady) {
-            toast.error(pdfDisabledReason);
-            return;
-          }
-          try {
-            const blob = await downloadReport.mutateAsync(periodId);
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `payroll_${periodId}.pdf`;
-            link.click();
-            window.URL.revokeObjectURL(url);
-          } catch (error) {
-            if (isSnapshotNotReadyError(error)) {
-              toast.error(pdfDisabledReason);
-              return;
-            }
-            const message = error instanceof Error ? error.message : 'ไม่สามารถดาวน์โหลดรายงานได้';
-            toast.error(message);
-          }
-        }}
-        isPdfPending={downloadReport.isPending}
-        isPdfReady={isPdfReady}
-        pdfDisabledReason={pdfDisabledReason}
         snapshotStatusLabel={snapshotUi.label}
         snapshotStatusClassName={snapshotUi.className}
       />

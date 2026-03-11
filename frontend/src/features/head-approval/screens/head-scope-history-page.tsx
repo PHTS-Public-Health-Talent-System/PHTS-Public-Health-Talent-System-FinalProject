@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { History, Search } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -21,6 +22,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useCurrentUser } from '@/features/auth/hooks';
 import { useApprovalHistory } from '@/features/request/core/hooks';
 import { TableRowViewAction } from '@/components/common';
 import { mapRequestToFormData } from '@/features/request/create/hooks/request-form-mapper';
@@ -30,6 +32,7 @@ import { formatThaiDateTime } from '@/shared/utils/thai-locale';
 import {
   getDefaultHistoryActionMode,
   matchesHistoryActionFilter,
+  pickLatestHistoryAction,
   type HistoryActionFilter,
 } from '@/features/head-approval/history.utils';
 import { getOnBehalfMetadata } from '@/features/request/core/utils';
@@ -47,16 +50,9 @@ type HistoryRow = {
   department: string;
   status: string;
   lastActionType: ApprovalAction['action'] | '-';
+  lastActionActor: string;
   lastActionDate: string | null;
   isOfficerCreated: boolean;
-};
-
-const ACTION_LABELS: Record<string, string> = {
-  APPROVE: 'อนุมัติ',
-  REJECT: 'ไม่อนุมัติ',
-  RETURN: 'ส่งกลับแก้ไข',
-  SUBMIT: 'ยื่นคำขอ',
-  CANCEL: 'ยกเลิก',
 };
 
 const statusBadgeClass = (status: string) => {
@@ -82,6 +78,7 @@ const statusBadgeClass = (status: string) => {
 const HISTORY_VIEW_STORAGE_KEY_PREFIX = 'approval-history-view:';
 
 export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScopeHistoryPageProps) {
+  const { data: currentUserResponse } = useCurrentUser();
   const [historyView, setHistoryView] = useState<'team' | 'mine'>(() => {
     if (typeof window === 'undefined') return 'team';
     const storageKey = `${HISTORY_VIEW_STORAGE_KEY_PREFIX}${roleKey}`;
@@ -95,6 +92,27 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
   const [searchTerm, setSearchTerm] = useState('');
   const [actionFilter, setActionFilter] = useState<HistoryActionFilter>('all');
 
+  const allowedSteps = useMemo<number[] | null>(() => {
+    const normalizedRoleKey = roleKey.trim().toUpperCase();
+    if (normalizedRoleKey === 'HEAD_SCOPE') {
+      const data = currentUserResponse?.data as
+        | {
+            head_scope_roles?: Array<'WARD_SCOPE' | 'DEPT_SCOPE'>;
+          }
+        | undefined;
+      const scopes = data?.head_scope_roles ?? [];
+      const steps: number[] = [];
+      if (scopes.includes('WARD_SCOPE')) steps.push(1);
+      if (scopes.includes('DEPT_SCOPE')) steps.push(2);
+      return steps.length > 0 ? steps : null;
+    }
+    if (normalizedRoleKey === 'PTS_OFFICER') return [3];
+    if (normalizedRoleKey === 'HEAD_HR') return [4];
+    if (normalizedRoleKey === 'HEAD_FINANCE') return [5];
+    if (normalizedRoleKey === 'DIRECTOR') return [6];
+    return null;
+  }, [currentUserResponse?.data, roleKey]);
+
   useEffect(() => {
     const storageKey = `${HISTORY_VIEW_STORAGE_KEY_PREFIX}${roleKey}`;
     window.localStorage.setItem(storageKey, historyView);
@@ -102,6 +120,7 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
 
   const rows = useMemo<HistoryRow[]>(() => {
     const items = (historyQuery.data ?? []) as RequestWithDetails[];
+    const normalizedRoleKey = roleKey.trim().toUpperCase();
     return items.map((request) => {
       const formData = mapRequestToFormData(request);
       const onBehalfMeta = getOnBehalfMetadata(
@@ -109,7 +128,11 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
           ? (request.submission_data as Record<string, unknown>)
           : null,
       );
+      const requesterTitle =
+        (formData.title ?? '').trim() ||
+        ((request.requester as { title?: string } | undefined)?.title ?? '').trim();
       const requesterFromProfile = [
+        requesterTitle,
         request.requester?.first_name,
         request.requester?.last_name,
       ]
@@ -127,12 +150,16 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
       const department =
         formData.subDepartment || formData.department || request.current_department || '-';
       const requestNo = request.request_no ?? '-';
-      const sortedActions = [...(request.actions ?? [])]
-        .filter((action) => (actionMode === 'all' ? true : ['APPROVE', 'REJECT', 'RETURN'].includes(action.action)))
-        .sort((a, b) =>
-        new Date(b.action_date).getTime() - new Date(a.action_date).getTime(),
-      );
-      const lastAction = sortedActions[0];
+      const lastAction = pickLatestHistoryAction(request.actions, {
+        actionMode,
+        roleKey: normalizedRoleKey,
+        allowedSteps,
+      });
+      const lastActionActorName = [lastAction?.actor?.first_name, lastAction?.actor?.last_name]
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const lastActionActor = lastActionActorName || '-';
       return {
         id: request.request_id,
         requestNo,
@@ -140,11 +167,12 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
         department,
         status: request.status,
         lastActionType: (lastAction?.action as ApprovalAction['action']) ?? '-',
+        lastActionActor,
         lastActionDate: lastAction?.action_date ?? null,
         isOfficerCreated: onBehalfMeta.isOfficerCreated,
       };
     });
-  }, [historyQuery.data, actionMode]);
+  }, [historyQuery.data, actionMode, roleKey, allowedSteps]);
 
   const filteredRows = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
@@ -211,8 +239,8 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="important">เฉพาะสำคัญ</SelectItem>
-                  <SelectItem value="all">ทุกการดำเนินการ</SelectItem>
+                  <SelectItem value="important">เฉพาะการพิจารณา</SelectItem>
+                  <SelectItem value="all">ทุกเหตุการณ์</SelectItem>
                 </SelectContent>
               </Select>
                 <Select value={actionFilter} onValueChange={(v) => setActionFilter(v as typeof actionFilter)}>
@@ -220,7 +248,7 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">ทุกการดำเนินการ</SelectItem>
+                  <SelectItem value="all">ทุกผลการดำเนินการ</SelectItem>
                   {roleKey === 'PTS_OFFICER' ? (
                     <SelectItem value="ON_BEHALF">คำขอที่สร้างแทน</SelectItem>
                   ) : null}
@@ -241,8 +269,8 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
                   <TableHead>เลขที่คำขอ</TableHead>
                   <TableHead>ผู้ยื่นคำขอ</TableHead>
                   <TableHead>หน่วยงาน</TableHead>
-                  <TableHead>การดำเนินการล่าสุด</TableHead>
-                  <TableHead>วันเวลา</TableHead>
+                  <TableHead>ดำเนินการโดย</TableHead>
+                  <TableHead>วันที่ดำเนินการล่าสุด</TableHead>
                   <TableHead>สถานะปัจจุบัน</TableHead>
                   <TableHead className="text-right">จัดการ</TableHead>
                 </TableRow>
@@ -263,14 +291,19 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
                 ) : (
                   filteredRows.map((row) => (
                     <TableRow key={row.id}>
-                      <TableCell className="font-mono">{row.requestNo}</TableCell>
+                      <TableCell className="font-mono">
+                        <Link
+                          href={`${basePath}/requests/${row.id}?from=history`}
+                          className="text-primary hover:underline"
+                        >
+                          {row.requestNo}
+                        </Link>
+                      </TableCell>
                       <TableCell className="font-medium">{row.requesterName}</TableCell>
                       <TableCell className="text-muted-foreground">{row.department}</TableCell>
-                      <TableCell>
+                      <TableCell className="text-muted-foreground">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant="outline">
-                            {row.lastActionType === '-' ? '-' : ACTION_LABELS[row.lastActionType] ?? row.lastActionType}
-                          </Badge>
+                          <span>{row.lastActionActor}</span>
                           {row.isOfficerCreated ? (
                             <Badge
                               variant="outline"

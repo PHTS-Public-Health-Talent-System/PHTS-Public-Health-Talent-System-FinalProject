@@ -126,4 +126,53 @@ describe("ApprovalTimelineCard", () => {
     expect(screen.getByText("ยกเลิกที่ขั้นตอน 1 จาก 4")).toBeInTheDocument()
     expect(screen.getByText("ยกเลิกแล้ว")).toBeInTheDocument()
   })
+
+  it("uses latest submit cycle and does not keep old returned status after resubmission", () => {
+    render(
+      <ApprovalTimelineCard
+        request={buildTimelineRequest({
+          status: "PENDING",
+          current_step: 1,
+          actions: [
+            {
+              action: "SUBMIT",
+              actor: {
+                first_name: "ผู้ยื่น",
+                last_name: "รอบแรก",
+                role: "USER",
+              },
+              comment: null,
+              action_date: "2026-03-11T00:56:42.000Z",
+              step_no: 1,
+            },
+            {
+              action: "RETURN",
+              actor: {
+                first_name: "นิภาพันธ์",
+                last_name: "มานักฆ้อง",
+                role: "HEAD_SCOPE",
+              },
+              comment: "asdadad",
+              action_date: "2026-03-11T03:12:26.000Z",
+              step_no: 1,
+            },
+            {
+              action: "SUBMIT",
+              actor: {
+                first_name: "ผู้ยื่น",
+                last_name: "รอบสอง",
+                role: "USER",
+              },
+              comment: null,
+              action_date: "2026-03-11T03:20:00.000Z",
+              step_no: 1,
+            },
+          ],
+        })}
+      />,
+    )
+
+    expect(screen.getByText("กำลังดำเนินการ")).toBeInTheDocument()
+    expect(screen.queryByText("ส่งกลับแก้ไข")).not.toBeInTheDocument()
+  })
 })

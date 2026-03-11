@@ -34,7 +34,6 @@ import {
   Plus,
   Send,
   FileText,
-  Download,
   Calendar,
   Users,
   Banknote,
@@ -54,13 +53,11 @@ import {
   useCalculatePeriod,
   useCreatePeriod,
   useDeletePeriod,
-  useDownloadPeriodReport,
   usePeriodPayouts,
   usePeriods,
   useSubmitToHR,
 } from '@/features/payroll/hooks';
 import type { PayPeriod, PeriodPayoutRow } from '@/features/payroll/api';
-import { isSnapshotNotReadyError } from '@/features/payroll/api/errors';
 import { getSnapshotStatusUi, normalizeSnapshotStatus } from '@/features/payroll/domain/snapshot';
 import { usePayrollReviewProgress } from '@/features/payroll/hooks';
 import { normalizeProfessionCode, resolveProfessionLabel } from '@/shared/constants/profession';
@@ -113,7 +110,6 @@ export function PayrollManagementScreen() {
   const createPeriod = useCreatePeriod();
   const calculatePeriod = useCalculatePeriod();
   const submitToHR = useSubmitToHR();
-  const downloadReport = useDownloadPeriodReport();
   const deletePeriod = useDeletePeriod();
 
   const currentBuddhistYear = new Date().getFullYear() + 543;
@@ -241,31 +237,6 @@ export function PayrollManagementScreen() {
       const apiError = error as AxiosError<{ error?: string }>;
       const message = apiError.response?.data?.error ?? 'ไม่สามารถส่งให้ HR อนุมัติได้';
       toast.error(message);
-    }
-  };
-
-  const handleDownload = async () => {
-    if (!currentPeriod) return;
-    if (!isSnapshotReady) {
-      toast.error('ยังไม่สามารถดาวน์โหลดรายงานได้: ข้อมูลรายงานยังไม่พร้อมใช้งาน');
-      return;
-    }
-    try {
-      const blob = await downloadReport.mutateAsync(currentPeriod.id);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `payroll-period-${currentPeriod.id}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      if (isSnapshotNotReadyError(error)) {
-        toast.error('ยังไม่สามารถดาวน์โหลดรายงานได้: ข้อมูลรายงานยังไม่พร้อมใช้งาน');
-        return;
-      }
-      toast.error('ไม่สามารถดาวน์โหลดรายงานได้');
     }
   };
 
@@ -620,42 +591,6 @@ export function PayrollManagementScreen() {
                       confirmText="คำนวณใหม่"
                       onConfirm={handleCalculate}
                       disabled={currentPeriod.status !== 'OPEN' || calculatePeriod.isPending}
-                    />
-                  </div>
-
-                  <div className="space-y-3 rounded-xl border border-border/60 bg-muted/5 p-5">
-                    <div className="flex items-center gap-2">
-                      <div className="p-1.5 bg-amber-500/10 rounded-md">
-                        <FileText className="h-4 w-4 text-amber-600" />
-                      </div>
-                      <h3 className="font-semibold text-sm">เอกสารรายงาน</h3>
-                    </div>
-                    <p className="text-xs text-muted-foreground leading-relaxed h-10">
-                      ดาวน์โหลดรายงานสรุปยอดเบิกจ่าย
-                      {!isSnapshotReady && (
-                        <span className="text-destructive block"> (รอระบบเตรียมข้อมูลรายงาน)</span>
-                      )}
-                    </p>
-                    <ConfirmActionDialog
-                      trigger={
-                        <Button
-                          variant="outline"
-                          className="w-full bg-background shadow-sm text-xs"
-                          disabled={downloadReport.isPending || !isSnapshotReady}
-                        >
-                          <Download className="mr-2 h-3.5 w-3.5" /> ดาวน์โหลด PDF
-                        </Button>
-                      }
-                      title="ดาวน์โหลดรายงาน"
-                      description={
-                        <span>
-                          ต้องการดาวน์โหลดรายงานสรุปยอดของรอบ <b>{currentPeriod.label}</b>{' '}
-                          ใช่หรือไม่?
-                        </span>
-                      }
-                      confirmText="ดาวน์โหลด"
-                      onConfirm={handleDownload}
-                      disabled={downloadReport.isPending || !isSnapshotReady}
                     />
                   </div>
 

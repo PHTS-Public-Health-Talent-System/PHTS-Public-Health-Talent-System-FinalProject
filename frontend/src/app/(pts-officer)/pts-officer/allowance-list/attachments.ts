@@ -36,6 +36,7 @@ export type AllowanceAttachmentOcrLike = {
   markdown?: string;
   error?: string;
   suppressed?: boolean;
+  engine_used?: string;
   document_kind?: string;
   fields?: Record<string, unknown>;
 };
@@ -85,13 +86,14 @@ export function buildAllowanceOcrDocuments(params: {
   requestResults?: AllowanceAttachmentOcrLike[];
   latestResults?: AllowanceAttachmentOcrLike[];
   visibleFileNames?: Iterable<string>;
-}): Array<{ fileName: string; markdown: string }> {
+}): Array<{ fileName: string; markdown: string; engineUsed?: string | null }> {
   const byFileName = buildAllowanceAttachmentOcrResultMap(params);
   return Array.from(byFileName.values())
     .filter((item) => !item.suppressed && item.ok && item.markdown)
     .map((item) => ({
       fileName: item.name?.trim() || "ผล OCR",
       markdown: item.markdown?.trim() || "",
+      engineUsed: typeof item.engine_used === "string" ? item.engine_used : null,
     }))
     .filter((item) => item.markdown.length > 0)
 }

@@ -131,7 +131,7 @@ export default function RequestDetailPage({ params }: { params: Promise<{ id: st
   const department = submissionDepartment ?? request?.current_department ?? '-';
   const subDepartment = submissionSubDepartment ?? '-';
   const displayId = request ? (request.request_no ?? '-') : id;
-  const canEdit = request?.status === 'DRAFT';
+  const canEdit = request?.status === 'DRAFT' || request?.status === 'RETURNED';
   const canCancel = request?.status === 'PENDING' || request?.status === 'RETURNED';
   const submitAction = (request?.actions ?? []).find((a) => a.action === 'SUBMIT');
   const rateMapping = useMemo(

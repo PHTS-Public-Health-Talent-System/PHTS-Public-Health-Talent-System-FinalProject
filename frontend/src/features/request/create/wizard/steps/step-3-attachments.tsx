@@ -13,6 +13,7 @@ interface Step3Props {
   data: RequestFormData;
   onUpload: (file: File) => void;
   onRemove: (index: number) => void;
+  onRemoveExisting?: (attachmentId: number) => void;
   showExistingAttachments?: boolean;
 }
 
@@ -20,6 +21,7 @@ export function Step3Attachments({
   data,
   onUpload,
   onRemove,
+  onRemoveExisting,
   showExistingAttachments = false,
 }: Step3Props) {
   const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -151,6 +153,7 @@ export function Step3Attachments({
                   path: att.file_path,
                 }))}
                 onPreview={handlePreview}
+                onDelete={onRemoveExisting}
               />
             </div>
           </div>

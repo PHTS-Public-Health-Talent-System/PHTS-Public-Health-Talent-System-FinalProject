@@ -174,11 +174,6 @@ export default function HeadFinancePayrollPage() {
     [rows],
   );
 
-  const latestPeriodId = useMemo(() => {
-    const sorted = [...rows].sort((a, b) => b.periodId - a.periodId);
-    return sorted[0]?.periodId;
-  }, [rows]);
-
   const pendingTotalAmount = pendingRows.reduce((sum, row) => sum + row.totalAmount, 0);
   const pendingTotalRecords = pendingRows.reduce((sum, row) => sum + row.totalRecords, 0);
 

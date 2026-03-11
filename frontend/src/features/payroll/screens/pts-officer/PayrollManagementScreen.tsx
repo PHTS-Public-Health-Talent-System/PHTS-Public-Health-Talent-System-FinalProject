@@ -33,7 +33,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Plus,
   Send,
-  FileText,
   Calendar,
   Users,
   Banknote,
@@ -147,8 +146,6 @@ export function PayrollManagementScreen() {
     readiness.snapshot_status ?? currentPeriod?.snapshotStatus,
   );
   const snapshotUi = getSnapshotStatusUi(effectiveSnapshotStatus);
-  const isSnapshotReady = Boolean(readiness.is_ready ?? effectiveSnapshotStatus === 'READY');
-
   const professionProgress = useMemo(() => {
     const rows = (payoutsData ?? []) as PeriodPayoutRow[];
     const totals = new Map<string, { label: string; count: number; amount: number }>();

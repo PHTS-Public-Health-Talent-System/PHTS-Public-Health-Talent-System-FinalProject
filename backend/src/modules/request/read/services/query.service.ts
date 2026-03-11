@@ -20,6 +20,7 @@ import {
 } from '@/modules/request/scope/application/scope.service.js';
 import { requestRepository } from '@/modules/request/data/repositories/request.repository.js'; // [NEW]
 import { OcrRequestRepository } from '@/modules/ocr/repositories/ocr-request.repository.js';
+import { AuthorizationError, NotFoundError } from '@/shared/utils/errors.js';
 
 // ============================================================================
 // User's Requests
@@ -112,7 +113,7 @@ export class RequestQueryService {
     const approvals = await requestRepository.findApprovalsWithActor(requestId);
     const isActor = approvals.some((approval) => approval.actor_id === userId);
     if (!isActor) {
-      throw new Error("You do not have permission to view this request");
+      throw new AuthorizationError("You do not have permission to view this request");
     }
   }
 
@@ -521,7 +522,7 @@ export class RequestQueryService {
     const request = await requestRepository.findById(requestId);
 
     if (!request) {
-      throw new Error("Request not found");
+      throw new NotFoundError("คำขอ", requestId);
     }
 
     await this.ensureRequestReadAccess(request as any, requestId, userId, userRole);
@@ -555,7 +556,7 @@ export class RequestQueryService {
     const request = await requestRepository.findById(requestId);
 
     if (!request) {
-      throw new Error("Request not found");
+      throw new NotFoundError("คำขอ", requestId);
     }
 
     const [attachments, actions, latestVerificationSnapshot, latestOcrPrecheck, linkedEligibility] = await Promise.all([

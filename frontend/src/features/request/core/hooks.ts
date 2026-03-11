@@ -79,6 +79,20 @@ export function useRequestDetail(id: number | string | undefined) {
     queryKey: ["request", id !== undefined ? String(id) : undefined],
     queryFn: () => getRequestById(id!),
     enabled: !!id,
+    retry: (failureCount, error: unknown) => {
+      const status =
+        typeof error === "object" &&
+        error !== null &&
+        "response" in error &&
+        typeof (error as { response?: { status?: number } }).response === "object"
+          ? (error as { response?: { status?: number } }).response?.status
+          : undefined;
+
+      if (status === 404 || status === 403 || status === 400) {
+        return false;
+      }
+      return failureCount < 2;
+    },
   });
 }
 

@@ -1,0 +1,95 @@
+name: Deploy Windows Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: "Release identifier (optional)"
+        required: false
+        type: string
+      ref:
+        description: "Git ref to deploy (branch/tag/sha)"
+        required: false
+        default: "main"
+        type: string
+
+jobs:
+  build-artifact:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release_meta.outputs.release_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm run install:all
+
+      - name: Verify quality gates
+        run: |
+          npm run lint:all
+          npm run typecheck:all
+          npm run test:all
+          npm run build:all
+
+      - id: release_meta
+        name: Resolve release id
+        run: |
+          if [ -n "${{ inputs.release_id }}" ]; then
+            RID="${{ inputs.release_id }}"
+          else
+            RID="rel-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}"
+          fi
+          echo "release_id=$RID" >> "$GITHUB_OUTPUT"
+          echo "Using release id: $RID"
+
+      - name: Build deployable artifact
+        run: |
+          mkdir -p artifact/backend artifact/frontend
+          cp -R backend/dist artifact/backend/dist
+          cp backend/package.json backend/package-lock.json artifact/backend/
+          cp -R frontend/.next artifact/frontend/.next
+          cp -R frontend/public artifact/frontend/public
+          cp frontend/package.json frontend/package-lock.json artifact/frontend/
+
+      - name: Archive artifact
+        run: |
+          cd artifact
+          zip -r "../phts-${{ steps.release_meta.outputs.release_id }}.zip" backend frontend
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: phts-release
+          path: phts-${{ steps.release_meta.outputs.release_id }}.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  deploy:
+    needs: build-artifact
+    runs-on: [self-hosted, windows, x64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: phts-release
+          path: .
+
+      - name: Deploy release
+        shell: pwsh
+        run: |
+          $artifact = "phts-${{ needs.build-artifact.outputs.release_id }}.zip"
+          .\scripts\windows\deploy.ps1 `
+            -ReleaseId "${{ needs.build-artifact.outputs.release_id }}" `
+            -ArtifactPath $artifact

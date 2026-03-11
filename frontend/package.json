@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "build": "TZ=Asia/Bangkok next build --webpack",
-    "dev": "TZ=Asia/Bangkok next dev",
+    "dev": "TZ=Asia/Bangkok next dev --hostname 0.0.0.0",
     "lint": "eslint",
     "start": "TZ=Asia/Bangkok next start",
     "test": "vitest",

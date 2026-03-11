@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
+    "db:audit:schema": "TZ=Asia/Bangkok tsx src/scripts/db/audit_runtime_schema.ts",
     "db:backfill:request-no": "TZ=Asia/Bangkok tsx src/scripts/db/backfill_request_no.ts",
     "db:setup": "TZ=Asia/Bangkok tsx src/scripts/db/setup.ts",
     "dev": "TZ=Asia/Bangkok tsx watch src/index.ts",

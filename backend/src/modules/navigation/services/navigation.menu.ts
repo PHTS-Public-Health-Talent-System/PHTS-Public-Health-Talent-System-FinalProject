@@ -118,7 +118,7 @@ export const buildMenu = (
         ],
         secondaryMenu: [
           {
-            label: "รายงาน SLA",
+            label: "รายงานกำหนดเวลาอนุมัติ",
             href: `${basePath}/sla-report`,
             iconKey: "ClipboardList",
           },
@@ -130,13 +130,24 @@ export const buildMenu = (
         ],
         secondaryLabel: "รายงาน",
       };
-    case UserRole.DIRECTOR:
     case UserRole.HEAD_FINANCE:
       return {
         menu: buildApprovalFlowMenu(basePath),
         secondaryMenu: [
           {
-            label: "รายงาน SLA",
+            label: "ดาวน์โหลดรายงาน",
+            href: `${basePath}/reports`,
+            iconKey: "FileBarChart",
+          },
+        ],
+        secondaryLabel: "รายงาน",
+      };
+    case UserRole.DIRECTOR:
+      return {
+        menu: buildApprovalFlowMenu(basePath),
+        secondaryMenu: [
+          {
+            label: "รายงานกำหนดเวลาอนุมัติ",
             href: `${basePath}/sla-report`,
             iconKey: "Clock",
           },

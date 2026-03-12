@@ -59,7 +59,7 @@ describe("payroll core retroactive", () => {
       if (sql.includes("FROM pay_periods")) {
         return [{ period_id: 20, status: "CLOSED" }];
       }
-      if (sql.includes("FROM pay_results WHERE citizen_id = ? AND period_id = ?")) {
+      if (sql.includes("FROM pay_results") && sql.includes("period_id = ?")) {
         return [{ calculated_amount: 5000 }];
       }
       if (sql.includes("FROM pay_result_items pi")) {
@@ -72,19 +72,53 @@ describe("payroll core retroactive", () => {
 
     expect(result.totalRetro).toBe(500);
     expect(result.retroDetails).toEqual([
-      {
+      expect.objectContaining({
         month: 1,
         year: 2026,
         diff: 500,
-        remark: "ตกเบิกยอดเดือน 1/2026",
-      },
+        remark: expect.stringContaining("ตกเบิกยอดเดือน 1/2026"),
+      }),
     ]);
+    expect(result.retroDetails[0]?.remark).toContain("คำนวณใหม่ 5,500.00 เทียบเคยจ่าย 5,000.00 บาท");
     expect(mockedCalculateMonthly).toHaveBeenCalledWith(
       "1111111111111",
       2026,
       1,
       conn,
     );
+  });
+
+  test("uses explicit no-history wording when no historical payout exists", async () => {
+    mockedCalculateMonthly.mockResolvedValue({
+      netPayment: 10000,
+      eligibleDays: 28,
+      totalDeductionDays: 0,
+      rateSnapshot: 10000,
+      checks: [],
+    } as any);
+
+    const conn = makeConnection((sql) => {
+      if (sql.includes("FROM pay_periods")) {
+        return [{ period_id: 20, status: "CLOSED" }];
+      }
+      if (sql.includes("FROM pay_results") && sql.includes("period_id = ?")) {
+        return [];
+      }
+      if (sql.includes("FROM pay_result_items pi")) {
+        return [];
+      }
+      return [];
+    });
+
+    const result = await calculateRetroactive("1600100184751", 2026, 3, 1, conn as any);
+
+    expect(result.totalRetro).toBe(10000);
+    expect(result.retroDetails[0]?.remark).toContain("ไม่พบข้อมูลจ่ายเดิมของงวดนี้");
+    expect(result.retroDetails[0]?.remark).toContain("วันมีสิทธิ ไม่มีข้อมูลเดิม → 28 วัน");
+    expect(result.retroDetails[0]?.remark).toContain(
+      "อัตราเงิน ไม่มีข้อมูลเดิม → 10,000 บาท",
+    );
+    expect(result.retroDetails[0]?.remark).not.toContain("เทียบเคยจ่าย 0.00 บาท");
   });
 
   test("applies historical retro adjustment before computing diff", async () => {
@@ -96,7 +130,7 @@ describe("payroll core retroactive", () => {
       if (sql.includes("FROM pay_periods")) {
         return [{ period_id: 21, status: "CLOSED" }];
       }
-      if (sql.includes("FROM pay_results WHERE citizen_id = ? AND period_id = ?")) {
+      if (sql.includes("FROM pay_results") && sql.includes("period_id = ?")) {
         return [{ calculated_amount: 5000 }];
       }
       if (sql.includes("FROM pay_result_items pi")) {
@@ -124,7 +158,7 @@ describe("payroll core retroactive", () => {
       if (sql.includes("FROM pay_periods")) {
         return [{ period_id: 22, status: "CLOSED" }];
       }
-      if (sql.includes("FROM pay_results WHERE citizen_id = ? AND period_id = ?")) {
+      if (sql.includes("FROM pay_results") && sql.includes("period_id = ?")) {
         return [{ calculated_amount: 5000 }];
       }
       if (sql.includes("FROM pay_result_items pi")) {
@@ -155,7 +189,7 @@ describe("payroll core retroactive", () => {
         }
         return [];
       }
-      if (sql.includes("FROM pay_results WHERE citizen_id = ? AND period_id = ?")) {
+      if (sql.includes("FROM pay_results") && sql.includes("period_id = ?")) {
         const periodId = params[1];
         if (periodId === 31) return [{ calculated_amount: 1000 }];
         if (periodId === 32) return [{ calculated_amount: 900 }];
@@ -187,7 +221,7 @@ describe("payroll core retroactive", () => {
         }
         return [];
       }
-      if (sql.includes("FROM pay_results WHERE citizen_id = ? AND period_id = ?")) {
+      if (sql.includes("FROM pay_results") && sql.includes("period_id = ?")) {
         return [{ calculated_amount: 725.81 }];
       }
       if (sql.includes("FROM pay_result_items pi")) {
@@ -199,12 +233,12 @@ describe("payroll core retroactive", () => {
     const result = await calculateRetroactive("1111111111111", 2026, 9, 1, conn as any);
 
     expect(result.retroDetails).toEqual([
-      {
+      expect.objectContaining({
         month: 8,
         year: 2026,
         diff: 774.19,
-        remark: "ตกเบิกยอดเดือน 8/2026",
-      },
+        remark: expect.stringContaining("ตกเบิกยอดเดือน 8/2026"),
+      }),
     ]);
     expect(result.totalRetro).toBe(774.19);
   });

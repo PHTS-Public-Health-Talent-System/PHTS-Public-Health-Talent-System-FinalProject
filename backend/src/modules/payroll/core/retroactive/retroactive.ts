@@ -28,12 +28,16 @@ const calculateRetroForPeriod = async (
   if (period.status && period.status !== "CLOSED") return null;
 
   const [payoutRows] = await dbConn.query<RowDataPacket[]>(
-    `SELECT calculated_amount FROM pay_results WHERE citizen_id = ? AND period_id = ?`,
+    `
+      SELECT calculated_amount, deducted_days, eligible_days, pts_rate_snapshot
+      FROM pay_results
+      WHERE citizen_id = ? AND period_id = ?
+    `,
     [citizenId, period.period_id],
   );
-  const originalPaid = payoutRows.length
-    ? Number((payoutRows[0] as any).calculated_amount)
-    : 0;
+  const historicalPayout = payoutRows.length ? (payoutRows[0] as any) : null;
+  const hasHistoricalPayout = Boolean(historicalPayout);
+  const originalPaid = historicalPayout ? Number(historicalPayout.calculated_amount) : 0;
 
   const [adjustmentRows] = await dbConn.query<RowDataPacket[]>(
     `
@@ -71,13 +75,87 @@ const calculateRetroForPeriod = async (
 
   if (Math.abs(diff) <= 0.01) return null;
 
+  const factorParts: string[] = [];
+  const previousEligibleDays = hasHistoricalPayout
+    ? Number(historicalPayout?.eligible_days ?? 0)
+    : null;
+  const previousDeductedDays = hasHistoricalPayout
+    ? Number(historicalPayout?.deducted_days ?? 0)
+    : null;
+  const previousRate = hasHistoricalPayout
+    ? Number(historicalPayout?.pts_rate_snapshot ?? 0)
+    : null;
+  const nextEligibleDays = Number(recalculated.eligibleDays ?? 0);
+  const nextDeductedDays = Number(recalculated.totalDeductionDays ?? 0);
+  const nextRate = Number(recalculated.rateSnapshot ?? 0);
+
+  if (hasHistoricalPayout) {
+    if (Math.abs(nextEligibleDays - Number(previousEligibleDays ?? 0)) > 0.01) {
+      factorParts.push(
+        `วันมีสิทธิ ${Number(previousEligibleDays ?? 0).toLocaleString("th-TH")} → ${nextEligibleDays.toLocaleString("th-TH")} วัน`,
+      );
+    }
+    if (Math.abs(nextDeductedDays - Number(previousDeductedDays ?? 0)) > 0.01) {
+      factorParts.push(
+        `วันถูกหัก ${Number(previousDeductedDays ?? 0).toLocaleString("th-TH")} → ${nextDeductedDays.toLocaleString("th-TH")} วัน`,
+      );
+    }
+    if (Math.abs(nextRate - Number(previousRate ?? 0)) > 0.01) {
+      factorParts.push(
+        `อัตราเงิน ${Number(previousRate ?? 0).toLocaleString("th-TH")} → ${nextRate.toLocaleString("th-TH")} บาท`,
+      );
+    }
+  } else {
+    if (nextEligibleDays > 0.01) {
+      factorParts.push(
+        `วันมีสิทธิ ไม่มีข้อมูลเดิม → ${nextEligibleDays.toLocaleString("th-TH")} วัน`,
+      );
+    }
+    if (nextDeductedDays > 0.01) {
+      factorParts.push(
+        `วันถูกหัก ไม่มีข้อมูลเดิม → ${nextDeductedDays.toLocaleString("th-TH")} วัน`,
+      );
+    }
+    if (nextRate > 0.01) {
+      factorParts.push(
+        `อัตราเงิน ไม่มีข้อมูลเดิม → ${nextRate.toLocaleString("th-TH")} บาท`,
+      );
+    }
+  }
+  if (factorParts.length === 0 && Array.isArray(recalculated.checks) && recalculated.checks.length > 0) {
+    const topTitles = [...recalculated.checks]
+      .sort(
+        (a, b) => Math.abs(Number(b.impactAmount ?? 0)) - Math.abs(Number(a.impactAmount ?? 0)),
+      )
+      .slice(0, 2)
+      .map((check) => String(check.title).trim())
+      .filter(Boolean);
+    if (topTitles.length > 0) {
+      factorParts.push(`ตรวจพบ: ${topTitles.join(", ")}`);
+    }
+  }
+
+  const comparisonText = hasHistoricalPayout
+    ? `คำนวณใหม่ ${shouldBeAmount.toLocaleString("th-TH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })} เทียบเคยจ่าย ${paidAmount.toLocaleString("th-TH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })} บาท`
+    : `คำนวณใหม่ ${shouldBeAmount.toLocaleString("th-TH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })} บาท • ไม่พบข้อมูลจ่ายเดิมของงวดนี้`;
+  const factorText = factorParts.length > 0 ? ` • ปัจจัย: ${factorParts.join(" / ")}` : "";
+
   return {
     diff,
     detail: {
       month: targetMonth,
       year: targetYear,
       diff,
-      remark: `ตกเบิกยอดเดือน ${targetMonth}/${targetYear}`,
+      remark: `ตกเบิกยอดเดือน ${targetMonth}/${targetYear} • ${comparisonText}${factorText}`,
     },
   };
 };

@@ -18,6 +18,7 @@ export function SummaryWithBoldMoney({ summary }: { summary: string }) {
   const re = /([+-]?\d[\d,]*(?:\.\d+)?)(\s*บาท)/g;
   const parts: React.ReactNode[] = [];
   let last = 0;
+
   for (const match of summary.matchAll(re)) {
     const idx = match.index ?? 0;
     if (idx > last) parts.push(summary.slice(last, idx));
@@ -25,8 +26,8 @@ export function SummaryWithBoldMoney({ summary }: { summary: string }) {
     const unit = match[2] ?? ' บาท';
     parts.push(
       <span key={`${idx}-${amount}`} className="inline-flex items-baseline gap-1 mx-1">
-        <span className="font-bold tabular-nums text-foreground">{amount}</span>
-        <span className="text-[10px] font-semibold text-muted-foreground">{unit}</span>
+        <span className="font-bold tabular-nums text-slate-900">{amount}</span>
+        <span className="text-xs font-medium text-slate-500">{unit}</span>
       </span>,
     );
     last = idx + match[0].length;
@@ -45,10 +46,10 @@ export function EvidenceBlock({
   return (
     <div
       className={cn(
-        'py-3.5 text-muted-foreground transition-colors hover:bg-muted/30',
+        'py-3 pl-4 pr-4 transition-all relative bg-white border border-slate-200/60 rounded-lg shadow-sm hover:shadow-md',
         variant === 'danger'
-          ? 'border-l-4 border-l-destructive pl-4'
-          : 'border-l-4 border-l-amber-500 pl-4',
+          ? 'border-l-[4px] border-l-rose-500'
+          : 'border-l-[4px] border-l-amber-400',
       )}
     >
       <EvidenceLine evidence={evidence} />
@@ -70,25 +71,30 @@ function formatGenericEvidenceValue(_key: string, value: unknown): React.ReactNo
 function EvidenceGrid({ label, items }: { label: string; items: EvidenceGridItem[] }) {
   const filtered = items.filter(Boolean) as EvidenceGridItem[];
   if (!label && filtered.length === 0) return null;
+
   return (
     <div className="space-y-2.5">
       {label ? (
-        <div className="text-xs font-bold uppercase tracking-wider text-foreground/80">{label}</div>
+        <div className="text-xs font-bold text-slate-700 tracking-wide uppercase border-b border-slate-100 pb-1.5 mb-2">
+          {label}
+        </div>
       ) : null}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
         {filtered.map((item, idx) => (
           <div
             key={`${label}-${idx}-${item.label}`}
             className={cn(
-              'flex flex-col justify-center gap-0.5 rounded-lg border border-border/40 bg-muted/20 px-3 py-2',
+              'flex flex-col justify-center gap-1 rounded-lg bg-slate-50/80 px-3.5 py-2.5 border border-slate-100/80',
               item.colSpan === 2 && 'col-span-2',
               item.align === 'right' ? 'items-end text-right' : 'items-start text-left',
             )}
           >
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
               {item.label}
             </span>
-            <span className="text-xs font-medium text-foreground leading-tight">{item.value}</span>
+            <span className="text-sm font-semibold text-slate-800 leading-snug">
+              {item.value}
+            </span>
           </div>
         ))}
       </div>
@@ -97,103 +103,94 @@ function EvidenceGrid({ label, items }: { label: string; items: EvidenceGridItem
 }
 
 function EvidenceLine({ evidence }: { evidence: unknown }) {
-  if (!evidence || typeof evidence !== 'object') return <span>{String(evidence)}</span>;
+  if (!evidence || typeof evidence !== 'object') return <span className="text-sm">{String(evidence)}</span>;
   const ev = evidence as Record<string, unknown>;
   const type = String(ev.type ?? '');
 
   if (type === 'eligibility') {
+    const effectiveDate = formatThaiShortDate(ev.effective_date);
+    const expiryDate = ev.expiry_date ? formatThaiShortDate(ev.expiry_date) : 'ปัจจุบัน';
+    const groupValue = ev.group ?? ev.group_no;
+    const itemValue = ev.item ?? ev.item_no;
+    const groupText = groupValue !== null && groupValue !== undefined ? `กลุ่ม ${groupValue}` : '';
+    const itemText = itemValue !== null && itemValue !== undefined ? `ข้อ ${itemValue}` : '';
+    const groupItemLabel = [groupText, itemText].filter(Boolean).join(' / ');
+
     return (
-      <EvidenceGrid
-        label="ข้อมูลสิทธิ / อัตราตั้งต้น"
-        items={[
-          {
-                  label: 'อัตราเงิน พ.ต.ส.',
-            value: (
-              <span className="tabular-nums font-bold text-primary">
-                {formatThaiNumber(toNumber(ev.rate))}{' '}
-                <span className="text-[10px] font-normal text-muted-foreground">บาท</span>
-              </span>
-            ),
-            colSpan: 2,
-          },
-          {
-            label: 'วันที่มีผล',
-            value: <span className="tabular-nums">{formatThaiShortDate(ev.effective_date)}</span>,
-          },
-          ...(ev.expiry_date
-            ? [
-                {
-                  label: 'วันหมดอายุ',
-                  value: (
-                    <span className="tabular-nums">{formatThaiShortDate(ev.expiry_date)}</span>
-                  ),
-                },
-              ]
-            : []),
-        ]}
-      />
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <span className="text-sm leading-tight font-semibold text-slate-900">
+            <span className="tabular-nums">{effectiveDate}</span> - <span className="tabular-nums">{expiryDate}</span>
+          </span>
+          {groupItemLabel ? (
+            <span className="text-xs font-medium text-slate-500 bg-slate-100/80 px-1.5 py-0.5 rounded border border-slate-200/50 w-fit">{groupItemLabel}</span>
+          ) : null}
+        </div>
+        <div className="shrink-0 text-right pr-1">
+          <span className="inline-flex items-baseline whitespace-nowrap text-lg font-bold leading-none text-indigo-600 tabular-nums bg-indigo-50/50 px-2.5 py-1 rounded-md border border-indigo-100/50">
+            {formatThaiNumber(toNumber(ev.rate))} ฿
+          </span>
+        </div>
+      </div>
     );
   }
 
   if (type === 'eligibility_gap') {
+    const toDate = (value: unknown): Date | null => {
+      const parsed = new Date(String(value ?? ''));
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+    const inclusiveDays = (start: unknown, end: unknown): number => {
+      const s = toDate(start);
+      const e = toDate(end);
+      if (!s || !e || s > e) return 0;
+      const msPerDay = 24 * 60 * 60 * 1000;
+      return Math.floor((e.getTime() - s.getTime()) / msPerDay) + 1;
+    };
+
     const missing = Array.isArray(ev.missing_ranges)
       ? (ev.missing_ranges as Array<Record<string, unknown>>)
       : [];
+    const totalMissingDays = missing.reduce(
+      (sum, range) => sum + inclusiveDays(range?.start, range?.end),
+      0,
+    );
+    const missingRangeSummary = missing
+      .map((range) => `${formatThaiShortDate(range?.start)} - ${formatThaiShortDate(range?.end)}`)
+      .join(', ');
 
-    if (missing.length === 0) {
+    if (missing.length === 0) return null;
+
+    if (missing.length === 1) {
       return (
-        <EvidenceGrid
-          label="ช่องว่างของสิทธิ"
-          items={[
-            {
-              label: 'ช่วงที่ปฏิบัติงาน',
-              value: (
-                <span className="tabular-nums">
-                  {formatThaiShortDate(ev.work_start_date)} -{' '}
-                  {formatThaiShortDate(ev.work_end_date)}
-                </span>
-              ),
-              colSpan: 2,
-            },
-            {
-              label: 'ช่วงที่สิทธิขาดหาย',
-              value: <span className="text-muted-foreground">-</span>,
-              colSpan: 2,
-            },
-          ]}
-        />
+        <div className="flex items-center justify-between bg-rose-50/50 border border-rose-100/80 px-3.5 py-3 rounded-lg">
+          <div className="flex flex-col gap-1">
+            <span className="text-xs font-bold text-rose-800">
+              ช่วงที่ไม่มีสิทธิ <span className="text-rose-600">({formatThaiNumber(totalMissingDays)} วัน)</span>
+            </span>
+            <span className="text-[11px] font-semibold text-rose-600/90 tabular-nums bg-white px-2 py-0.5 rounded shadow-sm border border-rose-100/50 w-fit">
+              {missingRangeSummary}
+            </span>
+          </div>
+        </div>
       );
     }
 
     return (
-      <div className="space-y-3">
-        {missing.map((range, idx) => (
-          <EvidenceGrid
-            key={`gap-${idx}`}
-            label={idx === 0 ? 'ตรวจพบช่องว่างของสิทธิ' : ''}
-            items={[
-              {
-                label: 'ช่วงที่ปฏิบัติงาน',
-                value: (
-                  <span className="tabular-nums">
-                    {formatThaiShortDate(ev.work_start_date)} -{' '}
-                    {formatThaiShortDate(ev.work_end_date)}
-                  </span>
-                ),
-                colSpan: 2,
-              },
-              {
-                label: 'ช่วงที่สิทธิขาดหาย',
-                value: (
-                  <span className="tabular-nums font-bold text-destructive">
-                    {formatThaiShortDate(range?.start)} - {formatThaiShortDate(range?.end)}
-                  </span>
-                ),
-                colSpan: 2,
-              },
-            ]}
-          />
-        ))}
+      <div className="flex flex-col gap-2.5 bg-rose-50/50 border border-rose-100/80 px-3.5 py-3 rounded-lg">
+        <span className="text-xs font-bold text-rose-800">
+          ไม่มีสิทธิรวม <span className="text-rose-600">{formatThaiNumber(totalMissingDays)} วัน</span>
+        </span>
+        <div className="flex flex-wrap gap-2">
+          {missing.map((range, idx) => (
+            <span
+              key={`gap-${idx}`}
+              className="text-[10px] font-bold bg-white text-rose-600 px-2 py-1 rounded-md border border-rose-100 shadow-sm tabular-nums"
+            >
+              {formatThaiShortDate(range?.start)} - {formatThaiShortDate(range?.end)}
+            </span>
+          ))}
+        </div>
       </div>
     );
   }
@@ -224,7 +221,7 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
         items={[
           {
             label: 'เลขที่อ้างอิง',
-            value: <span className="font-mono">#{String(ev.leave_record_id ?? '-')}</span>,
+            value: <span className="font-mono text-slate-500 text-xs bg-slate-200/50 px-1.5 py-0.5 rounded border border-slate-200">#{String(ev.leave_record_id ?? '-')}</span>,
           },
           {
             label: 'ช่วงวันที่ลา',
@@ -238,13 +235,13 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
           {
             label: 'สถานะรายการ',
             value: isNoPay ? (
-              <span className="text-destructive font-bold">ไม่ได้รับเงิน พ.ต.ส.</span>
+              <span className="text-rose-700 font-bold bg-rose-100/50 px-2 py-0.5 rounded border border-rose-200/50 text-[11px]">ไม่ได้รับเงิน พ.ต.ส.</span>
             ) : overQuota ? (
-              <span className="text-orange-600 font-bold">ลาเกินโควตา</span>
+              <span className="text-amber-700 font-bold bg-amber-100/50 px-2 py-0.5 rounded border border-amber-200/50 text-[11px]">ลาเกินโควตา</span>
             ) : isPendingReturnReport ? (
-              <span className="text-amber-700 font-bold">ยังไม่รายงานตัวกลับ</span>
+              <span className="text-amber-600 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200/50 text-[11px]">ยังไม่รายงานตัวกลับ</span>
             ) : (
-              'ลาปกติ'
+              <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200/50 text-[11px]">ลาปกติ</span>
             ),
           },
           ...(overQuota
@@ -252,7 +249,7 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
                 {
                   label: 'เกินสิทธิตั้งแต่',
                   value: (
-                    <span className="tabular-nums font-medium text-orange-600">
+                    <span className="tabular-nums font-bold text-amber-700">
                       {exceed ?? '-'}
                     </span>
                   ),
@@ -267,9 +264,9 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
                   value: (
                     <span className="tabular-nums">
                       {formatThaiNumber(quotaLimit)}{' '}
-                      <span className="text-[10px] text-muted-foreground">
-                        {quotaUnitLabel(unit)}
-                      </span>
+                          <span className="text-[10px] font-semibold text-slate-500 uppercase">
+                            {quotaUnitLabel(unit)}
+                          </span>
                     </span>
                   ),
                 },
@@ -282,7 +279,7 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
                   value: (
                     <span className="tabular-nums">
                       {formatThaiNumber(leaveDuration)}{' '}
-                      <span className="text-[10px] text-muted-foreground">วัน</span>
+                      <span className="text-[10px] font-semibold text-slate-500 uppercase">วัน</span>
                     </span>
                   ),
                 },
@@ -295,7 +292,7 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
                   value: returnReportBadge ? (
                     <ReturnReportStatusBadge status={returnReportBadge} tone="soft" />
                   ) : (
-                    'ยังไม่รายงานตัว'
+                    <span className="text-slate-500 text-[11px] font-medium">ยังไม่รายงานตัว</span>
                   ),
                   colSpan: 2 as const,
                 },
@@ -314,7 +311,7 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
           {
             label: 'สถานะใบอนุญาต',
             value: (
-              <span className="font-semibold text-foreground">
+              <span className="font-semibold text-slate-800">
                 {normalizeLicenseStatusLabel(ev.status)}
               </span>
             ),
@@ -326,7 +323,7 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
           {
             label: 'วันหมดอายุ',
             value: (
-              <span className="tabular-nums font-bold text-destructive">
+              <span className="tabular-nums font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded">
                 {formatThaiShortDate(ev.valid_until)}
               </span>
             ),
@@ -345,7 +342,7 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
           {
             label: 'ประเภทรายการ',
             value: (
-              <span className="font-semibold">
+              <span className="font-semibold text-slate-800">
                 {localizePayrollText(String(ev.movement_type ?? '-'))}
               </span>
             ),
@@ -364,35 +361,100 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
   if (type === 'retro') {
     const diff = Number(ev.diff ?? 0);
     const ref = `${String(ev.reference_month ?? '-').padStart(2, '0')}/${String(ev.reference_year ?? '-')}`;
+    const remarkText = String(ev.remark ?? '').trim();
+    const remarkParts = remarkText
+      ? remarkText
+          .split('•')
+          .map((part) => part.trim())
+          .filter(Boolean)
+      : [];
+    const summaryPart = remarkParts[0] ?? '';
+    const comparePart = remarkParts.find((part) => part.startsWith('คำนวณใหม่')) ?? '';
+    const factorsPart = remarkParts.find((part) => part.startsWith('ปัจจัย:')) ?? '';
+    const hasMissingPaidData = remarkParts.some((part) =>
+      part.includes('ไม่พบข้อมูลจ่ายเดิมของงวดนี้'),
+    );
+    const compareMatch = comparePart.match(
+      /คำนวณใหม่\s+([+-]?\d[\d,]*(?:\.\d+)?)\s+เทียบเคยจ่าย\s+([+-]?\d[\d,]*(?:\.\d+)?)/,
+    );
+    const compareMatchNoHistory = comparePart.match(
+      /คำนวณใหม่\s+([+-]?\d[\d,]*(?:\.\d+)?)\s+บาท/,
+    );
+    const recalculatedAmount = compareMatch?.[1] ?? compareMatchNoHistory?.[1] ?? null;
+    const previouslyPaidAmount = compareMatch?.[2] ?? null;
+    const factorsText = factorsPart.replace(/^ปัจจัย:\s*/, '').trim();
+
     return (
       <EvidenceGrid
         label="รายละเอียดส่วนต่างตกเบิก"
         items={[
           {
             label: 'งวดที่อ้างอิง',
-            value: <span className="tabular-nums bg-muted px-1.5 py-0.5 rounded">{ref}</span>,
+            value: <span className="tabular-nums bg-slate-200/70 text-slate-700 px-2 py-0.5 rounded border border-slate-300/50 font-bold">{ref}</span>,
           },
           {
             label: 'ส่วนต่างที่ต้องปรับ',
             value: (
               <span
                 className={cn(
-                  'tabular-nums font-bold',
-                  diff < 0 ? 'text-destructive' : 'text-blue-600',
+                  'tabular-nums font-bold text-base',
+                  diff < 0 ? 'text-rose-700' : 'text-emerald-700',
                 )}
               >
                 {diff >= 0 ? '+' : ''}
                 {formatThaiNumber(diff)}{' '}
-                <span className="text-[10px] font-normal opacity-70">บาท</span>
+                <span className="text-[10px] font-semibold uppercase opacity-70">บาท</span>
               </span>
             ),
             colSpan: 2,
           },
-          ...(ev.remark
+          ...(recalculatedAmount
             ? [
                 {
-                  label: 'หมายเหตุระบบ',
-                  value: <span className="text-muted-foreground italic">{String(ev.remark)}</span>,
+                  label: 'ยอดคำนวณใหม่',
+                  value: (
+                    <span className="tabular-nums font-semibold text-slate-800">
+                      {recalculatedAmount} <span className="text-[10px] font-medium text-slate-500 uppercase">บาท</span>
+                    </span>
+                  ),
+                },
+              ]
+            : []),
+          ...(previouslyPaidAmount
+            ? [
+                {
+                  label: 'ยอดเคยจ่ายเดิม',
+                  value: (
+                    <span className="tabular-nums font-semibold text-slate-800">
+                      {previouslyPaidAmount} <span className="text-[10px] font-medium text-slate-500 uppercase">บาท</span>
+                    </span>
+                  ),
+                },
+              ]
+            : hasMissingPaidData
+              ? [
+                  {
+                    label: 'ยอดเคยจ่ายเดิม',
+                    value: (
+                      <span className="font-medium text-slate-500 text-[11px] bg-slate-200/50 px-1.5 py-0.5 rounded">ไม่มีข้อมูลเดิม</span>
+                    ),
+                  },
+                ]
+              : []),
+          ...(factorsText
+            ? [
+                {
+                  label: 'ปัจจัยที่กระทบ',
+                  value: <span className="font-normal text-slate-700 text-[13px] leading-relaxed">{factorsText}</span>,
+                  colSpan: 2 as const,
+                },
+              ]
+            : []),
+          ...(summaryPart
+            ? [
+                {
+                  label: 'สรุป',
+                  value: <span className="font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded border border-slate-200/50 text-[13px] leading-relaxed">{summaryPart}</span>,
                   colSpan: 2 as const,
                 },
               ]
@@ -428,7 +490,7 @@ function EvidenceLine({ evidence }: { evidence: unknown }) {
   }
 
   return (
-    <div className="text-[11px] font-mono text-muted-foreground/50 p-2 bg-muted/20 rounded-md break-all">
+    <div className="text-[11px] font-mono text-slate-500 p-3 bg-slate-100 rounded-lg break-all border border-slate-200 shadow-inner">
       {JSON.stringify(ev)}
     </div>
   );

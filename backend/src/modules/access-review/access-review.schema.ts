@@ -3,6 +3,26 @@ import { ReviewResult } from '@/modules/access-review/services/access-review.ser
 import { AccessReviewQueueStatus } from '@/modules/access-review/entities/access-review.entity.js';
 import { UserRole } from '@/types/auth.js';
 
+const isValidDate = (value: string) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return (
+    date.getUTCFullYear() === year &&
+    date.getUTCMonth() === month - 1 &&
+    date.getUTCDate() === day
+  );
+};
+
+const dateStringSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => isValidDate(value), { message: "date ต้องถูกต้องตามปฏิทิน" });
+
 // GET /access-review/cycles?year=
 export const getCyclesSchema = z.object({
   query: z.object({
@@ -84,8 +104,8 @@ export const getQueueSchema = z.object({
     reason_code: z.string().min(1).max(64).optional(),
     current_role: z.nativeEnum(UserRole).optional(),
     is_active: z.enum(["0", "1"]).optional(),
-    detected_from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-    detected_to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    detected_from: dateStringSchema.optional(),
+    detected_to: dateStringSchema.optional(),
     batch_id: z.string().regex(/^\d+$/).optional(),
     search: z.string().max(120).optional(),
   }),

@@ -39,7 +39,7 @@ export const getPeriodStatus = async (req: Request, res: Response) => {
     }
     res.json(existing);
   } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -78,7 +78,7 @@ export const getPeriodDetail = async (
         });
       return;
     }
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -167,7 +167,7 @@ export const createPeriod = async (
     console.error("Create period error:", error);
     res.status(500).json({
       success: false,
-      error: error.message || "เกิดข้อผิดพลาดในการสร้างงวดเดือน",
+      error: INTERNAL_ERROR_MESSAGE,
     });
   }
 };
@@ -305,7 +305,7 @@ export const getPayoutDetail = async (
       });
       return;
     }
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -399,7 +399,7 @@ export const getPeriodSummaryByProfession = async (
       res.status(400).json({ success: false, error: message });
       return;
     }
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -411,7 +411,7 @@ export const calculatePeriod = async (req: Request, res: Response) => {
     );
     res.json({ message: "Calculation completed successfully", data: result });
   } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -540,7 +540,7 @@ export const getPeriodReviewProgress = async (
       res.status(403).json({ success: false, error: message });
       return;
     }
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -576,7 +576,7 @@ export const setPeriodProfessionReview = async (
       res.status(400).json({ success: false, error: message });
       return;
     }
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -592,7 +592,7 @@ export const approveByHR = async (req: Request, res: Response) => {
     );
     res.json(result);
   } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -608,7 +608,7 @@ export const approveByDirector = async (req: Request, res: Response) => {
     );
     res.json(result);
   } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -624,7 +624,7 @@ export const approveByHeadFinance = async (req: Request, res: Response) => {
     );
     res.json(result);
   } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -642,7 +642,7 @@ export const rejectPeriod = async (req: Request, res: Response) => {
     );
     res.json(result);
   } catch (error: any) {
-    res.status(500).json({ message: error.message });
+    res.status(500).json({ message: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -697,6 +697,6 @@ export const deletePeriod = async (
       res.status(400).json({ success: false, error: message });
       return;
     }
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };

@@ -90,15 +90,9 @@ export class AuthService {
     };
 
     const jwtSecret = getJwtSecret();
-    const disableTokenExpiry =
-      String(process.env.DEMO_DISABLE_TOKEN_EXPIRY || "").toLowerCase() ===
-      "true";
     const jwtExpiresIn: jwt.SignOptions["expiresIn"] =
       (process.env.JWT_EXPIRES_IN as jwt.SignOptions["expiresIn"]) || "24h";
-    // Demo toggle: allow non-expiring token to avoid forced re-login during presentation.
-    const token = disableTokenExpiry
-      ? jwt.sign(jwtPayload, jwtSecret)
-      : jwt.sign(jwtPayload, jwtSecret, { expiresIn: jwtExpiresIn });
+    const token = jwt.sign(jwtPayload, jwtSecret, { expiresIn: jwtExpiresIn });
 
     // Get user profile
     const userProfile = await AuthService.getUserProfile(user.user_id);

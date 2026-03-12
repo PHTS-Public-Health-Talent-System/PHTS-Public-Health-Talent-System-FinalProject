@@ -60,19 +60,8 @@ describe('rateLimiter', () => {
     expect(authConfig.skip({}, {})).toBe(true);
   });
 
-  it('skips limiting when DEMO_DISABLE_RATE_LIMIT is true (case-insensitive)', async () => {
-    process.env.NODE_ENV = 'development';
-    process.env.DEMO_DISABLE_RATE_LIMIT = 'TrUe';
-
-    const { apiConfig, authConfig } = await getConfigs();
-
-    expect(apiConfig.skip({}, {})).toBe(true);
-    expect(authConfig.skip({}, {})).toBe(true);
-  });
-
-  it('does not skip limiting in non-test env when disable flag is absent', async () => {
-    process.env.NODE_ENV = 'development';
-    delete process.env.DEMO_DISABLE_RATE_LIMIT;
+  it('enforces limits in production', async () => {
+    process.env.NODE_ENV = 'production';
 
     const { apiConfig, authConfig } = await getConfigs();
 
@@ -80,9 +69,57 @@ describe('rateLimiter', () => {
     expect(authConfig.skip({}, {})).toBe(false);
   });
 
+  it('does not skip limiting in non-test env when disable flag is absent', async () => {
+    process.env.NODE_ENV = 'production';
+
+    const { apiConfig, authConfig } = await getConfigs();
+
+    expect(apiConfig.skip({}, {})).toBe(false);
+    expect(authConfig.skip({}, {})).toBe(false);
+  });
+
+  it('skips limiting in development for localhost requests', async () => {
+    process.env.NODE_ENV = 'development';
+    delete process.env.DEV_ENABLE_RATE_LIMIT;
+
+    const { apiConfig, authConfig } = await getConfigs();
+    const localhostReq = { ip: '127.0.0.1', headers: {} } as any;
+
+    expect(apiConfig.skip(localhostReq, {})).toBe(true);
+    expect(authConfig.skip(localhostReq, {})).toBe(true);
+  });
+
+  it('does not skip development limiting for non-local forwarded clients', async () => {
+    process.env.NODE_ENV = 'development';
+    process.env.DEV_ENABLE_RATE_LIMIT = 'true';
+
+    const { apiConfig, authConfig } = await getConfigs();
+    const forwardedReq = {
+      ip: '127.0.0.1',
+      headers: { 'x-forwarded-for': '203.0.113.7, 10.0.0.2' },
+    } as any;
+
+    expect(apiConfig.skip(forwardedReq, {})).toBe(false);
+    expect(authConfig.skip(forwardedReq, {})).toBe(false);
+  });
+
+  it('skips development limiting for non-local forwarded clients by default', async () => {
+    process.env.NODE_ENV = 'development';
+    delete process.env.DEV_ENABLE_RATE_LIMIT;
+
+    const { apiConfig, authConfig } = await getConfigs();
+    const forwardedReq = {
+      ip: '127.0.0.1',
+      headers: { 'x-forwarded-for': '203.0.113.7, 10.0.0.2' },
+    } as any;
+
+    expect(apiConfig.skip(forwardedReq, {})).toBe(true);
+    expect(authConfig.skip(forwardedReq, {})).toBe(true);
+  });
+
   it('skips api limiter for /api/auth routes to avoid double-limiting login', async () => {
     process.env.NODE_ENV = 'development';
-    delete process.env.DEMO_DISABLE_RATE_LIMIT;
+    process.env.DEV_ENABLE_RATE_LIMIT = 'true';
 
     const { apiConfig, authConfig } = await getConfigs();
 
@@ -94,7 +131,6 @@ describe('rateLimiter', () => {
 
   it('auth handler returns retry-after metadata for login rate limit', async () => {
     process.env.NODE_ENV = 'development';
-    delete process.env.DEMO_DISABLE_RATE_LIMIT;
 
     const { authConfig } = await getConfigs();
     const req = {

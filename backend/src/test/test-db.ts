@@ -4,6 +4,9 @@ import path from "node:path";
 import dotenv from "dotenv";
 import { loadEnv } from '@config/env.js';
 
+const TEST_DB_CHARSET = "utf8mb4";
+const TEST_DB_COLLATION = "utf8mb4_unicode_ci";
+
 const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 const ensureColumn = async (
   conn: mysql.Connection,
@@ -104,11 +107,32 @@ async function ensureDatabaseExists(config: TestDbConfig): Promise<void> {
     multipleStatements: true,
   });
   try {
-    await conn.query(`CREATE DATABASE IF NOT EXISTS \`${config.database}\``);
+    await conn.query(
+      `CREATE DATABASE IF NOT EXISTS \`${config.database}\` CHARACTER SET ${TEST_DB_CHARSET} COLLATE ${TEST_DB_COLLATION}`,
+    );
+    await conn.query(
+      `ALTER DATABASE \`${config.database}\` CHARACTER SET ${TEST_DB_CHARSET} COLLATE ${TEST_DB_COLLATION}`,
+    );
   } finally {
     await conn.end();
   }
 }
+
+const ensureTableCollation = async (
+  conn: mysql.Connection,
+  table: string,
+): Promise<void> => {
+  try {
+    await conn.query(
+      `ALTER TABLE \`${table}\` CONVERT TO CHARACTER SET ${TEST_DB_CHARSET} COLLATE ${TEST_DB_COLLATION}`,
+    );
+  } catch (error: any) {
+    const code = String(error?.code || "");
+    if (code !== "ER_NO_SUCH_TABLE") {
+      throw error;
+    }
+  }
+};
 
 export async function getTestConnection() {
   const candidates = buildTestDbCandidates();
@@ -277,6 +301,11 @@ export async function resetAuthSchema(): Promise<void> {
       )
     `);
 
+    await ensureTableCollation(conn, "users");
+    await ensureTableCollation(conn, "emp_profiles");
+    await ensureTableCollation(conn, "emp_support_staff");
+    await ensureTableCollation(conn, "emp_licenses");
+
     await conn.execute("DELETE FROM emp_licenses");
     await conn.execute("DELETE FROM emp_support_staff");
     await conn.execute("DELETE FROM emp_profiles");
@@ -340,6 +369,8 @@ export async function resetRequestSchema(): Promise<void> {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    await ensureTableCollation(conn, "req_submissions");
 
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS req_verification_snapshots (
@@ -434,6 +465,10 @@ export async function resetPayrollSchema(): Promise<void> {
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    await ensureTableCollation(conn, "req_submissions");
+    await ensureTableCollation(conn, "pay_period_items");
+    await ensureTableCollation(conn, "pay_results");
 
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS req_verification_snapshots (
@@ -588,6 +623,7 @@ export async function resetSnapshotSchema(): Promise<void> {
         total_payable DECIMAL(12,2) NULL
       )
     `);
+    await ensureTableCollation(conn, "pay_results");
 
     await conn.execute("DROP TABLE IF EXISTS pay_snapshots");
     await conn.execute(`
@@ -627,6 +663,7 @@ export async function resetSnapshotSchema(): Promise<void> {
         position_name VARCHAR(255) NULL
       )
     `);
+    await ensureTableCollation(conn, "emp_profiles");
     await ensureColumn(conn, "emp_profiles", "title", "VARCHAR(20) NULL");
     await ensureColumn(conn, "emp_profiles", "department", "VARCHAR(255) NULL");
     await ensureColumn(conn, "emp_profiles", "position_name", "VARCHAR(255) NULL");
@@ -644,6 +681,7 @@ export async function resetSnapshotSchema(): Promise<void> {
         last_synced_at DATETIME NULL
       )
     `);
+    await ensureTableCollation(conn, "emp_support_staff");
     await ensureColumn(conn, "emp_support_staff", "title", "VARCHAR(20) NULL");
     await ensureColumn(conn, "emp_support_staff", "department", "VARCHAR(255) NULL");
     await ensureColumn(conn, "emp_support_staff", "position_name", "VARCHAR(255) NULL");

@@ -4,6 +4,7 @@
  */
 import { Request, Response } from "express";
 import { ApiResponse } from "@/types/auth.js";
+import { asyncHandler } from "@middlewares/errorHandler.js";
 import {
   AlertBucket,
   getLicenseComplianceList,
@@ -13,15 +14,15 @@ import {
 
 const VALID_BUCKETS: AlertBucket[] = ["expired", "30", "60", "90"];
 
-export const getLicenseSummary = async (
+export const getLicenseSummary = asyncHandler(async (
   _req: Request,
   res: Response<ApiResponse>,
 ) => {
   const data = await getLicenseComplianceSummary();
   res.json({ success: true, data });
-};
+});
 
-export const getLicenseList = async (
+export const getLicenseList = asyncHandler(async (
   req: Request,
   res: Response<ApiResponse>,
 ) => {
@@ -32,9 +33,9 @@ export const getLicenseList = async (
   }
   const data = await getLicenseComplianceList(bucket);
   res.json({ success: true, data });
-};
+});
 
-export const postLicenseNotify = async (
+export const postLicenseNotify = asyncHandler(async (
   req: Request,
   res: Response<ApiResponse>,
 ) => {
@@ -43,4 +44,4 @@ export const postLicenseNotify = async (
   };
   const data = await notifyLicenseCompliance(body.items ?? []);
   res.json({ success: true, data });
-};
+});

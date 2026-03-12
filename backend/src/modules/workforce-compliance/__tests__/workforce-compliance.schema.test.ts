@@ -11,6 +11,16 @@ describe("workforce-compliance schema", () => {
     expect(result.success).toBe(false);
   });
 
+  test("rejects impossible calendar retire_date", async () => {
+    const result = await retirementCreateSchema.safeParseAsync({
+      body: {
+        citizen_id: "123",
+        retire_date: "2026-02-31",
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
   test("accepts valid retire_date", async () => {
     const result = await retirementCreateSchema.safeParseAsync({
       body: {

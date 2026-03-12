@@ -114,6 +114,9 @@ jest.mock("@/modules/system/admin/admin.controller.js", () => ({
   getMaintenanceMode: ok,
   getJobStatus: ok,
   getVersionInfo: ok,
+  getNotificationOutbox: ok,
+  retryNotificationDeadLetters: ok,
+  retryNotificationOutbox: ok,
   getSnapshotOutbox: ok,
   retrySnapshotDeadLetters: ok,
   retrySnapshotOutbox: ok,
@@ -142,6 +145,7 @@ jest.mock("@/modules/report/report.controller.js", () => ({
 jest.mock("@/modules/notification/notification.controller.js", () => ({
   getMyNotifications: ok,
   markRead: ok,
+  getUnreadCount: ok,
   deleteReadNotifications: ok,
   getNotificationSettings: ok,
   updateNotificationSettings: ok,

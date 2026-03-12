@@ -1,6 +1,8 @@
 import { describe, expect, test } from "@jest/globals";
 import {
   createLeaveManagementSchema,
+  leaveDocumentIdParamSchema,
+  leaveManagementIdParamSchema,
   upsertLeaveManagementExtensionSchema,
   replaceLeaveReturnEventsSchema,
 } from "../leave-management.schema";
@@ -150,5 +152,17 @@ describe("leave-management schema", () => {
     });
     expect(parsed.params.leaveManagementId).toBe(12);
     expect(parsed.body.events).toEqual([{ report_date: "2026-04-22" }]);
+  });
+
+  test("leaveManagementId param rejects non-numeric value", () => {
+    expect(() =>
+      leaveManagementIdParamSchema.parse({ params: { leaveManagementId: "abc" } }),
+    ).toThrow();
+  });
+
+  test("documentId param rejects non-numeric value", () => {
+    expect(() =>
+      leaveDocumentIdParamSchema.parse({ params: { documentId: "abc" } }),
+    ).toThrow();
   });
 });

@@ -51,13 +51,13 @@ export const createLeaveManagementSchema = z.object({
 
 export const leaveManagementIdParamSchema = z.object({
   params: z.object({
-    leaveManagementId: z.string().transform((val) => Number(val)),
+    leaveManagementId: z.coerce.number().int().positive(),
   }),
 });
 
 export const leaveDocumentIdParamSchema = z.object({
   params: z.object({
-    documentId: z.string().transform((val) => Number(val)),
+    documentId: z.coerce.number().int().positive(),
   }),
 });
 

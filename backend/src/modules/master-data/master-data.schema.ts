@@ -84,7 +84,7 @@ export const createRateSchema = z.object({
 
 export const updateRateSchema = z.object({
   params: z.object({
-    rateId: z.string().transform((val) => Number(val)),
+    rateId: z.coerce.number().int().positive(),
   }),
   body: z.object({
     // Allow partial update for backward compatibility, but support full columns for cfg_payment_rates.
@@ -109,7 +109,7 @@ export const updateRateSchema = z.object({
 
 export const deleteRateSchema = z.object({
   params: z.object({
-    rateId: z.string().transform((val) => Number(val)),
+    rateId: z.coerce.number().int().positive(),
   }),
 });
 

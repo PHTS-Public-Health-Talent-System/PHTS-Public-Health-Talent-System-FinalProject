@@ -8,6 +8,9 @@ const summarizeLeaveManagementByProfessionByPeriod = jest.fn();
 jest.mock("@/modules/payroll/repositories/payroll.repository.js", () => ({
   PayrollRepository: {
     findPeriodById: jest.fn(),
+    getConnection: jest.fn(),
+    findPeriodItemCitizenIds: jest.fn(),
+    findPayoutsByPeriod: jest.fn(),
   },
 }));
 
@@ -20,8 +23,14 @@ jest.mock("@/modules/leave-management/repositories/leave-management.repository.j
 }));
 
 describe("PayrollPeriodLeaveService", () => {
+  const release = jest.fn();
+
   beforeEach(() => {
     jest.clearAllMocks();
+    release.mockReset();
+    (PayrollRepository.getConnection as jest.Mock).mockResolvedValue({
+      release,
+    });
   });
 
   test("lists leave rows by payroll period range", async () => {
@@ -30,6 +39,14 @@ describe("PayrollPeriodLeaveService", () => {
       period_month: 3,
       period_year: 2026,
     });
+    (PayrollRepository.findPeriodItemCitizenIds as jest.Mock).mockResolvedValue([
+      "1111111111111",
+      "2222222222222",
+    ]);
+    (PayrollRepository.findPayoutsByPeriod as jest.Mock).mockResolvedValue([
+      { citizen_id: "1111111111111" },
+      { citizen_id: "2222222222222" },
+    ]);
     listLeaveManagementByPeriod.mockResolvedValue([{ id: 1 }] as any);
     countLeaveManagementByPeriod.mockResolvedValue(1);
 
@@ -46,8 +63,11 @@ describe("PayrollPeriodLeaveService", () => {
         start_date: "2026-03-01",
         end_date: "2026-03-31",
         profession_code: "NURSE",
+        citizen_ids: ["1111111111111", "2222222222222"],
       }),
     );
+    expect(PayrollRepository.findPeriodItemCitizenIds).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
     expect(result.total).toBe(1);
   });
 
@@ -57,6 +77,12 @@ describe("PayrollPeriodLeaveService", () => {
       period_month: 2,
       period_year: 2569,
     });
+    (PayrollRepository.findPeriodItemCitizenIds as jest.Mock).mockResolvedValue([
+      "1600100184751",
+    ]);
+    (PayrollRepository.findPayoutsByPeriod as jest.Mock).mockResolvedValue([
+      { citizen_id: "1600100184751" },
+    ]);
     summarizeLeaveManagementByProfessionByPeriod.mockResolvedValue([
       { profession_code: "NURSE", profession_name: "พยาบาล", leave_count: 3 },
     ] as any);
@@ -70,10 +96,68 @@ describe("PayrollPeriodLeaveService", () => {
         start_date: "2026-02-01",
         end_date: "2026-02-28",
         search: "พยาบาล",
+        citizen_ids: ["1600100184751"],
       }),
     );
     expect(result).toEqual([
       { profession_code: "NURSE", profession_name: "พยาบาล", leave_count: 3 },
     ]);
+  });
+
+  test("returns empty result when no payroll citizen exists in that period", async () => {
+    (PayrollRepository.findPeriodById as jest.Mock).mockResolvedValue({
+      period_id: 33,
+      period_month: 3,
+      period_year: 2026,
+    });
+    (PayrollRepository.findPayoutsByPeriod as jest.Mock).mockResolvedValue([]);
+    (PayrollRepository.findPeriodItemCitizenIds as jest.Mock).mockResolvedValue([]);
+
+    const listResult = await PayrollPeriodLeaveService.listPeriodLeaves(33, {});
+    const summaryResult = await PayrollPeriodLeaveService.summarizePeriodLeavesByProfession(33, {});
+
+    expect(listResult).toEqual({
+      items: [],
+      total: 0,
+      limit: null,
+      offset: 0,
+      period_start: "2026-03-01",
+      period_end: "2026-03-31",
+    });
+    expect(summaryResult).toEqual([]);
+    expect(listLeaveManagementByPeriod).not.toHaveBeenCalled();
+    expect(countLeaveManagementByPeriod).not.toHaveBeenCalled();
+    expect(summarizeLeaveManagementByProfessionByPeriod).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalled();
+  });
+
+  test("falls back to period items when payout rows do not exist yet", async () => {
+    (PayrollRepository.findPeriodById as jest.Mock).mockResolvedValue({
+      period_id: 11,
+      period_month: 4,
+      period_year: 2026,
+    });
+    (PayrollRepository.findPayoutsByPeriod as jest.Mock).mockResolvedValue([]);
+    (PayrollRepository.findPeriodItemCitizenIds as jest.Mock).mockResolvedValue([
+      "9999999999999",
+    ]);
+    listLeaveManagementByPeriod.mockResolvedValue([{ id: 7 }] as any);
+    countLeaveManagementByPeriod.mockResolvedValue(1);
+
+    const result = await PayrollPeriodLeaveService.listPeriodLeaves(11, {});
+
+    expect(listLeaveManagementByPeriod).toHaveBeenCalledWith(
+      expect.objectContaining({
+        citizen_ids: ["9999999999999"],
+        start_date: "2026-04-01",
+        end_date: "2026-04-30",
+      }),
+    );
+    expect(PayrollRepository.findPeriodItemCitizenIds).toHaveBeenCalledWith(
+      11,
+      expect.any(Object),
+    );
+    expect(release).toHaveBeenCalled();
+    expect(result.total).toBe(1);
   });
 });

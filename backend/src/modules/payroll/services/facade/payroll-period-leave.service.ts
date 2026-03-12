@@ -21,6 +21,26 @@ const resolvePeriodRange = async (periodId: number) => {
   return { period, startDate, endDate };
 };
 
+const resolvePayrollCitizenIds = async (periodId: number): Promise<string[]> => {
+  const payoutRows = await PayrollRepository.findPayoutsByPeriod(periodId);
+  const payoutCitizenIds = payoutRows
+    .map((row: any) => String(row?.citizen_id ?? "").trim())
+    .filter((value) => value.length > 0);
+  if (payoutCitizenIds.length > 0) {
+    return [...new Set(payoutCitizenIds)];
+  }
+
+  const conn = await PayrollRepository.getConnection();
+  try {
+    const periodItemCitizenIds = await PayrollRepository.findPeriodItemCitizenIds(periodId, conn);
+    return periodItemCitizenIds
+      .map((value) => String(value ?? "").trim())
+      .filter((value) => value.length > 0);
+  } finally {
+    conn.release();
+  }
+};
+
 export class PayrollPeriodLeaveService {
   static async listPeriodLeaves(
     periodId: number,
@@ -37,15 +57,28 @@ export class PayrollPeriodLeaveService {
     >,
   ) {
     const { startDate, endDate } = await resolvePeriodRange(periodId);
+    const citizenIds = await resolvePayrollCitizenIds(periodId);
+    if (citizenIds.length === 0) {
+      return {
+        items: [],
+        total: 0,
+        limit: params.limit ?? null,
+        offset: params.offset ?? 0,
+        period_start: startDate,
+        period_end: endDate,
+      };
+    }
     const leaveRepository = new LeaveManagementRepository();
     const [items, total] = await Promise.all([
       leaveRepository.listLeaveManagementByPeriod({
         ...params,
+        citizen_ids: citizenIds,
         start_date: startDate,
         end_date: endDate,
       }),
       leaveRepository.countLeaveManagementByPeriod({
         ...params,
+        citizen_ids: citizenIds,
         start_date: startDate,
         end_date: endDate,
       }),
@@ -68,9 +101,14 @@ export class PayrollPeriodLeaveService {
     >,
   ) {
     const { startDate, endDate } = await resolvePeriodRange(periodId);
+    const citizenIds = await resolvePayrollCitizenIds(periodId);
+    if (citizenIds.length === 0) {
+      return [];
+    }
     const leaveRepository = new LeaveManagementRepository();
     return leaveRepository.summarizeLeaveManagementByProfessionByPeriod({
       ...params,
+      citizen_ids: citizenIds,
       start_date: startDate,
       end_date: endDate,
     });

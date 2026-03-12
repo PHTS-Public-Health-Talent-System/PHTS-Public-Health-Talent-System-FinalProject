@@ -110,7 +110,11 @@ export type LeaveQuotaLeaveRow = RowDataPacket & {
   study_major?: string | null;
 };
 
-export type LeaveManagementPeriodQuery = LeaveManagementListQuery & {
+type LeaveManagementInternalQuery = LeaveManagementListQuery & {
+  citizen_ids?: string[];
+};
+
+export type LeaveManagementPeriodQuery = LeaveManagementInternalQuery & {
   start_date: string;
   end_date: string;
 };
@@ -170,7 +174,7 @@ const buildProfessionCaseSql = (positionExpr: string) => `
   END
 `;
 
-const buildLeaveManagementFilters = (params: LeaveManagementListQuery) => {
+const buildLeaveManagementFilters = (params: LeaveManagementInternalQuery) => {
   const clauses: string[] = [];
   const values: unknown[] = [];
   const positionExpr = "COALESCE(ep.position_name, ss.position_name, '')";
@@ -221,6 +225,18 @@ const buildLeaveManagementFilters = (params: LeaveManagementListQuery) => {
       );
       values.push(pattern, pattern, pattern, pattern, pattern, pattern);
     });
+  }
+  if (Array.isArray(params.citizen_ids)) {
+    const citizenIds = params.citizen_ids
+      .map((value) => String(value ?? "").trim())
+      .filter((value) => value.length > 0);
+    if (citizenIds.length === 0) {
+      clauses.push("1 = 0");
+    } else {
+      const placeholders = citizenIds.map(() => "?").join(",");
+      clauses.push(`lr.citizen_id IN (${placeholders})`);
+      values.push(...citizenIds);
+    }
   }
 
   const whereClause = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
@@ -481,7 +497,10 @@ export class LeaveManagementRepository {
   }
 
   async summarizeLeaveManagementByProfessionByPeriod(
-    params: Pick<LeaveManagementPeriodQuery, "start_date" | "end_date" | "search" | "leave_type" | "pending_report">,
+    params: Pick<
+      LeaveManagementPeriodQuery,
+      "start_date" | "end_date" | "search" | "leave_type" | "pending_report" | "citizen_ids"
+    >,
   ): Promise<Array<{ profession_code: string | null; profession_name: string; leave_count: number }>> {
     const { start_date, end_date, ...filters } = params;
     const { whereClause, values } = buildLeaveManagementFilters(filters);

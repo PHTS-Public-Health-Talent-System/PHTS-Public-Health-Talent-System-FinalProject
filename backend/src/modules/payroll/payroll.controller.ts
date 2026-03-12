@@ -14,6 +14,32 @@ import type {
 } from "@/modules/payroll/dto/index.js";
 
 const INTERNAL_ERROR_MESSAGE = "เกิดข้อผิดพลาดภายในระบบ";
+const PERIOD_NOT_FOUND_MESSAGE = "Period not found";
+const PERIOD_FORBIDDEN_MESSAGE = "Forbidden period access";
+const PERIOD_FORBIDDEN_RESPONSE_MESSAGE =
+  "You do not have permission to view this period";
+
+const handlePeriodVisibilityError = (
+  res: Response,
+  error: unknown,
+): boolean => {
+  const message = (error as { message?: string })?.message;
+
+  if (message === PERIOD_NOT_FOUND_MESSAGE) {
+    res.status(404).json({ success: false, error: PERIOD_NOT_FOUND_MESSAGE });
+    return true;
+  }
+
+  if (message === PERIOD_FORBIDDEN_MESSAGE) {
+    res.status(403).json({
+      success: false,
+      error: PERIOD_FORBIDDEN_RESPONSE_MESSAGE,
+    });
+    return true;
+  }
+
+  return false;
+};
 
 const getCurrentRole = (req: Request): string | null => {
   return ((req.user as any)?.role as string | undefined) ?? null;
@@ -65,17 +91,15 @@ export const getPeriodDetail = async (
     res.json({ success: true, data: detail });
   } catch (error: any) {
     const message = error.message || "เกิดข้อผิดพลาดในการโหลดงวด";
-    if (message === "Period not found") {
+    if (message === PERIOD_NOT_FOUND_MESSAGE) {
       res.status(404).json({ success: false, error: message });
       return;
     }
-    if (message === "Forbidden period access") {
-      res
-        .status(403)
-        .json({
-          success: false,
-          error: "You do not have permission to view this period",
-        });
+    if (message === PERIOD_FORBIDDEN_MESSAGE) {
+      res.status(403).json({
+        success: false,
+        error: PERIOD_FORBIDDEN_RESPONSE_MESSAGE,
+      });
       return;
     }
     res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
@@ -186,17 +210,7 @@ export const getPeriodPayouts = async (req: Request, res: Response) => {
     const payouts = await PayrollService.getPeriodPayouts(Number(periodId));
     res.json({ success: true, data: payouts });
   } catch (error: any) {
-    if (error?.message === "Period not found") {
-      res.status(404).json({ success: false, error: "Period not found" });
-      return;
-    }
-    if (error?.message === "Forbidden period access") {
-      res
-        .status(403)
-        .json({
-          success: false,
-          error: "You do not have permission to view this period",
-        });
+    if (handlePeriodVisibilityError(res, error)) {
       return;
     }
     res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
@@ -227,15 +241,7 @@ export const getPeriodLeaves = async (req: Request, res: Response) => {
     const result = await PayrollService.getPeriodLeaves(Number(periodId), params);
     res.json({ success: true, data: result.items, meta: result });
   } catch (error: any) {
-    if (error?.message === "Period not found") {
-      res.status(404).json({ success: false, error: "Period not found" });
-      return;
-    }
-    if (error?.message === "Forbidden period access") {
-      res.status(403).json({
-        success: false,
-        error: "You do not have permission to view this period",
-      });
+    if (handlePeriodVisibilityError(res, error)) {
       return;
     }
     res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
@@ -261,15 +267,7 @@ export const getPeriodLeaveProfessionSummary = async (req: Request, res: Respons
     const rows = await PayrollService.getPeriodLeaveProfessionSummary(Number(periodId), params);
     res.json({ success: true, data: rows });
   } catch (error: any) {
-    if (error?.message === "Period not found") {
-      res.status(404).json({ success: false, error: "Period not found" });
-      return;
-    }
-    if (error?.message === "Forbidden period access") {
-      res.status(403).json({
-        success: false,
-        error: "You do not have permission to view this period",
-      });
+    if (handlePeriodVisibilityError(res, error)) {
       return;
     }
     res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
@@ -298,10 +296,10 @@ export const getPayoutDetail = async (
       res.status(404).json({ success: false, error: message });
       return;
     }
-    if (message === "Forbidden period access") {
+    if (message === PERIOD_FORBIDDEN_MESSAGE) {
       res.status(403).json({
         success: false,
-        error: "You do not have permission to view this period",
+        error: PERIOD_FORBIDDEN_RESPONSE_MESSAGE,
       });
       return;
     }
@@ -382,17 +380,15 @@ export const getPeriodSummaryByProfession = async (
     res.json({ success: true, data: summary });
   } catch (error: any) {
     const message = error.message || "เกิดข้อผิดพลาดในการสรุปข้อมูล";
-    if (message === "Period not found") {
+    if (message === PERIOD_NOT_FOUND_MESSAGE) {
       res.status(404).json({ success: false, error: message });
       return;
     }
-    if (message === "Forbidden period access") {
-      res
-        .status(403)
-        .json({
-          success: false,
-          error: "You do not have permission to view this period",
-        });
+    if (message === PERIOD_FORBIDDEN_MESSAGE) {
+      res.status(403).json({
+        success: false,
+        error: PERIOD_FORBIDDEN_RESPONSE_MESSAGE,
+      });
       return;
     }
     if (message === "Period not calculated") {
@@ -532,11 +528,11 @@ export const getPeriodReviewProgress = async (
     res.json({ success: true, data });
   } catch (error: any) {
     const message = error?.message || "เกิดข้อผิดพลาดในการโหลดความคืบหน้า";
-    if (message === "Period not found") {
+    if (message === PERIOD_NOT_FOUND_MESSAGE) {
       res.status(404).json({ success: false, error: message });
       return;
     }
-    if (message === "Forbidden period access") {
+    if (message === PERIOD_FORBIDDEN_MESSAGE) {
       res.status(403).json({ success: false, error: message });
       return;
     }
@@ -564,7 +560,7 @@ export const setPeriodProfessionReview = async (
     res.json({ success: true, data });
   } catch (error: any) {
     const message = error?.message || "เกิดข้อผิดพลาดในการบันทึกการยืนยันตรวจ";
-    if (message === "Period not found") {
+    if (message === PERIOD_NOT_FOUND_MESSAGE) {
       res.status(404).json({ success: false, error: message });
       return;
     }

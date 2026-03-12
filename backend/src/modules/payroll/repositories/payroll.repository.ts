@@ -280,6 +280,10 @@ export class PayrollRepository {
     return PayrollPayoutRepository.findPayoutChecksByPayoutId(payoutId);
   }
 
+  static async findPaymentRatesByIds(rateIds: number[]): Promise<RowDataPacket[]> {
+    return PayrollPayoutRepository.findPaymentRatesByIds(rateIds);
+  }
+
   static async findPayoutItemsByPayoutId(payoutId: number): Promise<RowDataPacket[]> {
     return PayrollPayoutRepository.findPayoutItemsByPayoutId(payoutId);
   }

@@ -6,6 +6,161 @@ import { PayrollRepository } from "@/modules/payroll/repositories/payroll.reposi
 import { PayrollQueryRepository } from "@/modules/payroll/repositories/query.repository.js";
 import { buildPayrollLeaveImpactSummary } from "@/modules/payroll/services/calculation/payroll-leave-impact.service.js";
 import { PayrollWorkflowService } from "@/modules/payroll/services/workflow/payroll-workflow.service.js";
+import { formatDateOnly } from "@/shared/utils/date-only.js";
+
+type RateBreakdownSegment = {
+  start_date: string;
+  end_date: string;
+  days: number;
+  rate: number;
+  amount: number;
+  eligibility_id?: number | null;
+  master_rate_id?: number | null;
+  group_no?: number | null;
+  item_no?: number | null;
+  sub_item_no?: number | null;
+};
+
+const toDateOnly = (value: unknown): string => {
+  if (!value) return "";
+  try {
+    return formatDateOnly(value as Date | string, {
+      timezone: process.env.DB_TIMEZONE || "+07:00",
+    });
+  } catch {
+    return String(value).slice(0, 10);
+  }
+};
+
+const buildRateBreakdown = (params: {
+  monthStart: string;
+  monthEnd: string;
+  daysInMonth: number;
+  eligibilityRows: any[];
+}): RateBreakdownSegment[] => {
+  const { monthStart, monthEnd, daysInMonth, eligibilityRows } = params;
+  if (daysInMonth <= 0 || !eligibilityRows.length) return [];
+
+  const eligibilities = eligibilityRows
+    .map((row) => ({
+      eligibilityId: Number((row as any).eligibility_id ?? 0) || null,
+      masterRateId:
+        Number((row as any).master_rate_id ?? (row as any).rate_id ?? 0) || null,
+      groupNo: Number((row as any).group_no ?? 0) || null,
+      itemNo: Number((row as any).item_no ?? 0) || null,
+      subItemNo: Number((row as any).sub_item_no ?? 0) || null,
+      start: toDateOnly((row as any).effective_date),
+      end: (row as any).expiry_date ? toDateOnly((row as any).expiry_date) : monthEnd,
+      rate: Number((row as any).rate ?? 0),
+    }))
+    .filter((row) => row.start && row.end && row.rate > 0)
+    .sort((a, b) => a.start.localeCompare(b.start));
+
+  if (!eligibilities.length) return [];
+
+  const dailyMap = new Map<
+    string,
+    {
+      rate: number;
+      eligibilityId: number | null;
+      masterRateId: number | null;
+      groupNo: number | null;
+      itemNo: number | null;
+      subItemNo: number | null;
+    }
+  >();
+  const cursor = new Date(`${monthStart}T00:00:00`);
+  const monthEndDate = new Date(`${monthEnd}T00:00:00`);
+  while (cursor <= monthEndDate) {
+    const day = formatLocalDate(cursor);
+    const active = eligibilities
+      .filter((elig) => day >= elig.start && day <= elig.end)
+      .sort((a, b) => a.start.localeCompare(b.start))
+      .at(-1);
+    if (active && active.rate > 0) {
+      dailyMap.set(day, {
+        rate: active.rate,
+        eligibilityId: active.eligibilityId,
+        masterRateId: active.masterRateId,
+        groupNo: active.groupNo,
+        itemNo: active.itemNo,
+        subItemNo: active.subItemNo,
+      });
+    }
+    cursor.setDate(cursor.getDate() + 1);
+  }
+
+  const segments: Array<{
+    start: string;
+    end: string;
+    days: number;
+    rate: number;
+    eligibilityId: number | null;
+    masterRateId: number | null;
+    groupNo: number | null;
+    itemNo: number | null;
+    subItemNo: number | null;
+  }> = [];
+  for (const [day, active] of Array.from(dailyMap.entries()).sort(([a], [b]) =>
+    a.localeCompare(b),
+  )) {
+    const last = segments[segments.length - 1];
+    const isSameSegment =
+      last &&
+      last.rate === active.rate &&
+      last.eligibilityId === active.eligibilityId &&
+      last.masterRateId === active.masterRateId &&
+      last.groupNo === active.groupNo &&
+      last.itemNo === active.itemNo &&
+      last.subItemNo === active.subItemNo;
+    if (!isSameSegment) {
+      segments.push({
+        start: day,
+        end: day,
+        days: 1,
+        rate: active.rate,
+        eligibilityId: active.eligibilityId,
+        masterRateId: active.masterRateId,
+        groupNo: active.groupNo,
+        itemNo: active.itemNo,
+        subItemNo: active.subItemNo,
+      });
+      continue;
+    }
+    const nextOfLast = new Date(`${last.end}T00:00:00`);
+    nextOfLast.setDate(nextOfLast.getDate() + 1);
+    const expected = formatLocalDate(nextOfLast);
+    if (day === expected) {
+      last.end = day;
+      last.days += 1;
+    } else {
+      segments.push({
+        start: day,
+        end: day,
+        days: 1,
+        rate: active.rate,
+        eligibilityId: active.eligibilityId,
+        masterRateId: active.masterRateId,
+        groupNo: active.groupNo,
+        itemNo: active.itemNo,
+        subItemNo: active.subItemNo,
+      });
+    }
+  }
+
+  return segments.map((segment) => ({
+    start_date: segment.start,
+    end_date: segment.end,
+    days: segment.days,
+    rate: segment.rate,
+    amount: Number(((segment.rate / daysInMonth) * segment.days).toFixed(2)),
+    eligibility_id: segment.eligibilityId,
+    master_rate_id: segment.masterRateId,
+    group_no: segment.groupNo,
+    item_no: segment.itemNo,
+    sub_item_no: segment.subItemNo,
+  }));
+};
 
 type PayoutEditPayload = {
   eligible_days?: number;
@@ -123,6 +278,40 @@ export class PayrollPayoutService {
     const items = await PayrollRepository.findPayoutItemsByPayoutId(payoutId);
     const checksRaw =
       await PayrollRepository.findPayoutChecksByPayoutId(payoutId);
+    const referencedRateIds = new Set<number>();
+    for (const row of checksRaw as any[]) {
+      const evidenceRaw = row?.evidence_json;
+      let evidenceList: unknown[] = [];
+      if (Array.isArray(evidenceRaw)) {
+        evidenceList = evidenceRaw;
+      } else if (typeof evidenceRaw === "string" && evidenceRaw.trim()) {
+        try {
+          evidenceList = JSON.parse(evidenceRaw);
+        } catch {
+          evidenceList = [];
+        }
+      }
+      for (const evidence of evidenceList) {
+        if (!evidence || typeof evidence !== "object") continue;
+        const ev = evidence as any;
+        if (String(ev.type ?? "") !== "eligibility") continue;
+        const rateId = Number(ev.rate_id ?? 0);
+        if (Number.isFinite(rateId) && rateId > 0) referencedRateIds.add(rateId);
+      }
+    }
+    const rateMetaById = new Map<number, { group_no: unknown; item_no: unknown; sub_item_no: unknown }>();
+    if (referencedRateIds.size > 0) {
+      const rows = await PayrollRepository.findPaymentRatesByIds(Array.from(referencedRateIds));
+      for (const row of rows as any[]) {
+        const rateId = Number(row?.rate_id ?? 0);
+        if (!Number.isFinite(rateId) || rateId <= 0) continue;
+        rateMetaById.set(rateId, {
+          group_no: row?.group_no ?? null,
+          item_no: row?.item_no ?? null,
+          sub_item_no: row?.sub_item_no ?? null,
+        });
+      }
+    }
     const checks = checksRaw.map((row: any) => {
       const evidenceRaw = row.evidence_json;
       let evidence: unknown[] = [];
@@ -135,11 +324,27 @@ export class PayrollPayoutService {
           evidence = [];
         }
       }
+      const normalizedEvidence = evidence.map((item) => {
+        if (!item || typeof item !== "object") return item;
+        const ev = item as any;
+        if (String(ev.type ?? "") !== "eligibility") return item;
+        const rateId = Number(ev.rate_id ?? 0);
+        if (!Number.isFinite(rateId) || rateId <= 0) return item;
+        const meta = rateMetaById.get(rateId);
+        if (!meta) return item;
+        return {
+          ...ev,
+          group_no: meta.group_no,
+          item_no: meta.item_no,
+          sub_item_no: meta.sub_item_no,
+        };
+      });
       const { evidence_json: _ignore, ...rest } = row;
-      return { ...rest, evidence };
+      return { ...rest, evidence: normalizedEvidence };
     });
 
     let leaveImpactSummary;
+    let rateBreakdown: RateBreakdownSegment[] = [];
     const citizenId = String((payout as any).citizen_id ?? "").trim();
     const month = Number((payout as any).period_month ?? 0);
     const rawYear = Number((payout as any).period_year ?? 0);
@@ -162,6 +367,12 @@ export class PayrollPayoutService {
           fiscalYear,
           conn,
         );
+        rateBreakdown = buildRateBreakdown({
+          monthStart: formatLocalDate(startOfMonth),
+          monthEnd: formatLocalDate(endOfMonth),
+          daysInMonth: endOfMonth.getDate(),
+          eligibilityRows: (batchData.eligibilityRows as any[]) ?? [],
+        });
         leaveImpactSummary = buildPayrollLeaveImpactSummary({
           year,
           month,
@@ -180,7 +391,7 @@ export class PayrollPayoutService {
       }
     }
 
-    return { payout, items, checks, leaveImpactSummary };
+    return { payout, items, checks, leaveImpactSummary, rateBreakdown };
   }
 
   static async updatePayout(

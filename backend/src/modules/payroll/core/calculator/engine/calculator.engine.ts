@@ -19,6 +19,7 @@ export type EligibilityInfo = Readonly<{
   professionCode: string | null;
   groupNo: number | null;
   itemNo: string | null;
+  subItemNo: string | null;
 }>;
 
 export type EligibilityState = {
@@ -65,6 +66,10 @@ export const buildEligibilities = (rows: EligibilityRow[]): EligibilityInfo[] =>
       itemNo:
         row.item_no !== undefined && row.item_no !== null
           ? String(row.item_no)
+          : null,
+      subItemNo:
+        row.sub_item_no !== undefined && row.sub_item_no !== null
+          ? String(row.sub_item_no)
           : null,
     }))
     .sort((a, b) => a.effectiveTs - b.effectiveTs);

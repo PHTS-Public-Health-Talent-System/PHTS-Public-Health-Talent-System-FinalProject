@@ -80,7 +80,7 @@ export const reasonSeverity = (code: PayrollCheckCode): PayrollCheckSeverity => 
 export const checkTitle = (code: PayrollCheckCode): string => {
   switch (code) {
     case "NO_PAY":
-      return "ช่วง no-pay (ไม่รับเงินเดือน)";
+      return "ลาไม่รับค่าตอบแทน";
     case "OVER_QUOTA":
       return "ลาเกินโควต้า";
     case "ELIGIBILITY_GAP":
@@ -294,6 +294,9 @@ export const addOverlappingEligibilityEvidence = (
         expiry_date: elig.expiryDate,
         rate: elig.rate,
         rate_id: elig.rateId,
+        group_no: elig.groupNo,
+        item_no: elig.itemNo,
+        sub_item_no: elig.subItemNo,
       },
     );
   }

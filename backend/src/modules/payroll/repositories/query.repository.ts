@@ -105,8 +105,7 @@ export class PayrollQueryRepository {
     const [rows] = await conn.query<RowDataPacket[]>(
       `
       SELECT DISTINCT citizen_id FROM req_eligibility
-      WHERE is_active = 1
-        AND effective_date <= LAST_DAY(STR_TO_DATE(CONCAT(?, '-', ?, '-01'), '%Y-%m-%d'))
+      WHERE effective_date <= LAST_DAY(STR_TO_DATE(CONCAT(?, '-', ?, '-01'), '%Y-%m-%d'))
         AND (expiry_date IS NULL OR expiry_date >= STR_TO_DATE(CONCAT(?, '-', ?, '-01'), '%Y-%m-%d'))
       `,
       [year, month, year, month],
@@ -127,11 +126,20 @@ export class PayrollQueryRepository {
 
     const [eligibilityRows] = await conn.query<RowDataPacket[]>(
       `
-        SELECT citizen_id, effective_date, expiry_date, m.amount as rate, m.rate_id
+        SELECT
+          e.eligibility_id,
+          e.master_rate_id,
+          citizen_id,
+          effective_date,
+          expiry_date,
+          m.amount as rate,
+          m.rate_id,
+          m.group_no,
+          m.item_no,
+          m.sub_item_no
         FROM req_eligibility e
         JOIN cfg_payment_rates m ON e.master_rate_id = m.rate_id
         WHERE e.citizen_id IN (${ph})
-        AND e.is_active = 1
         AND e.effective_date <= ?
         AND (e.expiry_date IS NULL OR e.expiry_date >= ?)
         ORDER BY e.effective_date ASC

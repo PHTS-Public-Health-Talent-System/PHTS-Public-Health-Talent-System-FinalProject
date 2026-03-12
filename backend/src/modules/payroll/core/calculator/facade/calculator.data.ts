@@ -96,7 +96,7 @@ export async function loadEmployeeBatchData(
 
   const [eligibilityRows] = await dbConn.query<RowDataPacket[]>(
     `
-      SELECT e.effective_date, e.expiry_date, m.amount as rate, m.rate_id, m.profession_code, m.group_no, m.item_no
+      SELECT e.effective_date, e.expiry_date, m.amount as rate, m.rate_id, m.profession_code, m.group_no, m.item_no, m.sub_item_no
       FROM req_eligibility e
       JOIN cfg_payment_rates m ON e.master_rate_id = m.rate_id
       WHERE e.citizen_id = ?

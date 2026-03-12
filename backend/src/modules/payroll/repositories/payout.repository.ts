@@ -185,6 +185,20 @@ export class PayrollPayoutRepository {
     return rows;
   }
 
+  static async findPaymentRatesByIds(rateIds: number[]): Promise<RowDataPacket[]> {
+    if (!rateIds.length) return [];
+    const placeholders = rateIds.map(() => "?").join(",");
+    const [rows] = await db.query<RowDataPacket[]>(
+      `
+      SELECT rate_id, group_no, item_no, sub_item_no
+      FROM cfg_payment_rates
+      WHERE rate_id IN (${placeholders})
+      `,
+      rateIds,
+    );
+    return rows;
+  }
+
   static async findPayoutItemsByPayoutId(payoutId: number): Promise<RowDataPacket[]> {
     const [rows] = await db.query<RowDataPacket[]>(
       `

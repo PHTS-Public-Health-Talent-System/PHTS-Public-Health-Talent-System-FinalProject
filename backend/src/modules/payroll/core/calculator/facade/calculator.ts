@@ -47,6 +47,7 @@ export interface EligibilityRow extends RowDataPacket {
   profession_code?: string | null;
   group_no?: number | null;
   item_no?: string | null;
+  sub_item_no?: string | null;
 }
 
 export interface MovementRow extends RowDataPacket {
@@ -129,6 +130,9 @@ export type PayrollCheckEvidence =
       expiry_date: string | null;
       rate: number;
       rate_id?: number | null;
+      group_no?: number | null;
+      item_no?: string | null;
+      sub_item_no?: string | null;
     }
   | {
       type: "license";

@@ -51,6 +51,7 @@ describe("calculator.checks.rules", () => {
   test("resolves severity and title", () => {
     expect(reasonSeverity("NO_PAY")).toBe("BLOCKER");
     expect(reasonSeverity("OVER_QUOTA")).toBe("WARNING");
+    expect(checkTitle("NO_PAY")).toBe("ลาไม่รับค่าตอบแทน");
     expect(checkTitle("NO_LICENSE")).toContain("ใบอนุญาต");
   });
 

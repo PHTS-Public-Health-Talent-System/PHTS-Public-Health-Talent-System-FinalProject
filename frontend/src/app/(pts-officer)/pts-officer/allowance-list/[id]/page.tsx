@@ -796,7 +796,7 @@ export default function AllowanceEligibilityDetailPage({
                   <InfoItem label="เลขที่ใบอนุญาต" value={license.license_no ?? '-'} isMono />
                   <InfoItem label="ประเภท/สาขาวิชาชีพ" value={license.license_name ?? '-'} />
                   <InfoItem
-                    label="วันที่เริ่มมีผล"
+                    label="วันที่เริ่มมีสิทธิ"
                     value={formatThaiDate(license.valid_from)}
                     icon={Calendar}
                     isMono

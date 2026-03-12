@@ -76,6 +76,14 @@ const toPeriodCode = (month: number, year: number) => {
   return `PAY-${String(month).padStart(2, '0')}/${toBuddhistYear(year)}`;
 };
 
+const formatThaiMillionBaht = (amount: number): string => {
+  const million = amount / 1_000_000;
+  return `${formatThaiNumber(million, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} ล้านบาท`;
+};
+
 // Helper Component for Stats
 const StatCard = ({
   title,
@@ -168,7 +176,7 @@ export default function FinanceOfficerDashboardPage() {
         />
         <StatCard
           title="ยอดรวมทั้งปี (สะสมถึงปัจจุบัน)"
-          value={`${(Number(yearToDate?.total_amount ?? 0) / 1_000_000).toFixed(2)}M`}
+          value={formatThaiMillionBaht(Number(yearToDate?.total_amount ?? 0))}
           subtext={`ปีงบประมาณ ${yearToDate ? toBuddhistYear(yearToDate.period_year) : '-'}`}
           icon={Coins}
           colorClass="text-blue-600"

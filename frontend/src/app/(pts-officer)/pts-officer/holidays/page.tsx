@@ -76,19 +76,36 @@ const holidayTypeStyles: Record<
   Holiday['type'],
   { bg: string; text: string; border: string; icon: LucideIcon }
 > = {
-  national: { bg: 'bg-primary/10', text: 'text-primary', border: 'border-primary/20', icon: Flag },
+  national: {
+    bg: 'bg-blue-50',
+    text: 'text-blue-700',
+    border: 'border-blue-200',
+    icon: Flag,
+  },
   special: {
-    bg: 'bg-amber-500/10',
-    text: 'text-amber-600',
-    border: 'border-amber-500/20',
+    bg: 'bg-amber-50',
+    text: 'text-amber-700',
+    border: 'border-amber-200',
     icon: Sparkles,
   },
   substitution: {
-    bg: 'bg-emerald-500/10',
-    text: 'text-emerald-600',
-    border: 'border-emerald-500/20',
+    bg: 'bg-emerald-50',
+    text: 'text-emerald-700',
+    border: 'border-emerald-200',
     icon: RefreshCcw,
   },
+};
+
+const normalizeHolidayType = (
+  rawType: string | null | undefined,
+  holidayName: string,
+): Holiday['type'] => {
+  if (rawType === 'national' || rawType === 'special' || rawType === 'substitution') {
+    return rawType;
+  }
+  if (holidayName.includes('ชดเชย')) return 'substitution';
+  if (holidayName.includes('พิเศษ')) return 'special';
+  return 'national';
 };
 
 const thaiMonths = [
@@ -153,13 +170,7 @@ export default function HolidaysPage() {
       const yearNum = date ? parseInt(date.split('-')[0]) : selectedYearNum;
       const thaiYear = yearNum > 2400 ? yearNum : yearNum + 543;
       const name = row.holiday_name ?? '-';
-      const type: Holiday['type'] = row.holiday_type
-        ? row.holiday_type
-        : name.includes('ชดเชย')
-          ? 'substitution'
-          : name.includes('พิเศษ')
-            ? 'special'
-            : 'national';
+      const type = normalizeHolidayType(row.holiday_type, name);
       return {
         id: date || `${name}-${thaiYear}`,
         date,
@@ -425,7 +436,10 @@ export default function HolidaysPage() {
                 </TableRow>
               ) : (
                 sortedFilteredHolidays.map((holiday) => {
-                  const style = holidayTypeStyles[holiday.type];
+                  const style = holidayTypeStyles[holiday.type] ?? holidayTypeStyles.national;
+                  const holidayTypeLabel =
+                    holidayTypeLabels[holiday.type] ?? holidayTypeLabels.national;
+                  const TypeIcon = style.icon;
                   return (
                     <TableRow
                       key={holiday.id}
@@ -438,9 +452,10 @@ export default function HolidaysPage() {
                       <TableCell>
                         <Badge
                           variant="outline"
-                          className={`font-normal border ${style.bg} ${style.text} ${style.border}`}
+                          className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium leading-none shadow-sm ${style.bg} ${style.text} ${style.border}`}
                         >
-                          {holidayTypeLabels[holiday.type]}
+                          <TypeIcon className="h-3.5 w-3.5" />
+                          {holidayTypeLabel}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">

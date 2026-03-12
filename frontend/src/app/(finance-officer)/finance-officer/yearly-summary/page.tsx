@@ -85,6 +85,11 @@ export default function YearlySummaryPage() {
     return availableYears.includes(selectedYear) ? selectedYear : availableYears[0];
   }, [availableYears, selectedYear]);
 
+  const yearOptions = useMemo(
+    () => (availableYears.length > 0 ? availableYears : [resolvedSelectedYear]),
+    [availableYears, resolvedSelectedYear],
+  );
+
   const monthlyRows = useMemo<MonthlySummaryRow[]>(() => {
     return reportablePeriods
       .filter((row) => row.period_year === resolvedSelectedYear)
@@ -167,11 +172,16 @@ export default function YearlySummaryPage() {
               <SelectValue placeholder="เลือกปี (พ.ศ.)" />
             </SelectTrigger>
             <SelectContent>
-              {availableYears.map((year) => (
+              {yearOptions.map((year) => (
                 <SelectItem key={year} value={String(year)}>
                   พ.ศ. {toBuddhistYear(year)}
                 </SelectItem>
               ))}
+              {availableYears.length === 0 && (
+                <SelectItem value="__no-data" disabled>
+                  ยังไม่มีข้อมูลปีงบประมาณ
+                </SelectItem>
+              )}
             </SelectContent>
           </Select>
         </div>

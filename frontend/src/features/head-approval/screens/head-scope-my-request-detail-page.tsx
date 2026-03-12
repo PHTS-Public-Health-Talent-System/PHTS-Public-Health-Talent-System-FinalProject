@@ -292,7 +292,7 @@ export function HeadScopeMyRequestDetailPage({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-6 gap-x-4 mb-6">
                   <InfoItem label="ประเภทคำขอ" value={requestTypeLabel} className="sm:col-span-2" />
                   <InfoItem label="ประเภทบุคลากร" value={personnelTypeLabel} />
-                  <InfoItem label="วันที่เริ่มมีผล" value={effectiveDateLabel || '-'} />
+                  <InfoItem label="วันที่เริ่มมีสิทธิ" value={effectiveDateLabel || '-'} />
                   <InfoItem label="งานที่ได้รับมอบหมาย" value={mainDuty} className="sm:col-span-2" />
                   <InfoItem label="ลักษณะงาน" value={workAttributes.length > 0 ? workAttributes.join(', ') : '-'} className="sm:col-span-2" />
                 </div>

@@ -985,7 +985,7 @@ export default function AllowanceListByProfessionPage({
                     <TableHead className="font-semibold">วิชาชีพ</TableHead>
                     <TableHead className="font-semibold text-center">กลุ่ม/ข้อ</TableHead>
                     <TableHead className="font-semibold text-right">อัตรา (บาท)</TableHead>
-                    <TableHead className="font-semibold">วันที่เริ่มมีผล</TableHead>
+                    <TableHead className="font-semibold">วันที่เริ่มมีสิทธิ</TableHead>
                     <TableHead className="font-semibold">วันที่ปิดใช้งาน</TableHead>
                     <TableHead className="font-semibold">คำขอต้นทาง</TableHead>
                     <TableHead className="font-semibold text-center w-[110px]">จัดการ</TableHead>

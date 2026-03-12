@@ -268,7 +268,7 @@ const ELIGIBILITY_MINIMUM_CHECKLIST: MinimumChecklistItem[] = [
     key: "effective_date_correct",
     label: "วันที่เริ่มมีสิทธิถูกต้อง",
     description:
-      "วันที่เริ่มมีผลสอดคล้องกับวันที่เริ่มปฏิบัติงาน/คำสั่งมอบหมายงาน",
+      "วันที่เริ่มมีสิทธิสอดคล้องกับวันที่เริ่มปฏิบัติงาน/คำสั่งมอบหมายงาน",
   },
 ];
 
@@ -737,7 +737,7 @@ export default function RequestDetailPage({
       const effectiveDateOnly = toDateOnly(request.effective_date);
       if (!effectiveDateOnly) {
         if (!silent)
-          toast.error("ยังไม่พบวันที่เริ่มมีผลสำหรับบันทึกการตรวจสอบ");
+          toast.error("ยังไม่พบวันที่เริ่มมีสิทธิสำหรับบันทึกการตรวจสอบ");
         return false;
       }
 
@@ -1162,7 +1162,7 @@ export default function RequestDetailPage({
                 />
                 <InfoItem label="ประเภทบุคลากร" value={personnelTypeLabel} />
                 <InfoItem
-                  label="วันที่เริ่มมีผล"
+                  label="วันที่เริ่มมีสิทธิ"
                   value={effectiveDateLabel || "-"}
                 />
                 <InfoItem
@@ -1250,7 +1250,7 @@ export default function RequestDetailPage({
                 <InfoItem label="เลขที่ใบอนุญาต" value={licenseNo} />
                 <InfoItem label="ประเภท/สาขาวิชาชีพ" value={licenseName} />
                 <InfoItem
-                  label="วันที่เริ่มมีผล"
+                  label="วันที่เริ่มมีสิทธิ"
                   value={formatThaiDate(licenseValidFrom)}
                 />
                 {!isPermanentLicense ? (

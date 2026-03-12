@@ -325,7 +325,7 @@ export default function PayoutPeriodDetailPage({ params }: { params: Promise<{ i
         periodSummary.period_month,
         periodSummary.period_year,
       )}`
-    : `Period #${periodId}`;
+    : `รอบจ่าย #${periodId}`;
 
   if (isLoading) {
     return (

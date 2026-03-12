@@ -6,6 +6,7 @@ import {
   RequestWithDetails,
 } from '@/modules/request/contracts/request.types.js';
 import { randomBytes } from 'node:crypto';
+import { formatDateOnly } from '@/shared/utils/date-only.js';
 
 export const REQUESTER_FIELDS = `
   u.citizen_id as requester_citizen_id,
@@ -123,8 +124,10 @@ export const generateRequestNoFromId = (
 };
 
 export const normalizeDateToYMD = (date: string | Date): string => {
-  const d = new Date(date);
-  return d.toISOString().split("T")[0];
+  return formatDateOnly(date, {
+    timezone: process.env.DB_TIMEZONE || "+07:00",
+    fallbackTimezoneOffset: "+07:00",
+  });
 };
 
 export const parseJsonField = <T>(

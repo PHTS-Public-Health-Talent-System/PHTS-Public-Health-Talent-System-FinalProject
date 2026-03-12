@@ -100,6 +100,7 @@ describe("RequestCommandService officer on behalf flow", () => {
         citizen_id: "1100702579863",
         applicant_signature_id: null,
         request_type: RequestType.NEW_ENTRY,
+        effective_date: "2026-03-03",
         submission_data: expect.objectContaining({
           created_by_officer_id: 9001,
           created_by_officer_role: "PTS_OFFICER",

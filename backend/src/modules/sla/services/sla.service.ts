@@ -20,6 +20,7 @@ import {
 } from '@/modules/sla/entities/sla.entity.js';
 import { NotificationService } from '@/modules/notification/services/notification.service.js';
 import { STEP_ROLE_MAP } from '@shared/policy/request.policy.js';
+import { formatDateOnly } from '@/shared/utils/date-only.js';
 
 // ─── SLA Config Functions ─────────────────────────────────────────────────────
 
@@ -52,13 +53,17 @@ export async function calculateBusinessDays(
   endDate: Date,
 ): Promise<number> {
   const holidays = await SLARepository.findHolidaysInRange(startDate, endDate);
+  const appTimezone = process.env.APP_TIMEZONE || "Asia/Bangkok";
 
   let count = 0;
   const current = new Date(startDate);
 
   while (current <= endDate) {
     const dayOfWeek = current.getDay();
-    const dateStr = current.toISOString().split("T")[0];
+    const dateStr = formatDateOnly(current, {
+      timezone: appTimezone,
+      fallbackTimezoneOffset: process.env.DB_TIMEZONE || "+07:00",
+    });
 
     // Skip weekends (0=Sunday, 6=Saturday) and holidays
     if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidays.has(dateStr)) {

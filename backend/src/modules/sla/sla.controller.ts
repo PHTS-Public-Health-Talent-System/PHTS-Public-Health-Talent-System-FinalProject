@@ -9,6 +9,7 @@ import { asyncHandler } from "@middlewares/errorHandler.js";
 import { ValidationError } from "@shared/utils/errors.js";
 import { ApiResponse } from '@/types/auth.js';
 import * as slaService from '@/modules/sla/services/sla.service.js';
+import { formatDateOnly } from '@/shared/utils/date-only.js';
 
 /**
  * Get all SLA configurations
@@ -178,12 +179,19 @@ export async function calculateBusinessDays(
     startDate,
     endDate,
   );
+  const appTimezone = process.env.APP_TIMEZONE || "Asia/Bangkok";
 
   res.json({
     success: true,
     data: {
-      startDate: startDate.toISOString().split("T")[0],
-      endDate: endDate.toISOString().split("T")[0],
+      startDate: formatDateOnly(startDate, {
+        timezone: appTimezone,
+        fallbackTimezoneOffset: process.env.DB_TIMEZONE || "+07:00",
+      }),
+      endDate: formatDateOnly(endDate, {
+        timezone: appTimezone,
+        fallbackTimezoneOffset: process.env.DB_TIMEZONE || "+07:00",
+      }),
       businessDays,
     },
   });

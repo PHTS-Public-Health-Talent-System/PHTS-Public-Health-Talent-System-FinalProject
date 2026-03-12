@@ -1299,7 +1299,7 @@ export class RequestCommandService {
       updateData.requested_amount = Number(data.requested_amount);
     }
     if (data.effective_date !== undefined) {
-      updateData.effective_date = new Date(normalizeDateToYMD(data.effective_date));
+      updateData.effective_date = normalizeDateToYMD(data.effective_date);
     }
     if (data.submission_data !== undefined) {
       updateData.submission_data = {
@@ -1543,7 +1543,7 @@ export class RequestCommandService {
           applicant_signature_id: signatureId ?? null,
           request_type: data.request_type,
           requested_amount: requestedAmount,
-          effective_date: new Date(effectiveDateStr),
+          effective_date: effectiveDateStr,
           status: RequestStatus.DRAFT,
           current_step: 1,
           submission_data: (() => {

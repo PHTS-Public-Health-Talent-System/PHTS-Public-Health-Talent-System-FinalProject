@@ -22,7 +22,7 @@ export interface RequestSubmissionEntity {
   applicant_signature_id: number | null;
   request_type: string;
   requested_amount: number;
-  effective_date: Date;
+  effective_date: Date | string;
   submission_data: any; // JSON
   status: string;
   current_step: number;

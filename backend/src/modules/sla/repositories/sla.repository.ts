@@ -7,6 +7,7 @@
 import { RowDataPacket, PoolConnection } from "mysql2/promise";
 import db from '@config/database.js';
 import { SLAConfig, ReminderType } from '@/modules/sla/entities/sla.entity.js';
+import { formatDateOnly } from '@/shared/utils/date-only.js';
 
 export class SLARepository {
   // ── SLA Config queries ──────────────────────────────────────────────────────
@@ -66,8 +67,15 @@ export class SLARepository {
     conn?: PoolConnection,
   ): Promise<Set<string>> {
     const executor = conn ?? db;
-    const startStr = startDate.toISOString().split("T")[0];
-    const endStr = endDate.toISOString().split("T")[0];
+    const appTimezone = process.env.APP_TIMEZONE || "Asia/Bangkok";
+    const startStr = formatDateOnly(startDate, {
+      timezone: appTimezone,
+      fallbackTimezoneOffset: process.env.DB_TIMEZONE || "+07:00",
+    });
+    const endStr = formatDateOnly(endDate, {
+      timezone: appTimezone,
+      fallbackTimezoneOffset: process.env.DB_TIMEZONE || "+07:00",
+    });
 
     const [rows] = await executor.query<RowDataPacket[]>(
       "SELECT DATE_FORMAT(holiday_date, '%Y-%m-%d') AS holiday_date FROM cfg_holidays WHERE holiday_date BETWEEN ? AND ?",
@@ -86,7 +94,11 @@ export class SLARepository {
     conn?: PoolConnection,
   ): Promise<boolean> {
     const executor = conn ?? db;
-    const dateStr = date.toISOString().split("T")[0];
+    const appTimezone = process.env.APP_TIMEZONE || "Asia/Bangkok";
+    const dateStr = formatDateOnly(date, {
+      timezone: appTimezone,
+      fallbackTimezoneOffset: process.env.DB_TIMEZONE || "+07:00",
+    });
     const [rows] = await executor.query<RowDataPacket[]>(
       "SELECT 1 FROM cfg_holidays WHERE holiday_date = ?",
       [dateStr],

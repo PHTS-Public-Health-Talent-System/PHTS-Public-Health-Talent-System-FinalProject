@@ -13,6 +13,8 @@ import type {
   CalculatePeriodDto,
 } from "@/modules/payroll/dto/index.js";
 
+const INTERNAL_ERROR_MESSAGE = "เกิดข้อผิดพลาดภายในระบบ";
+
 const getCurrentRole = (req: Request): string | null => {
   return ((req.user as any)?.role as string | undefined) ?? null;
 };
@@ -45,8 +47,8 @@ export const listPeriods = async (req: Request, res: Response) => {
   try {
     const periods = await PayrollService.getAllPeriods(getCurrentRole(req));
     res.json({ success: true, data: periods });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+  } catch (_error: any) {
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -197,7 +199,7 @@ export const getPeriodPayouts = async (req: Request, res: Response) => {
         });
       return;
     }
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -236,7 +238,7 @@ export const getPeriodLeaves = async (req: Request, res: Response) => {
       });
       return;
     }
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -270,7 +272,7 @@ export const getPeriodLeaveProfessionSummary = async (req: Request, res: Respons
       });
       return;
     }
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -438,8 +440,8 @@ export const calculatePayroll = async (req: Request, res: Response) => {
       );
       res.json({ success: true, data: result });
     }
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+  } catch (_error: any) {
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -478,8 +480,8 @@ export const calculateOnDemand = async (
         ...result,
       },
     });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+  } catch (_error: any) {
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -513,7 +515,7 @@ export const submitToHR = async (req: Request, res: Response) => {
       res.status(400).json({ success: false, error: message });
       return;
     }
-    res.status(500).json({ success: false, error: message });
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };
 
@@ -660,8 +662,8 @@ export const searchPayouts = async (req: Request, res: Response) => {
       role: getCurrentRole(req),
     });
     res.json({ success: true, data: rows });
-  } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+  } catch (_error: any) {
+    res.status(500).json({ success: false, error: INTERNAL_ERROR_MESSAGE });
   }
 };
 

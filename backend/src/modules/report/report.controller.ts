@@ -3,14 +3,19 @@
  *
  */
 import { Request, Response } from "express";
+import { asyncHandler } from "@middlewares/errorHandler.js";
+import {
+  ConflictError,
+  NotFoundError,
+  ValidationError,
+} from "@shared/utils/errors.js";
 import * as reportService from "@/modules/report/services/report.service.js";
 
-function handleReportError(res: Response, error: unknown): void {
+function mapReportError(error: unknown): Error {
   const message = (error as Error)?.message || "Failed to generate report";
 
   if (message.includes("Period not found")) {
-    res.status(404).json({ error: message });
-    return;
+    return new NotFoundError("period");
   }
 
   if (
@@ -20,15 +25,13 @@ function handleReportError(res: Response, error: unknown): void {
     message.includes("Snapshot not found for frozen period") ||
     message.includes("Summary snapshot not found for frozen period")
   ) {
-    res.status(409).json({ error: message });
-    return;
+    return new ConflictError(message);
   }
 
-  console.error("Report Error:", error);
-  res.status(500).json({ error: "Failed to generate report" });
+  return error instanceof Error ? error : new Error(message);
 }
 
-export const downloadDetailReport = async (
+export const downloadDetailReport = asyncHandler(async (
   req: Request,
   res: Response,
 ): Promise<void> => {
@@ -40,8 +43,7 @@ export const downloadDetailReport = async (
     const format = String(req.query.format ?? "xlsx").toLowerCase();
 
     if (!year || !month) {
-      res.status(400).json({ error: "Year and month are required" });
-      return;
+      throw new ValidationError("Year and month are required");
     }
 
     const isCsv = format === "csv";
@@ -69,11 +71,11 @@ export const downloadDetailReport = async (
     res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
     res.send(buffer);
   } catch (error) {
-    handleReportError(res, error);
+    throw mapReportError(error);
   }
-};
+});
 
-export const downloadSummaryReport = async (
+export const downloadSummaryReport = asyncHandler(async (
   req: Request,
   res: Response,
 ): Promise<void> => {
@@ -83,8 +85,7 @@ export const downloadSummaryReport = async (
     const format = String(req.query.format ?? "xlsx").toLowerCase();
 
     if (!year || !month) {
-      res.status(400).json({ error: "Year and month are required" });
-      return;
+      throw new ValidationError("Year and month are required");
     }
 
     const isCsv = format === "csv";
@@ -102,6 +103,6 @@ export const downloadSummaryReport = async (
     res.setHeader("Content-Disposition", `attachment; filename=${filename}`);
     res.send(buffer);
   } catch (error) {
-    handleReportError(res, error);
+    throw mapReportError(error);
   }
-};
+});

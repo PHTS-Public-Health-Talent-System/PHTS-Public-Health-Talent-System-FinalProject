@@ -8,6 +8,11 @@
 
 import { Request, Response } from "express";
 import jwt from "jsonwebtoken";
+import { asyncHandler } from "@middlewares/errorHandler.js";
+import {
+  AuthenticationError as HttpAuthenticationError,
+  NotFoundError,
+} from "@shared/utils/errors.js";
 import {
   LoginResponse,
   ApiResponse,
@@ -89,19 +94,15 @@ export async function login(
  * @route GET /api/auth/me
  * @access Protected
  */
-export async function getCurrentUser(
+export const getCurrentUser = asyncHandler(async (
   req: Request,
   res: Response<ApiResponse<UserProfile>>,
-): Promise<void> {
-  try {
-    if (!req.user) {
-      res.status(401).json({
-        success: false,
-        error: "Not authenticated",
-      });
-      return;
-    }
+): Promise<void> => {
+  if (!req.user) {
+    throw new HttpAuthenticationError("Not authenticated");
+  }
 
+  try {
     const { userId } = req.user;
     const userProfile = await AuthService.getUserProfile(userId);
 
@@ -110,36 +111,22 @@ export async function getCurrentUser(
       data: userProfile,
     });
   } catch (error: any) {
-    console.error("Get current user error:", error);
-
     if (error.message === "User not found") {
-      res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-      return;
+      throw new NotFoundError("user");
     }
-
-    res.status(500).json({
-      success: false,
-      error: "An error occurred while fetching user profile",
-    });
+    throw error;
   }
-}
+});
 
-export async function updateCurrentUser(
+export const updateCurrentUser = asyncHandler(async (
   req: Request<object, object, UpdateProfileSchema>,
   res: Response<ApiResponse<UserProfile>>,
-): Promise<void> {
-  try {
-    if (!req.user) {
-      res.status(401).json({
-        success: false,
-        error: "Not authenticated",
-      });
-      return;
-    }
+): Promise<void> => {
+  if (!req.user) {
+    throw new HttpAuthenticationError("Not authenticated");
+  }
 
+  try {
     const requestInfo = extractRequestInfo(req);
     const userProfile = await AuthService.updateUserProfile(
       req.user.userId,
@@ -153,30 +140,16 @@ export async function updateCurrentUser(
       message: "Profile updated successfully",
     });
   } catch (error: any) {
-    console.error("Update current user error:", error);
-
     if (error.message === "User not found") {
-      res.status(404).json({
-        success: false,
-        error: "User not found",
-      });
-      return;
+      throw new NotFoundError("user");
     }
 
     if (error.message === "Employee profile not found") {
-      res.status(404).json({
-        success: false,
-        error: "Employee profile not found",
-      });
-      return;
+      throw new NotFoundError("employee profile");
     }
-
-    res.status(500).json({
-      success: false,
-      error: "An error occurred while updating user profile",
-    });
+    throw error;
   }
-}
+});
 
 /**
  * Logout Handler
@@ -187,38 +160,30 @@ export async function updateCurrentUser(
  * @route POST /api/auth/logout
  * @access Protected
  */
-export async function logout(
+export const logout = asyncHandler(async (
   req: Request,
   res: Response<ApiResponse>,
-): Promise<void> {
-  try {
-    const authHeader = req.headers.authorization;
-    const token =
-      typeof authHeader === "string" && authHeader.startsWith("Bearer ")
-        ? authHeader.slice("Bearer ".length)
-        : null;
+): Promise<void> => {
+  const authHeader = req.headers.authorization;
+  const token =
+    typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+      ? authHeader.slice("Bearer ".length)
+      : null;
 
-    if (token) {
-      const decoded = jwt.decode(token) as { exp?: number } | null;
-      const nowSec = Math.floor(Date.now() / 1000);
-      const expiresIn = Math.max(1, Number(decoded?.exp ?? nowSec + 60) - nowSec);
-      await tokenBlacklist.blacklistToken(token, expiresIn, "logout");
-    }
-
-    if (req.user) {
-      const requestInfo = extractRequestInfo(req);
-      await AuthService.logout(req.user.userId, req.user.role, requestInfo);
-    }
-
-    res.status(200).json({
-      success: true,
-      message: "Logged out successfully",
-    });
-  } catch (error) {
-    console.error("Logout error:", error);
-    res.status(500).json({
-      success: false,
-      error: "An error occurred during logout",
-    });
+  if (token) {
+    const decoded = jwt.decode(token) as { exp?: number } | null;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const expiresIn = Math.max(1, Number(decoded?.exp ?? nowSec + 60) - nowSec);
+    await tokenBlacklist.blacklistToken(token, expiresIn, "logout");
   }
-}
+
+  if (req.user) {
+    const requestInfo = extractRequestInfo(req);
+    await AuthService.logout(req.user.userId, req.user.role, requestInfo);
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "Logged out successfully",
+  });
+});

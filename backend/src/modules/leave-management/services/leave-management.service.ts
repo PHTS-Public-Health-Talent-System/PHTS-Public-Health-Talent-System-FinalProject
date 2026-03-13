@@ -1,4 +1,5 @@
 import { LeaveManagementRepository } from '../repositories/leave-management.repository.js';
+import fs from "node:fs/promises";
 import type {
   LeaveManagementListQuery,
   LeavePersonnelListQuery,
@@ -391,7 +392,10 @@ export async function deleteLeaveManagementDocument(documentId: number) {
   const doc = await repository.findDocumentById(documentId);
   if (!doc) return { deleted: false, filePath: null };
   const deleted = await repository.deleteDocument(documentId);
-  return { deleted, filePath: doc.file_path };
+  if (deleted && doc.file_path) {
+    await fs.unlink(doc.file_path).catch(() => undefined);
+  }
+  return { deleted, filePath: null };
 }
 
 export async function deleteLeaveManagementExtension(leaveManagementId: number) {

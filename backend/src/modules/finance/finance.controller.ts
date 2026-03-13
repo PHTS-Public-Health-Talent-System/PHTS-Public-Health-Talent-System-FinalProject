@@ -116,8 +116,11 @@ export const getPayoutsByPeriod = asyncHandler(async (
   res: Response<ApiResponse>,
 ): Promise<void> => {
   const { periodId } = req.params as unknown as GetPayoutsByPeriodParams;
-  const { status, search, professionCode, groupNo } =
-    req.query as GetPayoutsByPeriodQuery;
+  const query = req.query as Record<string, unknown>;
+  const status = (typeof query.status === "string" ? query.status : undefined) as GetPayoutsByPeriodQuery["status"];
+  const search = typeof query.search === "string" ? query.search : undefined;
+  const professionCode = typeof query.professionCode === "string" ? query.professionCode : undefined;
+  const groupNo = typeof query.groupNo === "string" ? query.groupNo : undefined;
 
   try {
     const payouts = await getPayoutsByPeriodData(

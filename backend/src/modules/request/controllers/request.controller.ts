@@ -299,7 +299,8 @@ export class RequestController {
         typeof req.query.profession_code === "string" ? req.query.profession_code : "ALL";
       const professionCode =
         professionCodeRaw.toUpperCase() === "ALL" ? "ALL" : professionCodeRaw.toUpperCase();
-      const search = typeof req.query.search === "string" ? req.query.search.trim() : null;
+      const rawSearch = req.query.search;
+      const search = typeof rawSearch === "string" ? rawSearch.trim() : null;
       const rateGroup = typeof req.query.rate_group === "string" ? req.query.rate_group.trim() : null;
       const department = typeof req.query.department === "string" ? req.query.department.trim() : null;
       const subDepartment =

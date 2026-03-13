@@ -135,7 +135,13 @@ const parseDate = (value: unknown): string | null => {
 const isDataRow = (row: string[]): boolean => /^\d+$/.test(trimValue(row[0]));
 
 const parsePayrollRows = (csvPath: string): ParsedPayrollRow[] => {
-  const content = fs.readFileSync(csvPath, "utf-8");
+  const sourceFileName = path.basename(String(csvPath ?? "").trim());
+  if (path.extname(sourceFileName).toLowerCase() !== ".csv") {
+    throw new Error("sourceFile must be a .csv file");
+  }
+  const safeCsvPath = path.resolve("import_data", sourceFileName);
+
+  const content = fs.readFileSync(safeCsvPath, "utf-8");
   const rows = content
     .split(/\r?\n/)
     .map((line) => line.split("\t"));

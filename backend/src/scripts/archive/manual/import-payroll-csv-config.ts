@@ -18,6 +18,17 @@ const parseNumberArg = (value: string, name: string): number => {
   return parsed;
 };
 
+const ensureSafeSourceFile = (sourceFileArg: string): string => {
+  const sourceFileName = path.basename(sourceFileArg.trim());
+  const extension = path.extname(sourceFileName).toLowerCase();
+  if (extension !== ".csv") {
+    throw new Error("sourceFile must be a .csv file");
+  }
+
+  // Force source files to be loaded from import_data/ to prevent arbitrary path reads.
+  return path.resolve("import_data", sourceFileName);
+};
+
 export const parseImportPayrollConfig = (
   args: string[],
 ): ImportPayrollConfig => {
@@ -41,7 +52,7 @@ export const parseImportPayrollConfig = (
   }
 
   return {
-    sourceFile: path.resolve(sourceFileArg),
+    sourceFile: ensureSafeSourceFile(sourceFileArg),
     periodMonth,
     periodYear,
     personnelScope,

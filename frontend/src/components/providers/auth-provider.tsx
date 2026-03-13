@@ -7,6 +7,11 @@ import api from "@/shared/api/axios"
 import { User } from "@/types/auth"
 import type { ApiResponse } from "@/shared/api/types"
 import {
+  AUTH_TOKEN_COOKIE_NAME,
+  AUTH_TOKEN_STORAGE_NAME,
+  AUTH_USER_STORAGE_NAME,
+} from "@/shared/auth/storage"
+import {
   FRONTEND_HEAD_SCOPE_BASE_PATH,
 } from "@/shared/utils/role-label"
 
@@ -23,8 +28,6 @@ interface AuthContextType {
 }
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined)
-const TOKEN_COOKIE_KEY = "phts_token"
-
 type AuthUserPayload = Omit<User, "head_scope_roles"> & {
   head_scope_roles?: string[]
 }
@@ -53,13 +56,12 @@ function normalizeUser(user: AuthUserPayload): User {
 
 function setTokenCookie(token: string) {
   if (typeof document === "undefined") return
-  const secure = window.location.protocol === "https:" ? "; Secure" : ""
-  document.cookie = `${TOKEN_COOKIE_KEY}=${encodeURIComponent(token)}; Path=/; SameSite=Lax${secure}`
+  document.cookie = `${AUTH_TOKEN_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; SameSite=Lax; Secure`
 }
 
 function clearTokenCookie() {
   if (typeof document === "undefined") return
-  document.cookie = `${TOKEN_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax`
+  document.cookie = `${AUTH_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax; Secure`
 }
 
 function getRoleHomePath(role: User["role"]): string {
@@ -90,8 +92,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = React.useState(true)
   const router = useRouter()
   const pathname = usePathname()
-  const tokenKey = "phts_token"
-  const userKey = "phts_user"
+  const tokenKey = AUTH_TOKEN_STORAGE_NAME
+  const userKey = AUTH_USER_STORAGE_NAME
 
   const logout = React.useCallback(() => {
     localStorage.removeItem(tokenKey)

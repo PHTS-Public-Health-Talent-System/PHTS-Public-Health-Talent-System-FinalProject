@@ -58,12 +58,14 @@ export const getDataIssues = asyncHandler(async (req: Request, res: Response) =>
     req.query as unknown as DataIssuesQuery;
   const safePage = Math.max(1, Number(page || 1));
   const safeLimit = Math.max(1, Math.min(Number(limit || 50), 200));
+  const safeTargetTable = typeof target_table === "string" ? target_table.trim() : undefined;
+  const safeIssueCode = typeof issue_code === "string" ? issue_code.trim() : undefined;
   const data = await TransformMonitorRepository.getDataIssues({
     page: safePage,
     limit: safeLimit,
     batchId: batch_id ? Number(batch_id) : undefined,
-    targetTable: target_table?.trim() || undefined,
-    issueCode: issue_code?.trim() || undefined,
+    targetTable: safeTargetTable || undefined,
+    issueCode: safeIssueCode || undefined,
     severity: severity || undefined,
   });
   res.json({ success: true, data });
@@ -73,12 +75,13 @@ export const getSyncRecords = asyncHandler(async (req: Request, res: Response) =
   const { page, limit, batch_id, target_table, search } = req.query as unknown as SyncRecordsQuery;
   const safePage = Math.max(1, Number(page || 1));
   const safeLimit = Math.max(1, Math.min(Number(limit || 20), 200));
+  const safeSearch = typeof search === "string" ? search.trim() : undefined;
   const data = await TransformMonitorRepository.getSyncRecords({
     page: safePage,
     limit: safeLimit,
     batchId: batch_id ? Number(batch_id) : undefined,
     targetTable: target_table,
-    search: search?.trim() || undefined,
+    search: safeSearch || undefined,
   });
   res.json({ success: true, data });
 });

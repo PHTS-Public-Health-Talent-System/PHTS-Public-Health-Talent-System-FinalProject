@@ -36,7 +36,7 @@ import {
   FilePen,
   List,
 } from 'lucide-react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { TableRowViewAction } from '@/components/common';
 import { useMyRequests, useSubmitRequest, useCancelRequest } from '@/features/request/core/hooks';
@@ -53,6 +53,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatThaiDate, formatThaiNumber } from '@/shared/utils/thai-locale';
+import { buildHeadScopeRequestHref, sanitizeHeadScopeBasePath } from '@/features/head-approval/utils/safe-route';
 
 // Helper: Status Icons & Colors
 const getStatusIcon = (status: string) => {
@@ -175,6 +176,7 @@ type HeadScopeMyRequestsPageProps = {
 };
 
 export function HeadScopeMyRequestsPage({ basePath }: HeadScopeMyRequestsPageProps) {
+  const router = useRouter();
   const { data, isLoading } = useMyRequests();
   const submitRequest = useSubmitRequest();
   const cancelRequest = useCancelRequest();
@@ -238,6 +240,20 @@ export function HeadScopeMyRequestsPage({ basePath }: HeadScopeMyRequestsPagePro
     });
   };
 
+  const buildMyRequestHref = (requestId: string | number): string =>
+    buildHeadScopeRequestHref(basePath, requestId, '/my-requests');
+
+  const buildMyRequestEditHref = (requestId: string | number): string => {
+    const safeBasePath = sanitizeHeadScopeBasePath(basePath);
+    const requestHref = buildMyRequestHref(requestId);
+    if (requestHref === safeBasePath) return requestHref;
+    return `${requestHref}/edit`;
+  };
+
+  const navigateTo = (href: string) => {
+    router.push(href);
+  };
+
   return (
     <TooltipProvider>
       <div className="p-8 space-y-8">
@@ -249,12 +265,13 @@ export function HeadScopeMyRequestsPage({ basePath }: HeadScopeMyRequestsPagePro
               จัดการและติดตามสถานะคำขอเบิกเงิน พ.ต.ส. ของคุณ
             </p>
           </div>
-          <Link href={`${basePath}/my-requests/new`}>
-            <Button className="shadow-sm">
-              <Plus className="mr-2 h-4 w-4" />
-              สร้างคำขอใหม่
-            </Button>
-          </Link>
+          <Button
+            className="shadow-sm"
+            onClick={() => navigateTo(`${sanitizeHeadScopeBasePath(basePath)}/my-requests/new`)}
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            สร้างคำขอใหม่
+          </Button>
         </div>
 
         {/* Stats Dashboard */}
@@ -360,12 +377,13 @@ export function HeadScopeMyRequestsPage({ basePath }: HeadScopeMyRequestsPagePro
                         className="group hover:bg-muted/30 border-border transition-colors"
                       >
                         <TableCell className="font-mono text-sm font-medium">
-                          <Link
-                            href={`${basePath}/my-requests/${request.id}`}
+                          <button
+                            type="button"
+                            onClick={() => navigateTo(buildMyRequestHref(request.id))}
                             className="hover:underline text-primary transition-colors"
                           >
                             {request.displayId}
-                          </Link>
+                          </button>
                         </TableCell>
                         <TableCell className="text-right font-medium tabular-nums">
                           {formatThaiNumber(request.amount ?? 0)}
@@ -389,7 +407,9 @@ export function HeadScopeMyRequestsPage({ basePath }: HeadScopeMyRequestsPagePro
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <TableRowViewAction href={`${basePath}/my-requests/${request.id}`} />
+                            <TableRowViewAction
+                              onClick={() => navigateTo(buildMyRequestHref(request.id))}
+                            />
 
                             {(request.status === 'DRAFT' || request.status === 'RETURNED') && (
                               <>
@@ -401,9 +421,12 @@ export function HeadScopeMyRequestsPage({ basePath }: HeadScopeMyRequestsPagePro
                                       className="h-8 w-8 text-muted-foreground hover:text-foreground"
                                       asChild
                                     >
-                                      <Link href={`${basePath}/my-requests/${request.id}/edit`}>
+                                      <button
+                                        type="button"
+                                        onClick={() => navigateTo(buildMyRequestEditHref(request.id))}
+                                      >
                                         <Edit className="h-4 w-4" />
-                                      </Link>
+                                      </button>
                                     </Button>
                                   </TooltipTrigger>
                                   <TooltipContent>แก้ไข</TooltipContent>

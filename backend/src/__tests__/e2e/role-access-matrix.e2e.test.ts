@@ -198,6 +198,7 @@ describe("API role access matrix", () => {
     const notificationRoutes = (await import("@/modules/notification/notification.routes.js")).default;
 
     const app = express();
+    app.disable("x-powered-by");
     app.use(express.json());
     app.use("/api/requests", requestRoutes);
     app.use("/api/payroll", payrollRoutes);

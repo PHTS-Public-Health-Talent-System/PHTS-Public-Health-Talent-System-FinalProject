@@ -94,16 +94,18 @@ export const getQueue = asyncHandler(async (
   req: Request,
   res: Response<ApiResponse>,
 ): Promise<void> => {
-  const page = req.query.page ? Number.parseInt(req.query.page as string, 10) : 1;
-  const limit = req.query.limit ? Number.parseInt(req.query.limit as string, 10) : 20;
-  const batchId = req.query.batch_id ? Number.parseInt(req.query.batch_id as string, 10) : undefined;
-  const status = req.query.status as accessReviewService.AccessReviewQueueListInput["status"];
-  const reasonCode = req.query.reason_code as string | undefined;
-  const currentRole = req.query.current_role as string | undefined;
-  const isActive = req.query.is_active !== undefined ? Number(req.query.is_active) : undefined;
-  const detectedFrom = req.query.detected_from as string | undefined;
-  const detectedTo = req.query.detected_to as string | undefined;
-  const search = req.query.search as string | undefined;
+  const query = req.query as Record<string, unknown>;
+  const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
+
+  const page = asString(query.page) ? Number.parseInt(String(query.page), 10) : 1;
+  const limit = asString(query.limit) ? Number.parseInt(String(query.limit), 10) : 20;
+  const batchId = asString(query.batch_id) ? Number.parseInt(String(query.batch_id), 10) : undefined;
+  const status = asString(query.status) as accessReviewService.AccessReviewQueueListInput["status"];
+  const reasonCode = asString(query.reason_code);
+  const currentRole = asString(query.current_role);
+  const isActive = query.is_active !== undefined ? Number(query.is_active) : undefined;
+  const detectedFrom = asString(query.detected_from);
+  const detectedTo = asString(query.detected_to);
 
   const queue = await accessReviewService.getAccessReviewQueue({
     page,
@@ -115,7 +117,6 @@ export const getQueue = asyncHandler(async (
     detectedFrom,
     detectedTo,
     batchId,
-    search,
   });
   res.json({ success: true, data: queue });
 });

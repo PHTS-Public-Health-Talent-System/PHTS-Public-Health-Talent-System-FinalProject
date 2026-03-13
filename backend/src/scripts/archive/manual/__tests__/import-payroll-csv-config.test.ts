@@ -44,6 +44,17 @@ describe("parseImportPayrollConfig", () => {
     ).toThrow("Unsupported personnelScope");
   });
 
+  it("throws for non-csv source file", () => {
+    expect(() =>
+      parseImportPayrollConfig(["import_data/nurse_1_26.txt", "1", "2026"]),
+    ).toThrow("sourceFile must be a .csv file");
+  });
+
+  it("normalizes source file to import_data root", () => {
+    const config = parseImportPayrollConfig(["../nurse_1_26.csv", "1", "2026"]);
+    expect(config.sourceFile).toBe(path.resolve("import_data/nurse_1_26.csv"));
+  });
+
   it("throws when args are missing", () => {
     expect(() => parseImportPayrollConfig(["import_data/nurse_1_26.csv"])).toThrow(
       "Usage: npx tsx src/scripts/archive/manual/import_payroll_csv.ts <source_csv_path> <period_month> <period_year> [personnel_scope]",

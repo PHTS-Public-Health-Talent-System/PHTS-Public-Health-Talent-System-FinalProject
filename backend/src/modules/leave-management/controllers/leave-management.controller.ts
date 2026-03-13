@@ -11,7 +11,6 @@ import type {
 import { handleUploadError } from '@config/upload.js';
 import { asyncHandler } from "@middlewares/errorHandler.js";
 import { ValidationError } from "@shared/utils/errors.js";
-import fs from "node:fs";
 
 export const listLeaveManagement = asyncHandler(async (req: Request, res: Response) => {
   const params = req.query as unknown as LeaveManagementListQuery;
@@ -84,10 +83,7 @@ export const addLeaveManagementDocuments = asyncHandler(async (req: Request, res
 
 export const deleteLeaveManagementDocument = asyncHandler(async (req: Request, res: Response) => {
   const documentId = Number(req.params.documentId);
-  const { deleted, filePath } = await leaveManagementService.deleteLeaveManagementDocument(documentId);
-  if (deleted && filePath) {
-    fs.unlink(filePath, () => undefined);
-  }
+  const { deleted } = await leaveManagementService.deleteLeaveManagementDocument(documentId);
   res.json({ success: true, data: { deleted } });
 });
 

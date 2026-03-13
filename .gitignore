@@ -67,7 +67,6 @@ backend/src/scripts/ops/backup/autobackup.env
 # Runtime / temp files
 tmp/
 temp/
-docs/
 import_data/
 *.tmp
 *:Zone.Identifier
@@ -90,7 +89,6 @@ import_data/
 
 # AI assistant files (may contain credentials)
 CLAUDE.md
-database.txt
 AGENTS.md
 
 # Uploads / generated files
@@ -98,24 +96,24 @@ uploads/
 backend/uploads/*
 !backend/uploads/.gitkeep
 
-# Local OCR models (large files)
-infra/ocr/ocr-models/
-
 # Miscellaneous
-.githooks/
 
 # SonarScanner
 .scannerwork/
 
 # Legacy / local-only directories
-/frontend_old
 
 # Skills / local agent state
-.agent/
 /.agents/
-.gemini/
 /skills-lock.json
 
 # Local OCR experimentation artifacts
 /backend/.venv-ocr/
 /ocr/
+
+# Security scan artifacts (local only)
+.snyk-*.json
+.snyk-cache/
+
+# Local backup/safety workspace
+/safe/

@@ -60,6 +60,7 @@ describe("payroll routes", () => {
   const buildApp = async () => {
     const payrollRouter = (await import("../payroll.routes.js")).default;
     const app = express();
+    app.disable("x-powered-by");
     app.use(express.json());
     app.use("/api/payroll", payrollRouter);
     return app;

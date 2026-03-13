@@ -7,6 +7,7 @@ import { protect, restrictTo } from "@middlewares/authMiddleware.js";
 import { validate } from "@shared/validate.middleware.js";
 import { upload } from "@config/upload.js";
 import { UserRole } from "@/types/auth.js";
+import { apiRateLimiter } from "@middlewares/rateLimiter.js";
 import {
   listLeaveManagementSchema,
   listLeavePersonnelSchema,
@@ -94,6 +95,7 @@ router.post(
 
 router.delete(
   "/documents/:documentId",
+  apiRateLimiter,
   validate(leaveDocumentIdParamSchema),
   deleteLeaveManagementDocument,
 );

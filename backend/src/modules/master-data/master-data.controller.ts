@@ -25,8 +25,9 @@ import {
 // Holidays
 export const getHolidays = asyncHandler(async (req: Request, res: Response) => {
   const { year } = req.query as unknown as GetHolidaysQuery;
-  // Year is already transformed to number by Zod if present
-  const holidays = await holidayService.getHolidays(year?.toString());
+  const yearQuery =
+    typeof year === "number" ? String(year) : typeof year === "string" ? year : undefined;
+  const holidays = await holidayService.getHolidays(yearQuery);
   res.json({ success: true, data: holidays });
 });
 

@@ -55,6 +55,7 @@ import { useRateHierarchy } from '@/features/master-data/hooks';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { formatThaiDate, formatThaiNumber } from '@/shared/utils/thai-locale';
+import { buildHeadScopeRequestHref } from '@/features/head-approval/utils/safe-route';
 
 // --- Helpers & Types ---
 
@@ -260,6 +261,9 @@ export function HeadScopeRequestsPage({
     });
   }, [rows, searchTerm, slaFilter]);
 
+  const buildRequestHref = (requestId: number): string =>
+    buildHeadScopeRequestHref(basePath, requestId, '/requests');
+
   const summaryCounts = useMemo(() => {
     const base = { total: rows.length, normal: 0, warning: 0, danger: 0 };
     return rows.reduce((acc, row) => {
@@ -422,7 +426,7 @@ export function HeadScopeRequestsPage({
                     >
                       <TableCell className="font-mono text-sm font-medium">
                         <Link
-                          href={`${basePath}/requests/${request.id}`}
+                          href={buildRequestHref(request.id)}
                           className="hover:underline text-primary transition-colors"
                         >
                           {request.requestNo}
@@ -463,7 +467,7 @@ export function HeadScopeRequestsPage({
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <TableRowViewAction href={`${basePath}/requests/${request.id}`} />
+                          <TableRowViewAction href={buildRequestHref(request.id)} />
                         </div>
                       </TableCell>
                     </TableRow>

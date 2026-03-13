@@ -35,6 +35,7 @@ import {
   pickLatestHistoryAction,
   type HistoryActionFilter,
 } from '@/features/head-approval/history.utils';
+import { buildHeadScopeRequestHref } from '@/features/head-approval/utils/safe-route';
 import { getOnBehalfMetadata } from '@/features/request/core/utils';
 
 type HeadScopeHistoryPageProps = {
@@ -187,6 +188,9 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
     });
   }, [rows, searchTerm, actionFilter]);
 
+  const buildRequestHref = (requestId: number): string =>
+    buildHeadScopeRequestHref(basePath, requestId, '/requests', { from: 'history' });
+
   return (
     <div className="p-8 space-y-8 pb-20">
       <div className="flex items-center justify-between gap-4">
@@ -293,7 +297,7 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
                     <TableRow key={row.id}>
                       <TableCell className="font-mono">
                         <Link
-                          href={`${basePath}/requests/${row.id}?from=history`}
+                          href={buildRequestHref(row.id)}
                           className="text-primary hover:underline"
                         >
                           {row.requestNo}
@@ -323,7 +327,7 @@ export function HeadScopeHistoryPage({ basePath, roleTitle, roleKey }: HeadScope
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">
-                        <TableRowViewAction href={`${basePath}/requests/${row.id}?from=history`} />
+                        <TableRowViewAction href={buildRequestHref(row.id)} />
                       </TableCell>
                     </TableRow>
                   ))

@@ -1,5 +1,10 @@
 import axios, { AxiosError } from 'axios';
 import { DEFAULT_API_BASE, resolveApiBaseUrl } from '@/shared/api/base-url';
+import {
+  AUTH_TOKEN_COOKIE_NAME,
+  AUTH_TOKEN_STORAGE_NAME,
+  AUTH_USER_STORAGE_NAME,
+} from '@/shared/auth/storage';
 
 const api = axios.create({
   baseURL: resolveApiBaseUrl(process.env.NEXT_PUBLIC_API_URL ?? DEFAULT_API_BASE),
@@ -8,13 +13,12 @@ const api = axios.create({
   },
 });
 
-const TOKEN_KEY = 'phts_token';
-const USER_KEY = 'phts_user';
-const TOKEN_COOKIE_KEY = 'phts_token';
+const TOKEN_STORAGE_NAME = AUTH_TOKEN_STORAGE_NAME;
+const USER_STORAGE_NAME = AUTH_USER_STORAGE_NAME;
 
 const clearTokenCookie = () => {
   if (typeof document === 'undefined') return;
-  document.cookie = `${TOKEN_COOKIE_KEY}=; Path=/; Max-Age=0; SameSite=Lax`;
+  document.cookie = `${AUTH_TOKEN_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax; Secure`;
 };
 
 type ValidationDetail = {
@@ -53,7 +57,7 @@ const toReadableErrorMessage = (body?: ApiErrorBody): string => {
 // Interceptor: Attach Token
 api.interceptors.request.use((config) => {
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem(TOKEN_KEY);
+    const token = localStorage.getItem(TOKEN_STORAGE_NAME);
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -73,8 +77,8 @@ api.interceptors.response.use(
 
     if (axiosError?.response?.status === 401) {
       if (typeof window !== 'undefined') {
-        localStorage.removeItem(TOKEN_KEY);
-        localStorage.removeItem(USER_KEY);
+        localStorage.removeItem(TOKEN_STORAGE_NAME);
+        localStorage.removeItem(USER_STORAGE_NAME);
         clearTokenCookie();
         // Prevent redirect loop if already on login
         if (!window.location.pathname.startsWith('/login')) {

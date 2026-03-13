@@ -181,12 +181,25 @@ export function useDeletePeriod() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (periodId: number | string) => deletePeriod(periodId),
-    onSuccess: () => {
+    onSuccess: (_data, periodId) => {
+      const periodKey = String(periodId);
+      const isDeletedPeriodQuery = (queryKey: readonly unknown[]) => {
+        const [scope, targetPeriodId] = queryKey;
+        if (
+          scope !== "payroll-period-detail" &&
+          scope !== "payroll-period-payouts" &&
+          scope !== "payroll-period-review-progress" &&
+          scope !== "payroll-period-summary"
+        ) {
+          return false;
+        }
+        return String(targetPeriodId ?? "") === periodKey;
+      };
+
+      qc.removeQueries({
+        predicate: (query) => isDeletedPeriodQuery(query.queryKey),
+      });
       qc.invalidateQueries({ queryKey: ["payroll-periods"] });
-      qc.invalidateQueries({ queryKey: ["payroll-period-detail"] });
-      qc.invalidateQueries({ queryKey: ["payroll-period-payouts"] });
-      qc.invalidateQueries({ queryKey: ["payroll-period-review-progress"] });
-      qc.invalidateQueries({ queryKey: ["payroll-period-summary"] });
       invalidateNavigation(qc);
     },
   });
